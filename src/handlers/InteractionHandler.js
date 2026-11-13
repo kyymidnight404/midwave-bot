@@ -1,8 +1,13 @@
 import { MessageFlags } from 'discord.js';
 import { AI_COOLDOWN_MS } from '../services/gemini.js';
+import { LYRICS_COOLDOWN_MS } from '../services/lyricsService.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
 
 const IGNORED_DISCORD_ERROR_CODES = new Set([10062, 40060]);
+const COMMAND_COOLDOWNS = Object.freeze({
+  ai: AI_COOLDOWN_MS,
+  lyrics: LYRICS_COOLDOWN_MS,
+});
 
 /**
  * Safely sends an ephemeral error reply regardless of interaction acknowledgement state.
@@ -76,9 +81,10 @@ export class InteractionHandler {
     const cooldownKey = subcommand
       ? `${interaction.user.id}:${interaction.commandName}:${subcommand}`
       : `${interaction.user.id}:${interaction.commandName}`;
+    const specialCooldown = COMMAND_COOLDOWNS[interaction.commandName];
     const cooldownTtl =
-      interaction.commandName === 'ai' && this.cooldowns.defaultTtlMs > 0
-        ? Math.max(this.cooldowns.defaultTtlMs, AI_COOLDOWN_MS)
+      specialCooldown && this.cooldowns.defaultTtlMs > 0
+        ? Math.max(this.cooldowns.defaultTtlMs, specialCooldown)
         : this.cooldowns.defaultTtlMs;
     const cooldownResult = this.cooldowns.tryAcquire(cooldownKey, cooldownTtl);
     if (!cooldownResult.allowed) {

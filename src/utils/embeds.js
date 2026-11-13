@@ -372,7 +372,9 @@ export function buildHelpEmbed(prefix = '!') {
     {
       name: 'Fitur Utility',
       value: [
+        `\`/ai question:<pertanyaan>\` atau \`${safePrefix}ai <pertanyaan>\` — Tanya Midwave AI (stateless Gemini)`,
         `\`/brat text:<teks>\` atau \`${safePrefix}brat <teks>\` — Buat gambar teks bergaya Brat (1024×1024 PNG, maks. 100 karakter)`,
+        `\`/lyrics query:<judul> [artist:<artis>]\` — Cari lirik lagu dengan cover album dan pagination`,
       ].join('\n'),
       inline: false,
     },

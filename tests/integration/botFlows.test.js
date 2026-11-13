@@ -146,7 +146,7 @@ function createMockCommandInteraction({
 }
 
 describe('Integration: Slash Commands & End-to-End Flows', () => {
-  it('registers all 12 valid Discord slash commands within API limits', async () => {
+  it('registers all 14 valid Discord slash commands within API limits', async () => {
     const app = await createBotApp();
     const payloads = app.commandHandler.toJSON();
     const names = payloads.map((c) => c.name).sort();
@@ -161,6 +161,7 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
       'guess',
       'help',
       'invite',
+      'lyrics',
       'rps',
       'tictactoe',
       'trivia',

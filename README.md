@@ -23,6 +23,9 @@ Midwave stores active sessions and invitations purely in **in-memory JavaScript 
 - **AI Chatbot — Midwave AI** (`/ai` & `!ai`):
   - Powered by **Google Gemini API** (`@google/genai`, default `gemini-2.5-flash`) for programming, technology, education, general knowledge, and casual Q&A in Indonesian by default (or other languages on request).
   - Strictly **stateless** (no conversation history, no chat memory, no database) with per-user cooldown protection, `@everyone`/`@here` sanitization, and automatic >2,000 character Markdown-safe message splitting.
+- **Utility Feature — Lyrics Finder** (`/lyrics`):
+  - Searches song lyrics by title (`query`) and optional `artist` via **LRCLIB REST API** (`lrclib.net`), enriched with album metadata, cover art thumbnail, and official source links (**Apple Music iTunes Search API** and optional official **Genius REST API** via `GENIUS_API_KEY`).
+  - Features interactive `Previous` / `Page X/Y` / `Next` button pagination (owner-locked with automatic button disable on timeout), in-memory TTL caching (10 minutes), and per-user cooldown protection.
 - **Slash Command & Prefix Command Support** — Supports both Discord Slash Commands (`/`) and Prefix Commands (`!` by default, configurable via `PREFIX` in `.env`), sharing the same game engines, sessions, invites, and cooldowns.
 - **In-Memory Session & Invite Lifecycle** — Automatic invite expiration (60s), idle session timeout (120s), per-session concurrency lock, cooldowns, and clean timer/listener disposal.
 - **Zero Database** — All temporary match state lives in RAM and resets cleanly on bot restart.
@@ -58,6 +61,7 @@ midwave/
 │   │   ├── guess.js
 │   │   ├── help.js
 │   │   ├── invite.js
+│   │   ├── lyrics.js             # /lyrics interactive paginated Lyrics Finder command
 │   │   ├── rps.js
 │   │   ├── tictactoe.js
 │   │   └── trivia.js
@@ -91,7 +95,8 @@ midwave/
 │   ├── prefixCommands/
 │   │   └── igf.js                # !igf Instagram Post Frame command
 │   ├── services/
-│   │   └── gemini.js             # Stateless Google Gemini API client
+│   │   ├── gemini.js             # Stateless Google Gemini API client
+│   │   └── lyricsService.js      # LRCLIB + Apple Music / optional Genius REST lyrics service
 │   ├── utils/
 │   │   ├── aiFormatter.js        # Markdown-safe 2000-char splitter & mention sanitizer
 │   │   ├── bratEmoji.js
@@ -102,6 +107,7 @@ midwave/
 │   │   ├── embeds.js
 │   │   ├── gameCommandHelpers.js
 │   │   ├── igfGenerator.js       # In-memory 1080x1080 Canvas Instagram frame renderer
+│   │   ├── lyricsFormatter.js    # Word-safe lyrics pagination, embed & button builders
 │   │   ├── prefixParser.js       # Prefix command parser & argument validator
 │   │   ├── random.js
 │   │   └── validators.js
@@ -195,6 +201,7 @@ midwave/
 | `/help` | Shows bot usage instructions, utility commands, and match rules |
 | `/ai question` | Asks Midwave AI (Google Gemini) a single independent question |
 | `/brat text` | Generates a 1024×1024 Brat-style PNG image (`midwave-brat.png`, max 100 chars) |
+| `/lyrics query [artist]` | Searches song lyrics with album art, source link, and paginated buttons |
 | `/game status` | Displays your active match or pending invite (ephemeral) |
 | `/game cancel` | Cancels your active match or outgoing pending invite |
 | `/invite accept` | Accepts the latest pending multiplayer challenge |
@@ -239,6 +246,26 @@ Midwave supports configurable prefix commands (`PREFIX=!` in `.env`) using the s
 - **Free Tier & Rate Limits**:
   - Gemini API free tier memiliki batas permintaan per menit (RPM), token per menit (TPM), dan permintaan harian (RPD) sesuai kebijakan Google AI Studio.
   - Midwave menerapkan cooldown khusus AI (8 detik per pengguna) dan batas pertanyaan 1.500 karakter untuk mencegah spam serta menghemat kuota free tier. Jika rate limit atau kuota habis, bot akan menampilkan pesan error informatif tanpa menghentikan fitur lain.
+
+---
+
+## Lyrics Finder (`/lyrics`)
+
+- **Usage**:
+  - `/lyrics query: APT`
+  - `/lyrics query: Love artist: wave to earth`
+  - `/lyrics query: Blue`
+- **Architecture & Library Choice**:
+  - Uses Node.js built-in `fetch` (`AbortSignal.timeout`) with **zero extra npm dependencies** (avoiding `lyrics-finder`'s fragile Google scraping, `genius-lyrics`'s Cloudflare `403` HTML scraping blocks, and `lyricsgenius`'s Python runtime requirement).
+  - **Lyrics source**: [LRCLIB](https://lrclib.net) open REST API (`/api/search`), with in-memory TTL caching (10 minutes) and 5-second per-user cooldown.
+  - **Metadata & cover art**: Official **Apple iTunes Search API** (no API key needed) and optional **Official Genius API** (`GENIUS_API_KEY` in `.env`, metadata + official Genius URL only, zero HTML scraping).
+- **Environment Variables**:
+  - None required! `/lyrics` works out-of-the-box without extra keys.
+  - Optional `GENIUS_API_KEY`: Client Access Token from [Genius API Clients](https://genius.com/api-clients) to prioritize Genius album thumbnails and official `genius.com` links.
+- **Deployment**: Run `npm run deploy` (guild) or `npm run deploy:global` (global) to register `/lyrics` with Discord, then start the bot (`npm start` or restart Wispbyte/PM2).
+- **Limitations & Attribution**:
+  - Availability of lyrics depends on LRCLIB's community catalog; instrumental tracks or unlisted songs return an informative status message without fabricating lyrics.
+  - Every embed displays source attribution and a link to the official/provider URL.
 
 ---
 
