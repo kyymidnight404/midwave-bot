@@ -3,9 +3,13 @@ import { GAME_MODES, GAME_TYPES } from '../utils/constants.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
 import { parsePrefixInvocation, resolvePrefix } from '../utils/prefixParser.js';
 import { MessageCommandAdapter, resolveUserFromMessage } from './MessageCommandAdapter.js';
+import igfCommand from '../prefixCommands/igf.js';
+
+const PREFIX_ONLY_COMMANDS = new Map([[igfCommand.name, igfCommand]]);
 
 const COMMANDS_REQUIRING_ATTACH_FILES = new Set([
   'brat',
+  'igf',
   'games',
   'help',
   'invite',
@@ -19,7 +23,7 @@ const COMMANDS_REQUIRING_ATTACH_FILES = new Set([
 ]);
 
 function requiresAttachFiles(commandName, subcommand) {
-  if (commandName === 'brat' || commandName === 'games' || commandName === 'help') {
+  if (commandName === 'brat' || commandName === 'igf' || commandName === 'games' || commandName === 'help') {
     return true;
   }
   if (commandName === 'invite' && subcommand === 'accept') {
@@ -172,7 +176,7 @@ export class PrefixCommandHandler {
       return;
     }
 
-    const command = this.commandHandler.get(parsed.commandName);
+    const command = this.commandHandler.get(parsed.commandName) ?? PREFIX_ONLY_COMMANDS.get(parsed.commandName);
     if (!command) {
       return;
     }

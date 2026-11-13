@@ -12,6 +12,7 @@ const COMMAND_ALIASES = Object.freeze({
   game: 'game',
   invite: 'invite',
   brat: 'brat',
+  igf: 'igf',
   guess: 'guess',
   ng: 'guess',
   rps: 'rps',
@@ -238,7 +239,7 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
   const args = rawRest ? rawRest.split(/\s+/) : [];
   const firstLower = args[0]?.toLowerCase() ?? '';
 
-  if (commandName === 'games' || commandName === 'help') {
+  if (commandName === 'games' || commandName === 'help' || commandName === 'igf') {
     return { commandName, subcommand: null, options: {} };
   }
 

@@ -1,5 +1,10 @@
 import { createRequire } from 'node:module';
 import { Resvg } from '@resvg/resvg-js';
+import {
+  buildLineRenderSegments,
+  resolveBratEmojiAssets,
+  tokenizeBratUnits,
+} from './bratEmoji.js';
 
 const require = createRequire(import.meta.url);
 
@@ -19,6 +24,9 @@ const MAX_CONTENT_HEIGHT = BRAT_SIZE - BRAT_PADDING * 2;
 const MAX_FONT_SIZE = 260;
 const MIN_FONT_SIZE = 24;
 const LINE_HEIGHT_RATIO = 1.08;
+const EMOJI_SIZE_RATIO = 0.88;
+const EMOJI_ADVANCE_RATIO = 0.94;
+const EMOJI_TOP_OFFSET_RATIO = 0.76;
 
 const NARROW_CHARS = new Set(['i', 'l', 'j', '!', '.', ',', ':', ';', '\'', '|']);
 const MEDIUM_NARROW_CHARS = new Set(['f', 'r', 't', '(', ')', '[', ']', '-', '/']);
@@ -62,32 +70,41 @@ export function escapeSvgText(text) {
 }
 
 /**
- * Estimates rendered width of a string in DejaVu Sans Condensed Regular at a given font size.
+ * Estimates rendered width of a string (including emoji tokens) at a given font size.
  * @param {string} text
  * @param {number} fontSize
  * @returns {number}
  */
 function estimateTextWidth(text, fontSize) {
-  let units = 0;
-  for (const ch of text) {
+  let textUnits = 0;
+  let emojiCount = 0;
+
+  for (const unit of tokenizeBratUnits(text)) {
+    if (unit.type !== 'text') {
+      emojiCount++;
+      continue;
+    }
+
+    const ch = unit.raw[0];
     if (ch === ' ') {
-      units += 0.28;
+      textUnits += 0.285;
     } else if (NARROW_CHARS.has(ch)) {
-      units += 0.28;
+      textUnits += 0.28;
     } else if (MEDIUM_NARROW_CHARS.has(ch)) {
-      units += 0.36;
+      textUnits += 0.36;
     } else if (WIDE_CHARS.has(ch)) {
-      units += 0.78;
+      textUnits += 0.78;
     } else {
-      units += 0.54;
+      textUnits += 0.54;
     }
   }
-  // Conservative safety margin for kerning and soft Gaussian blur spread.
-  return units * fontSize * 1.04;
+
+  // Conservative safety margin for text kerning/blur plus fixed advance per inline emoji.
+  return (textUnits * 1.04 + emojiCount * EMOJI_ADVANCE_RATIO) * fontSize;
 }
 
 /**
- * Splits a single long token that exceeds maxLineWidth into fitted chunks.
+ * Splits a single long token that exceeds maxLineWidth into fitted chunks without breaking emojis.
  * @param {string} word
  * @param {number} fontSize
  * @param {number} maxLineWidth
@@ -97,11 +114,11 @@ function splitLongWord(word, fontSize, maxLineWidth) {
   const chunks = [];
   let current = '';
 
-  for (const ch of word) {
-    const candidate = current + ch;
+  for (const unit of tokenizeBratUnits(word)) {
+    const candidate = current + unit.raw;
     if (current && estimateTextWidth(candidate, fontSize) > maxLineWidth) {
       chunks.push(current);
-      current = ch;
+      current = unit.raw;
     } else {
       current = candidate;
     }
@@ -192,24 +209,112 @@ export function layoutBratText(normalizedText) {
 }
 
 /**
+ * Creates a cached advance-width measurer for inline text + emoji alignment using Resvg.
+ * @param {number} fontSize
+ * @param {string} fontPath
+ * @param {typeof Resvg} ResvgImpl
+ * @returns {(text: string) => number}
+ */
+function createTextAdvanceMeasurer(fontSize, fontPath, ResvgImpl) {
+  const fontOpts = {
+    loadSystemFonts: false,
+    fontFiles: [fontPath],
+    defaultFontFamily: FONT_FAMILY,
+  };
+  let pipesRightEdge = null;
+
+  const measureRightEdge = (content) => {
+    const svg = [
+      `<svg xmlns="http://www.w3.org/2000/svg" width="4096" height="${Math.ceil(fontSize * 3)}">`,
+      `<text x="0" y="${Math.ceil(fontSize * 1.5)}" font-family="${FONT_FAMILY}" font-size="${fontSize}" font-weight="${FONT_WEIGHT}" xml:space="preserve">${content}</text>`,
+      '</svg>',
+    ].join('');
+    const bbox = new ResvgImpl(svg, { font: fontOpts }).getBBox();
+    return bbox ? bbox.x + bbox.width : 0;
+  };
+
+  return (text) => {
+    if (!text) return 0;
+    try {
+      if (pipesRightEdge === null) {
+        pipesRightEdge = measureRightEdge('||');
+      }
+      const fullRightEdge = measureRightEdge(`|${escapeSvgText(text)}|`);
+      return Math.max(0, fullRightEdge - pipesRightEdge);
+    } catch {
+      return estimateTextWidth(text, fontSize);
+    }
+  };
+}
+
+/**
  * Builds the 1024x1024 top-left aligned Brat-style SVG markup for validated text.
  * @param {string} rawText
+ * @param {{ emojiAssets?: Map<string, string>, fontPath?: string, resvgClass?: typeof Resvg }} [options]
  * @returns {string}
  */
-export function buildBratSvg(rawText) {
+export function buildBratSvg(rawText, options = {}) {
   const normalized = validateBratText(rawText);
   const { fontSize, lineHeight, lines } = layoutBratText(normalized);
   const blurDeviation = Math.min(2.6, Math.max(1.2, Number((fontSize * 0.012).toFixed(2))));
 
   const startX = BRAT_PADDING;
   const firstBaselineY = BRAT_PADDING + fontSize * 0.82;
+  const emojiAssets = options.emojiAssets ?? new Map();
+  const lineSegments = lines.map((line) => buildLineRenderSegments(line, emojiAssets));
+  const hasImages = lineSegments.some((segs) => segs.some((seg) => seg.type === 'image'));
 
-  const tspans = lines
-    .map((line, index) => {
-      const y = (firstBaselineY + index * lineHeight).toFixed(1);
-      return `<tspan x="${startX}" y="${y}">${escapeSvgText(line)}</tspan>`;
-    })
-    .join('');
+  let contentMarkup;
+  if (!hasImages) {
+    const tspans = lineSegments
+      .map((segs, index) => {
+        const y = (firstBaselineY + index * lineHeight).toFixed(1);
+        const lineText = segs.map((seg) => seg.value).join('');
+        return `<tspan x="${startX}" y="${y}">${escapeSvgText(lineText)}</tspan>`;
+      })
+      .join('');
+    contentMarkup = `<text fill="${BRAT_TEXT_COLOR}" font-family="${FONT_FAMILY}" font-size="${fontSize}" font-weight="${FONT_WEIGHT}" text-anchor="start" filter="url(#brat-blur)">${tspans}</text>`;
+  } else {
+    const measureAdvance = createTextAdvanceMeasurer(
+      fontSize,
+      options.fontPath ?? FONT_PATH,
+      options.resvgClass ?? Resvg,
+    );
+    const emojiSize = fontSize * EMOJI_SIZE_RATIO;
+    const emojiAdvance = fontSize * EMOJI_ADVANCE_RATIO;
+    const emojiXOffset = (emojiAdvance - emojiSize) / 2;
+    const emojiYOffset = fontSize * EMOJI_TOP_OFFSET_RATIO;
+
+    const tspans = [];
+    const emojiImages = [];
+
+    lineSegments.forEach((segs, index) => {
+      const baselineY = firstBaselineY + index * lineHeight;
+      const yStr = baselineY.toFixed(1);
+      let cursorX = startX;
+
+      for (const seg of segs) {
+        if (seg.type === 'text') {
+          tspans.push(`<tspan x="${cursorX.toFixed(1)}" y="${yStr}">${escapeSvgText(seg.value)}</tspan>`);
+          cursorX += measureAdvance(seg.value);
+        } else {
+          const emojiX = (cursorX + emojiXOffset).toFixed(1);
+          const emojiY = (baselineY - emojiYOffset).toFixed(1);
+          emojiImages.push(
+            `<image x="${emojiX}" y="${emojiY}" width="${emojiSize.toFixed(1)}" height="${emojiSize.toFixed(1)}" href="${escapeSvgText(seg.href)}" />`,
+          );
+          cursorX += emojiAdvance;
+        }
+      }
+    });
+
+    contentMarkup = [
+      '<g filter="url(#brat-blur)">',
+      `<text fill="${BRAT_TEXT_COLOR}" font-family="${FONT_FAMILY}" font-size="${fontSize}" font-weight="${FONT_WEIGHT}" text-anchor="start" xml:space="preserve">${tspans.join('')}</text>`,
+      emojiImages.join(''),
+      '</g>',
+    ].join('');
+  }
 
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${BRAT_SIZE}" height="${BRAT_SIZE}" viewBox="0 0 ${BRAT_SIZE} ${BRAT_SIZE}">`,
@@ -219,9 +324,7 @@ export function buildBratSvg(rawText) {
     '</filter>',
     '</defs>',
     `<rect width="${BRAT_SIZE}" height="${BRAT_SIZE}" fill="${BRAT_BG_COLOR}" />`,
-    `<text fill="${BRAT_TEXT_COLOR}" font-family="${FONT_FAMILY}" font-size="${fontSize}" font-weight="${FONT_WEIGHT}" text-anchor="start" filter="url(#brat-blur)">`,
-    tspans,
-    '</text>',
+    contentMarkup,
     '</svg>',
   ].join('');
 }
@@ -229,11 +332,11 @@ export function buildBratSvg(rawText) {
 /**
  * Renders a 1024x1024 soft lo-fi Brat-style PNG buffer in memory.
  * @param {string} rawText
- * @param {{ resvgClass?: typeof Resvg, fontPath?: string }} [options]
+ * @param {{ resvgClass?: typeof Resvg, fontPath?: string, emojiAssets?: Map<string, string> }} [options]
  * @returns {Buffer}
  */
 export function renderBratPng(rawText, options = {}) {
-  const svg = buildBratSvg(rawText);
+  const svg = buildBratSvg(rawText, options);
   const ResvgImpl = options.resvgClass ?? Resvg;
   const fontPath = options.fontPath ?? FONT_PATH;
 
@@ -269,4 +372,16 @@ export function renderBratPng(rawText, options = {}) {
     const detail = error instanceof Error ? error.message : 'kesalahan tidak dikenal';
     throw new Error(`Gagal merender gambar Brat: ${detail}`);
   }
+}
+
+/**
+ * Resolves Unicode and Discord custom emojis before rendering a 1024x1024 Brat PNG buffer.
+ * @param {string} rawText
+ * @param {{ resvgClass?: typeof Resvg, fontPath?: string, emojiAssets?: Map<string, string>, fetchFn?: typeof fetch, timeoutMs?: number, cache?: Map<string, string> }} [options]
+ * @returns {Promise<Buffer>}
+ */
+export async function renderBratPngAsync(rawText, options = {}) {
+  const normalized = validateBratText(rawText);
+  const emojiAssets = options.emojiAssets ?? (await resolveBratEmojiAssets(normalized, options));
+  return renderBratPng(rawText, { ...options, emojiAssets });
 }

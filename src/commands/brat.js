@@ -2,7 +2,7 @@ import { AttachmentBuilder, MessageFlags, SlashCommandBuilder } from 'discord.js
 import {
   BRAT_ATTACHMENT_NAME,
   BRAT_MAX_LENGTH,
-  renderBratPng,
+  renderBratPngAsync,
   validateBratText,
 } from '../utils/bratGenerator.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
@@ -21,7 +21,7 @@ export const data = new SlashCommandBuilder()
 /**
  * Executes the `/brat` utility command.
  * @param {import('discord.js').ChatInputCommandInteraction} interaction
- * @param {{ renderBratPng?: typeof renderBratPng }} [context]
+ * @param {{ renderBratPng?: (text: string) => Buffer | Promise<Buffer> }} [context]
  */
 export async function execute(interaction, context = {}) {
   const rawText = interaction.options.getString('text', true);
@@ -39,8 +39,8 @@ export async function execute(interaction, context = {}) {
   await interaction.deferReply();
 
   try {
-    const renderer = context.renderBratPng ?? renderBratPng;
-    const pngBuffer = renderer(rawText);
+    const renderer = context.renderBratPng ?? renderBratPngAsync;
+    const pngBuffer = await renderer(rawText);
     const attachment = new AttachmentBuilder(pngBuffer, { name: BRAT_ATTACHMENT_NAME });
 
     await interaction.editReply({ files: [attachment] });

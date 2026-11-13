@@ -13,8 +13,14 @@ import {
   escapeSvgText,
   layoutBratText,
   renderBratPng,
+  renderBratPngAsync,
   validateBratText,
 } from '../../src/utils/bratGenerator.js';
+import {
+  resolveBratEmojiAssets,
+  toTwemojiCodePoints,
+  tokenizeBratUnits,
+} from '../../src/utils/bratEmoji.js';
 import bratCommand, { data as bratData, execute as executeBrat } from '../../src/commands/brat.js';
 import { createBotApp } from '../../src/index.js';
 import { CooldownManager } from '../../src/utils/cooldown.js';
@@ -310,5 +316,160 @@ describe('Brat Generator utility & /brat command', () => {
     assert.equal(second.getEvents()[0].payload.flags, MessageFlags.Ephemeral);
     const errEmbed = second.getEvents()[0].payload.embeds[0].toJSON();
     assert.match(errEmbed.description, /Tunggu/i);
+  });
+
+  it('tokenizes Unicode emojis, ZWJ/keycap/flag sequences, and Discord custom emojis intact', () => {
+    const tokens = tokenizeBratUnits(
+      'pajak \u{1F972} \u2764\uFE0F 1\uFE0F\u20E3 \u{1F3F3}\uFE0F\u200D\u{1F308} \u{1F1EE}\u{1F1E9} <:wave:123456789012345678>',
+    );
+    const emojis = tokens.filter((t) => t.type !== 'text');
+    assert.equal(emojis.length, 6);
+    assert.equal(emojis[0].codePoint, '1f972');
+    assert.equal(emojis[1].codePoint, '2764');
+    assert.equal(emojis[2].codePoint, '31-20e3');
+    assert.equal(emojis[3].codePoint, '1f3f3-fe0f-200d-1f308');
+    assert.equal(emojis[3].fallbackCodePoint, '1f3f3-200d-1f308');
+    assert.equal(emojis[4].codePoint, '1f1ee-1f1e9');
+    assert.equal(emojis[5].type, 'custom-emoji');
+    assert.equal(emojis[5].id, '123456789012345678');
+
+    assert.deepEqual(toTwemojiCodePoints('\u{1F468}\u200D\u{1F469}\u200D\u{1F467}'), {
+      primary: '1f468-200d-1f469-200d-1f467',
+      fallback: null,
+    });
+
+    // Long unspaced emoji strings must wrap cleanly across lines without splitting surrogate pairs or ZWJ graphemes.
+    const unspacedSurrogates = '\u{1F525}'.repeat(45);
+    const surrogateLayout = layoutBratText(validateBratText(unspacedSurrogates));
+    assert.ok(surrogateLayout.lines.length >= 2);
+    assert.equal(surrogateLayout.lines.join(''), unspacedSurrogates);
+
+    const unspacedZwj = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}'.repeat(12);
+    const zwjLayout = layoutBratText(validateBratText(unspacedZwj));
+    assert.equal(zwjLayout.lines.join(''), unspacedZwj);
+  });
+
+  it('resolves, caches, validates, and gracefully falls back for emoji assets', async () => {
+    const sampleSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36"><circle cx="18" cy="18" r="16" fill="#FFCC4D"/></svg>';
+    const samplePng = Buffer.concat([PNG_SIGNATURE, Buffer.from([0, 0, 0, 0])]);
+    const requestedUrls = [];
+    const cache = new Map();
+
+    const mockFetch = async (url) => {
+      requestedUrls.push(url);
+      if (url.endsWith('/1f972.svg')) {
+        return {
+          ok: true,
+          headers: new Headers({ 'content-length': String(sampleSvg.length) }),
+          arrayBuffer: async () => Buffer.from(sampleSvg, 'utf8'),
+        };
+      }
+      if (url.endsWith('/1f3f3-fe0f-200d-1f308.svg')) {
+        return { ok: false, status: 404 };
+      }
+      if (url.endsWith('/1f3f3-200d-1f308.svg')) {
+        return {
+          ok: true,
+          headers: new Headers(),
+          arrayBuffer: async () => Buffer.from(sampleSvg, 'utf8'),
+        };
+      }
+      if (url.includes('/emojis/123456789012345678.png')) {
+        return {
+          ok: true,
+          headers: new Headers(),
+          arrayBuffer: async () => samplePng,
+        };
+      }
+      if (url.includes('/emojis/999999999999999999.png')) {
+        // Invalid non-PNG payload must be rejected safely.
+        return {
+          ok: true,
+          headers: new Headers(),
+          arrayBuffer: async () => Buffer.from('not-a-png', 'utf8'),
+        };
+      }
+      throw new Error('network error');
+    };
+
+    const text =
+      'hi \u{1F972} \u{1F972} \u{1F3F3}\uFE0F\u200D\u{1F308} <:ok:123456789012345678> <:bad:999999999999999999> \u{1F525}';
+    const assets = await resolveBratEmojiAssets(text, { fetchFn: mockFetch, cache });
+
+    assert.ok(assets.get('unicode:1f972')?.startsWith('data:image/svg+xml;base64,'));
+    assert.ok(assets.get('unicode:1f3f3-fe0f-200d-1f308')?.startsWith('data:image/svg+xml;base64,'));
+    assert.ok(assets.get('custom:123456789012345678')?.startsWith('data:image/png;base64,'));
+    assert.equal(assets.has('custom:999999999999999999'), false);
+    assert.equal(assets.has('unicode:1f525'), false);
+
+    // Repeated 1f972 in the same text only triggers one fetch; second call hits cache.
+    const countAfterFirst = requestedUrls.length;
+    const cachedAssets = await resolveBratEmojiAssets('\u{1F972}', { fetchFn: mockFetch, cache });
+    assert.equal(cachedAssets.get('unicode:1f972'), assets.get('unicode:1f972'));
+    assert.equal(requestedUrls.length, countAfterFirst);
+  });
+
+  it('renders inline color emojis in 1024x1024 PNG and falls back cleanly when missing', async () => {
+    const emojiSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36"><circle cx="18" cy="18" r="16" fill="#FFCC4D"/><path fill="#5DADEC" d="M25 24c0 3-2 5-5 5s-5-2-5-5 5-9 5-9 5 6 5 9z"/></svg>';
+    const cache = new Map();
+    const mockFetch = async (url) => {
+      if (url.endsWith('/1f972.svg')) {
+        return {
+          ok: true,
+          headers: new Headers(),
+          arrayBuffer: async () => Buffer.from(emojiSvg, 'utf8'),
+        };
+      }
+      return { ok: false, status: 404 };
+    };
+
+    const input = 'pajak terosss \u{1F972} pungutan <:missing:123456789012345678>';
+    const assets = await resolveBratEmojiAssets(validateBratText(input), { fetchFn: mockFetch, cache });
+    const svg = buildBratSvg(input, { emojiAssets: assets });
+    assert.ok(svg.includes('<image '));
+    assert.ok(svg.includes('xml:space="preserve"'));
+    assert.ok(svg.includes(':missing:'));
+
+    const png = await renderBratPngAsync(input, { fetchFn: mockFetch, cache });
+    assert.ok(png.subarray(0, 8).equals(PNG_SIGNATURE));
+    assert.equal(png.readUInt32BE(16), BRAT_SIZE);
+    assert.equal(png.readUInt32BE(20), BRAT_SIZE);
+
+    const { rgba } = decodePngRgbaPixels(png);
+    let coloredPixels = 0;
+    let darkTextPixels = 0;
+    for (let i = 0; i < rgba.length; i += 4) {
+      const [r, g, b] = [rgba[i], rgba[i + 1], rgba[i + 2]];
+      if (r > 240 && g > 240 && b > 240) continue;
+      if (Math.max(r, g, b) - Math.min(r, g, b) > 25) {
+        coloredPixels++;
+      } else if (r < 64 && g < 64 && b < 64) {
+        darkTextPixels++;
+      }
+    }
+    assert.ok(coloredPixels > 500, 'Expected colored pixels from rendered inline emoji');
+    assert.ok(darkTextPixels > 500, 'Expected dark pixels from rendered text');
+  });
+
+  it('keeps single-word inputs top-left, single-line when possible, and proportionally scaled', () => {
+    const shortWord = layoutBratText(validateBratText('test'));
+    const mediumWord = layoutBratText(validateBratText('midnight'));
+    const longWord = layoutBratText(validateBratText('pungutannnnnnnnn'));
+    const veryLongWord = layoutBratText(validateBratText('supercalifragilisticexpialidocious'));
+
+    assert.equal(shortWord.lines.length, 1);
+    assert.equal(mediumWord.lines.length, 1);
+    assert.equal(longWord.lines.length, 1);
+    assert.equal(veryLongWord.lines.length, 1);
+
+    assert.ok(shortWord.fontSize >= mediumWord.fontSize);
+    assert.ok(mediumWord.fontSize > longWord.fontSize);
+    assert.ok(longWord.fontSize > veryLongWord.fontSize);
+
+    const svg = buildBratSvg('test');
+    assert.ok(svg.includes(`x="${BRAT_PADDING}"`));
+    assert.ok(svg.includes('text-anchor="start"'));
+    assert.ok(!svg.includes('text-anchor="middle"'));
   });
 });
