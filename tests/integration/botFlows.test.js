@@ -151,6 +151,7 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     const payloads = app.commandHandler.toJSON();
     const names = payloads.map((c) => c.name).sort();
     assert.deepEqual(names, [
+      'ai',
       'brat',
       'coinflip',
       'connect4',

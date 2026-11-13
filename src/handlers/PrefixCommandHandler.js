@@ -1,4 +1,5 @@
 import { PermissionFlagsBits } from 'discord.js';
+import { AI_COOLDOWN_MS } from '../services/gemini.js';
 import { GAME_MODES, GAME_TYPES } from '../utils/constants.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
 import { parsePrefixInvocation, resolvePrefix } from '../utils/prefixParser.js';
@@ -189,7 +190,11 @@ export class PrefixCommandHandler {
     const cooldownKey = parsed.subcommand
       ? `${message.author.id}:${parsed.commandName}:${parsed.subcommand}`
       : `${message.author.id}:${parsed.commandName}`;
-    const cooldownResult = this.cooldowns.tryAcquire(cooldownKey);
+    const cooldownTtl =
+      parsed.commandName === 'ai' && this.cooldowns.defaultTtlMs > 0
+        ? Math.max(this.cooldowns.defaultTtlMs, AI_COOLDOWN_MS)
+        : this.cooldowns.defaultTtlMs;
+    const cooldownResult = this.cooldowns.tryAcquire(cooldownKey, cooldownTtl);
     if (!cooldownResult.allowed) {
       const waitSec = Math.max(0.5, cooldownResult.remainingMs / 1000).toFixed(1);
       await this._safeReplyError(

@@ -7,6 +7,7 @@ import {
 } from './constants.js';
 
 const COMMAND_ALIASES = Object.freeze({
+  ai: 'ai',
   games: 'games',
   help: 'help',
   game: 'game',
@@ -249,6 +250,18 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
       subcommand: null,
       options: rawRest ? { caption: rawRest } : {},
     };
+  }
+
+  if (commandName === 'ai') {
+    if (!rawRest) {
+      return {
+        commandName,
+        subcommand: null,
+        options: {},
+        error: `Pertanyaan wajib diisi. Contoh: \`${prefix}ai Apa itu JavaScript?\`.`,
+      };
+    }
+    return { commandName, subcommand: null, options: { question: rawRest } };
   }
 
   if (commandName === 'brat') {

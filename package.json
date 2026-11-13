@@ -23,6 +23,7 @@
   ],
   "license": "ISC",
   "dependencies": {
+    "@google/genai": "^2.32.0",
     "@napi-rs/canvas": "^1.1.1",
     "@resvg/resvg-js": "^2.6.2",
     "dejavu-fonts-ttf": "^2.37.3",

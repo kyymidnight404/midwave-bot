@@ -1,4 +1,5 @@
 import { MessageFlags } from 'discord.js';
+import { AI_COOLDOWN_MS } from '../services/gemini.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
 
 const IGNORED_DISCORD_ERROR_CODES = new Set([10062, 40060]);
@@ -75,7 +76,11 @@ export class InteractionHandler {
     const cooldownKey = subcommand
       ? `${interaction.user.id}:${interaction.commandName}:${subcommand}`
       : `${interaction.user.id}:${interaction.commandName}`;
-    const cooldownResult = this.cooldowns.tryAcquire(cooldownKey);
+    const cooldownTtl =
+      interaction.commandName === 'ai' && this.cooldowns.defaultTtlMs > 0
+        ? Math.max(this.cooldowns.defaultTtlMs, AI_COOLDOWN_MS)
+        : this.cooldowns.defaultTtlMs;
+    const cooldownResult = this.cooldowns.tryAcquire(cooldownKey, cooldownTtl);
     if (!cooldownResult.allowed) {
       const waitSec = Math.max(0.5, cooldownResult.remainingMs / 1000).toFixed(1);
       await safeReplyError(

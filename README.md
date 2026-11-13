@@ -18,6 +18,11 @@ Midwave stores active sessions and invitations purely in **in-memory JavaScript 
   7. **Connect Four** (`/connect4`) — 7×6 board with Easy, Normal, and time-budgeted Alpha-Beta AI.
 - **Utility Feature — Brat Generator** (`/brat`):
   - Generates minimalist `1024 × 1024` PNG images (`midwave-brat.png`) directly in memory with a solid white (`#FFFFFF`) background, top-left aligned black (`#000000`) regular sans-serif lowercase typography, subtle soft lo-fi blur, automatic font sizing/wrapping, SVG escaping, and per-user cooldown protection.
+- **Utility Feature — Instagram Post Frame** (`!igf`):
+  - Generates a `1080 × 1080` transparent-background Instagram Post Card PNG (`midwave-igf.png`) directly in memory using the caller's Discord avatar and display name.
+- **AI Chatbot — Midwave AI** (`/ai` & `!ai`):
+  - Powered by **Google Gemini API** (`@google/genai`, default `gemini-2.5-flash`) for programming, technology, education, general knowledge, and casual Q&A in Indonesian by default (or other languages on request).
+  - Strictly **stateless** (no conversation history, no chat memory, no database) with per-user cooldown protection, `@everyone`/`@here` sanitization, and automatic >2,000 character Markdown-safe message splitting.
 - **Slash Command & Prefix Command Support** — Supports both Discord Slash Commands (`/`) and Prefix Commands (`!` by default, configurable via `PREFIX` in `.env`), sharing the same game engines, sessions, invites, and cooldowns.
 - **In-Memory Session & Invite Lifecycle** — Automatic invite expiration (60s), idle session timeout (120s), per-session concurrency lock, cooldowns, and clean timer/listener disposal.
 - **Zero Database** — All temporary match state lives in RAM and resets cleanly on bot restart.
@@ -43,6 +48,7 @@ midwave/
 │   └── bench-c4.js               # Connect Four AI latency & event-loop benchmark
 ├── src/
 │   ├── commands/                 # Slash command definitions & thin handlers
+│   │   ├── ai.js                 # /ai stateless Gemini chatbot command
 │   │   ├── brat.js
 │   │   ├── coinflip.js
 │   │   ├── connect4.js
@@ -82,13 +88,20 @@ midwave/
 │   │   ├── GameManager.js
 │   │   ├── InviteManager.js
 │   │   └── SessionManager.js
+│   ├── prefixCommands/
+│   │   └── igf.js                # !igf Instagram Post Frame command
+│   ├── services/
+│   │   └── gemini.js             # Stateless Google Gemini API client
 │   ├── utils/
+│   │   ├── aiFormatter.js        # Markdown-safe 2000-char splitter & mention sanitizer
+│   │   ├── bratEmoji.js
 │   │   ├── bratGenerator.js      # In-memory SVG -> PNG Brat image renderer
 │   │   ├── constants.js
 │   │   ├── cooldown.js
 │   │   ├── discordBoard.js
 │   │   ├── embeds.js
 │   │   ├── gameCommandHelpers.js
+│   │   ├── igfGenerator.js       # In-memory 1080x1080 Canvas Instagram frame renderer
 │   │   ├── prefixParser.js       # Prefix command parser & argument validator
 │   │   ├── random.js
 │   │   └── validators.js
@@ -147,7 +160,11 @@ midwave/
    CLIENT_ID=your_discord_application_id_here
    PREFIX=!
    GUILD_ID=your_test_guild_id_here
+   GEMINI_API_KEY=your_gemini_api_key_here
+   GEMINI_MODEL=gemini-2.5-flash
    ```
+
+   > **How to get a Gemini API Key:** Sign in to [Google AI Studio](https://aistudio.google.com/apikey), click **Create API key**, copy the generated key into `GEMINI_API_KEY` inside your local `.env` (or Wispbyte environment variables), and never commit `.env` to Git.
 
 3. **Register Slash Commands**
 
@@ -176,6 +193,7 @@ midwave/
 |---|---|
 | `/games` | Lists all 7 games and their Solo/Multiplayer commands |
 | `/help` | Shows bot usage instructions, utility commands, and match rules |
+| `/ai question` | Asks Midwave AI (Google Gemini) a single independent question |
 | `/brat text` | Generates a 1024×1024 Brat-style PNG image (`midwave-brat.png`, max 100 chars) |
 | `/game status` | Displays your active match or pending invite (ephemeral) |
 | `/game cancel` | Cancels your active match or outgoing pending invite |
@@ -200,12 +218,27 @@ midwave/
 
 Midwave supports configurable prefix commands (`PREFIX=!` in `.env`) using the same underlying game engines, `SessionManager`, `InviteManager`, and cooldowns as Slash Commands:
 
-- **Core & Utility**: `!games`, `!help`, `!brat <text>`, `!game status`, `!game cancel`, `!invite accept`, `!invite decline`
+- **Core & Utility**: `!games`, `!help`, `!ai <pertanyaan>`, `!brat <text>`, `!igf [caption]`, `!game status`, `!game cancel`, `!invite accept`, `!invite decline`
 - **Solo**: `!guess [easy|normal|hard]`, `!rps <rock|paper|scissors>`, `!trivia [category] [difficulty]`, `!coinflip <heads|tails>`, `!dice [count] [sides]` (or `!dice 2d6`), `!tictactoe [easy|normal|hard]` (alias `!ttt`), `!connect4 [easy|normal|hard]` (alias `!c4`)
 - **In-Game Moves**: `!guess <number>`, `!rps choose <choice>`, `!trivia <A|B|C|D>`, `!coinflip choose <choice>`, `!tictactoe <A1-C3>`, `!connect4 <1-7>`
 - **Multiplayer**: `!guess @user [difficulty]`, `!rps challenge @user`, `!trivia @user [category] [difficulty]`, `!coinflip challenge @user`, `!dice @user [2d6]`, `!tictactoe challenge @user`, `!connect4 challenge @user`
 
 > **Privacy Note:** For secret multiplayer choices (`rps`, `coinflip`, `trivia`), Slash Commands use native ephemeral replies, while prefix commands attempt to delete your trigger message (requires `Manage Messages`) and DM your confirmation.
+
+---
+
+## Midwave AI (Google Gemini Chatbot)
+
+- **Usage**:
+  - Slash Command: `/ai question: Apa itu JavaScript?`
+  - Prefix Command: `!ai Apa itu JavaScript?` (seluruh teks setelah `!ai` dikirim sebagai satu pertanyaan utuh; maksimal 1.500 karakter).
+- **Stateless (Tanpa Riwayat Percakapan)**: Setiap pertanyaan dikirim secara independen ke Gemini API. Bot **tidak** menyimpan riwayat chat, tidak memakai database, dan tidak meneruskan jawaban sebelumnya sebagai konteks.
+- **Environment Variables**:
+  - `GEMINI_API_KEY`: API key dari [Google AI Studio](https://aistudio.google.com/apikey) (wajib diisi di `.env` / panel hosting).
+  - `GEMINI_MODEL`: Nama model Gemini (default: `gemini-2.5-flash`).
+- **Free Tier & Rate Limits**:
+  - Gemini API free tier memiliki batas permintaan per menit (RPM), token per menit (TPM), dan permintaan harian (RPD) sesuai kebijakan Google AI Studio.
+  - Midwave menerapkan cooldown khusus AI (8 detik per pengguna) dan batas pertanyaan 1.500 karakter untuk mencegah spam serta menghemat kuota free tier. Jika rate limit atau kuota habis, bot akan menampilkan pesan error informatif tanpa menghentikan fitur lain.
 
 ---
 
