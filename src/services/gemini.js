@@ -1,8 +1,16 @@
+import dns from 'node:dns';
 import { GoogleGenAI } from '@google/genai';
+
+// Prefer IPv4 first on hosts/containers (e.g., Docker) where broken IPv6 routes stall fetch().
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch {
+  // Ignore on runtimes where DNS result order cannot be configured.
+}
 
 export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 export const AI_MAX_QUESTION_LENGTH = 1500;
-export const AI_REQUEST_TIMEOUT_MS = 25_000;
+export const AI_REQUEST_TIMEOUT_MS = 35_000;
 export const AI_COOLDOWN_MS = 8_000;
 
 export const MIDWAVE_AI_SYSTEM_INSTRUCTION = [
@@ -23,12 +31,58 @@ export class GeminiServiceError extends Error {
   /**
    * @param {string} code
    * @param {string} message
+   * @param {string} [debugDetail]
    */
-  constructor(code, message) {
+  constructor(code, message, debugDetail = '') {
     super(message);
     this.name = 'GeminiServiceError';
     this.code = code;
+    if (debugDetail) {
+      this.debugDetail = debugDetail;
+    }
   }
+}
+
+/**
+ * Redacts potential API keys or auth tokens from error text before logging.
+ * @param {string} text
+ * @returns {string}
+ */
+function redactSecrets(text) {
+  return String(text || '')
+    .replace(/AIza[0-9A-Za-z_-]{10,}/g, '[REDACTED_KEY]')
+    .replace(/(api[_-]?key|key|token|authorization)\s*[:=]\s*['"]?[^\s'",}]+/gi, '$1=[REDACTED]')
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [REDACTED]');
+}
+
+/**
+ * Builds a single-line, secret-safe diagnostic summary for server console logs.
+ * @param {unknown} error
+ * @param {string} [model]
+ * @returns {string}
+ */
+function buildSafeErrorDebugDetail(error, model = '') {
+  const parts = [];
+  if (model) parts.push(`model=${model}`);
+
+  const status = typeof error?.status === 'number' ? error.status : error?.statusCode;
+  if (status) parts.push(`status=${status}`);
+
+  const name = typeof error?.name === 'string' ? error.name : '';
+  if (name) parts.push(`name=${name}`);
+
+  const code = error?.code ?? error?.cause?.code;
+  if (code) parts.push(`code=${code}`);
+
+  const rawMsg = typeof error?.message === 'string' ? error.message : '';
+  const causeMsg = typeof error?.cause?.message === 'string' ? error.cause.message : '';
+  const combined = redactSecrets([rawMsg, causeMsg].filter(Boolean).join(' | '))
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 240);
+  if (combined) parts.push(`msg=${combined}`);
+
+  return parts.join(' ');
 }
 
 /**
@@ -66,9 +120,10 @@ export function validateAiQuestion(rawQuestion) {
  * Maps raw Gemini SDK / network errors to safe, informative Indonesian messages.
  * Never includes credentials, headers, or stack traces.
  * @param {unknown} error
+ * @param {{ model?: string }} [context]
  * @returns {GeminiServiceError}
  */
-export function mapGeminiErrorToUserMessage(error) {
+export function mapGeminiErrorToUserMessage(error, context = {}) {
   if (error instanceof GeminiServiceError) {
     return error;
   }
@@ -76,7 +131,9 @@ export function mapGeminiErrorToUserMessage(error) {
   const status = typeof error?.status === 'number' ? error.status : Number(error?.code ?? 0);
   const name = typeof error?.name === 'string' ? error.name : '';
   const rawMessage = typeof error?.message === 'string' ? error.message : '';
-  const lower = rawMessage.toLowerCase();
+  const causeMessage = typeof error?.cause?.message === 'string' ? error.cause.message : '';
+  const lower = `${rawMessage} ${causeMessage}`.toLowerCase();
+  const debugDetail = buildSafeErrorDebugDetail(error, context.model);
 
   if (
     name === 'AbortError' ||
@@ -86,6 +143,7 @@ export function mapGeminiErrorToUserMessage(error) {
     return new GeminiServiceError(
       'TIMEOUT',
       'Permintaan ke Gemini AI melebihi batas waktu. Silakan coba lagi sebentar.',
+      debugDetail,
     );
   }
 
@@ -97,16 +155,7 @@ export function mapGeminiErrorToUserMessage(error) {
     return new GeminiServiceError(
       'INVALID_API_KEY',
       'Autentikasi Gemini AI gagal. Periksa kembali konfigurasi `GEMINI_API_KEY` pada bot.',
-    );
-  }
-
-  if (
-    status === 404 ||
-    /model.*(not found|not supported|deprecated|unavailable)|is not found for api version/i.test(lower)
-  ) {
-    return new GeminiServiceError(
-      'MODEL_UNAVAILABLE',
-      'Model Gemini yang dikonfigurasi tidak tersedia atau tidak didukung untuk akun ini. Periksa `GEMINI_MODEL`.',
+      debugDetail,
     );
   }
 
@@ -118,17 +167,45 @@ export function mapGeminiErrorToUserMessage(error) {
       return new GeminiServiceError(
         'QUOTA_EXCEEDED',
         'Kuota free tier Gemini AI saat ini sudah habis. Silakan coba lagi nanti setelah kuota tereset.',
+        debugDetail,
       );
     }
     return new GeminiServiceError(
       'RATE_LIMITED',
       'Layanan Gemini AI sedang mencapai batas rate limit. Tunggu beberapa saat lalu coba lagi.',
+      debugDetail,
+    );
+  }
+
+  if (
+    status === 500 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    /service unavailable|overloaded|high demand|bad gateway|internal error/i.test(lower)
+  ) {
+    return new GeminiServiceError(
+      'SERVICE_UNAVAILABLE',
+      'Server Gemini AI sedang sibuk atau mengalami gangguan sementara. Silakan coba lagi sebentar.',
+      debugDetail,
+    );
+  }
+
+  if (
+    status === 404 ||
+    /model.*(not found|not supported|deprecated)|is not found for api version/i.test(lower)
+  ) {
+    return new GeminiServiceError(
+      'MODEL_UNAVAILABLE',
+      'Model Gemini yang dikonfigurasi tidak tersedia atau tidak didukung untuk akun ini. Periksa `GEMINI_MODEL`.',
+      debugDetail,
     );
   }
 
   return new GeminiServiceError(
     'API_ERROR',
     'Terjadi gangguan saat menghubungi layanan Gemini AI. Silakan coba lagi beberapa saat.',
+    debugDetail,
   );
 }
 
@@ -193,7 +270,18 @@ export async function askGemini(rawQuestion, options = {}) {
 
   const client = options.createClient
     ? options.createClient(apiKey)
-    : new GoogleGenAI({ apiKey });
+    : new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          timeout: timeoutMs,
+          // Cap retries to 2 attempts so transient 429/503 errors surface cleanly instead of hitting total abort timeout.
+          retryOptions: {
+            attempts: 2,
+            initialDelay: 0.5,
+            maxDelay: 2,
+          },
+        },
+      });
 
   try {
     const response = await client.models.generateContent({
@@ -208,6 +296,6 @@ export async function askGemini(rawQuestion, options = {}) {
     const text = extractResponseText(response);
     return { text, model };
   } catch (error) {
-    throw mapGeminiErrorToUserMessage(error);
+    throw mapGeminiErrorToUserMessage(error, { model });
   }
 }

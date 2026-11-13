@@ -74,7 +74,9 @@ export async function execute(interaction, context = {}) {
     }
   } catch (error) {
     const mapped = mapGeminiErrorToUserMessage(error);
-    console.error(`[AI] Gemini request failed (${mapped.code})`);
+    console.error(
+      `[AI] Gemini request failed (${mapped.code})${mapped.debugDetail ? ` | ${mapped.debugDetail}` : ''}`,
+    );
     await sendSafeAiError(interaction, mapped.message);
     return;
   }

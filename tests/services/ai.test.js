@@ -186,7 +186,23 @@ describe('Midwave AI (Gemini) service, formatter, /ai, and !ai', () => {
       (err) =>
         err.code === 'INVALID_API_KEY' &&
         !err.message.includes(secretToken) &&
+        !String(err.debugDetail || '').includes(secretToken) &&
         /Autentikasi Gemini AI gagal/i.test(err.message),
+    );
+
+    await assert.rejects(
+      () =>
+        askGemini('tes', {
+          apiKey: secretToken,
+          createClient: () => ({
+            models: {
+              generateContent: async () => {
+                throw Object.assign(new Error('This model is currently unavailable'), { status: 503 });
+              },
+            },
+          }),
+        }),
+      (err) => err.code === 'SERVICE_UNAVAILABLE' && /status=503/.test(err.debugDetail || ''),
     );
 
     await assert.rejects(
