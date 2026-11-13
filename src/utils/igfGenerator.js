@@ -369,7 +369,36 @@ function drawVectorIcons(ctx, innerLeft, innerRight, rowCenterY) {
   ctx.restore();
 }
 
-function drawCaptionBlock(ctx, username, leftX, topY, maxWidth) {
+function drawCustomCaption(ctx, caption, inlineStartX, leftX, topY, remainingInlineWidth, maxWidth, lineHeight) {
+  const words = caption.split(' ');
+  let line1 = '';
+  let line2Words = [];
+
+  for (let i = 0; i < words.length; i++) {
+    const candidate = line1 ? `${line1} ${words[i]}` : words[i];
+    if (ctx.measureText(candidate).width <= remainingInlineWidth) {
+      line1 = candidate;
+    } else {
+      line2Words = words.slice(i);
+      break;
+    }
+  }
+
+  ctx.fillStyle = COLORS.textPrimary;
+  if (line1) {
+    ctx.fillText(line1, inlineStartX, topY);
+  }
+
+  if (line2Words.length === 0) {
+    return 1;
+  }
+
+  const line2Text = truncateTextToWidth(ctx, line2Words.join(' '), maxWidth);
+  ctx.fillText(line2Text, leftX, topY + lineHeight);
+  return 2;
+}
+
+function drawCaptionBlock(ctx, username, caption, leftX, topY, maxWidth) {
   const fontSize = 19;
   const lineHeight = 25;
   const gapAfterUsername = 8;
@@ -386,6 +415,22 @@ function drawCaptionBlock(ctx, username, leftX, topY, maxWidth) {
   const remainingInlineWidth = leftX + maxWidth - inlineStartX;
 
   ctx.font = getRegularFont(fontSize);
+
+  const customCaption =
+    typeof caption === 'string' ? caption.trim().replace(/\s+/g, ' ') : '';
+  if (customCaption) {
+    return drawCustomCaption(
+      ctx,
+      customCaption,
+      inlineStartX,
+      leftX,
+      topY,
+      remainingInlineWidth,
+      maxWidth,
+      lineHeight,
+    );
+  }
+
   const bodyText = IGF_DEFAULT_CAPTION_BODY;
   const tagText = IGF_DEFAULT_CAPTION_TAG;
   const bodyWidth = ctx.measureText(bodyText).width;
@@ -475,10 +520,10 @@ async function decodeSafeImage(buffer, kind) {
  * Renders the 1080x1080 transparent-background minimalist Instagram Post Frame PNG.
  * Stateless: operates purely on in-memory Buffers and releases canvas resources afterwards.
  *
- * @param {{ photoBuffer: Buffer, avatarBuffer: Buffer, username: string }} input
+ * @param {{ photoBuffer: Buffer, avatarBuffer: Buffer, username: string, caption?: string | null }} input
  * @returns {Promise<Buffer>}
  */
-export async function renderInstagramFrame({ photoBuffer, avatarBuffer, username }) {
+export async function renderInstagramFrame({ photoBuffer, avatarBuffer, username, caption = null }) {
   ensureFontsRegistered();
 
   const cleanUsername =
@@ -597,7 +642,14 @@ export async function renderInstagramFrame({ photoBuffer, avatarBuffer, username
     ctx.fillText(IGF_DEFAULT_LIKES, contentLeft, likesY);
 
     const captionY = likesY + 34;
-    const captionLines = drawCaptionBlock(ctx, cleanUsername, contentLeft, captionY, contentWidth);
+    const captionLines = drawCaptionBlock(
+      ctx,
+      cleanUsername,
+      caption,
+      contentLeft,
+      captionY,
+      contentWidth,
+    );
 
     const commentsY = captionY + (captionLines > 1 ? 56 : 36);
     ctx.font = getRegularFont(18);

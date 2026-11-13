@@ -239,8 +239,16 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
   const args = rawRest ? rawRest.split(/\s+/) : [];
   const firstLower = args[0]?.toLowerCase() ?? '';
 
-  if (commandName === 'games' || commandName === 'help' || commandName === 'igf') {
+  if (commandName === 'games' || commandName === 'help') {
     return { commandName, subcommand: null, options: {} };
+  }
+
+  if (commandName === 'igf') {
+    return {
+      commandName,
+      subcommand: null,
+      options: rawRest ? { caption: rawRest } : {},
+    };
   }
 
   if (commandName === 'brat') {

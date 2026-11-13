@@ -129,7 +129,7 @@ function createFakeMessage({
 }
 
 describe('Instagram Post Frame (!igf) utility & prefix command', () => {
-  it('parses !igf in prefixParser cleanly', () => {
+  it('parses !igf in prefixParser cleanly with optional caption', () => {
     assert.deepEqual(parsePrefixInvocation('!igf'), {
       commandName: 'igf',
       subcommand: null,
@@ -139,6 +139,11 @@ describe('Instagram Post Frame (!igf) utility & prefix command', () => {
       commandName: 'igf',
       subcommand: null,
       options: {},
+    });
+    assert.deepEqual(parsePrefixInvocation('!igf jalan sore bareng temen 🌅'), {
+      commandName: 'igf',
+      subcommand: null,
+      options: { caption: 'jalan sore bareng temen 🌅' },
     });
   });
 
@@ -226,12 +231,13 @@ describe('Instagram Post Frame (!igf) utility & prefix command', () => {
     assert.equal(portraitOut.readUInt32BE(16), IGF_SIZE);
     assert.equal(portraitOut.readUInt32BE(20), IGF_SIZE);
 
-    // Square + WebP photo + Unicode & emoji username
+    // Square + WebP photo + Unicode & emoji username + custom multi-line Unicode caption
     const webpSquare = makeSolidImageBuffer(600, 600, '#8b5cf6', 'image/webp');
     const webpOut = await renderInstagramFrame({
       photoBuffer: webpSquare,
       avatarBuffer: avatarPng,
       username: 'kỹy 山田太郎 ✨',
+      caption: 'jalan sore menikmati senja di pinggir pantai bareng teman lama 🌅✨',
     });
     assert.equal(webpOut.readUInt32BE(16), IGF_SIZE);
     assert.equal(webpOut.readUInt32BE(20), IGF_SIZE);
@@ -328,10 +334,31 @@ describe('Instagram Post Frame (!igf) utility & prefix command', () => {
     assert.equal(replyFiles[0].name, IGF_ATTACHMENT_NAME);
     assert.equal(replyFiles[0].attachment.readUInt32BE(16), IGF_SIZE);
 
-    // 3. Error: no attachment and no reply
+    // 3. Error: no attachment and no reply (includes clear usage format guide)
     const msgEmpty = createFakeMessage({ content: '!igf', attachments: [] });
     await app.prefixCommandHandler.handle(msgEmpty);
-    assert.match(msgEmpty.getReplies()[0].payload.embeds[0].toJSON().description, /Kirim satu gambar/i);
+    const emptyDesc = msgEmpty.getReplies()[0].payload.embeds[0].toJSON().description;
+    assert.match(emptyDesc, /Kirim satu gambar/i);
+    assert.match(emptyDesc, /Format Penggunaan/i);
+    assert.match(emptyDesc, /caption opsional/i);
+
+    // 3b. Custom caption passed via !igf <caption...>
+    const msgWithCaption = createFakeMessage({
+      content: '!igf santai sore hari 🌤️',
+      attachments: [{ url: 'https://cdn.discordapp.com/attachments/1/2/photo.png', contentType: 'image/png', size: photoPng.length }],
+      author: {
+        id: 'user-custom',
+        bot: false,
+        username: 'raw_user',
+        globalName: 'Global Name',
+        avatar: 'abc',
+        displayAvatarURL: () => 'https://cdn.discordapp.com/avatars/user-custom/abc.png?size=256',
+      },
+    });
+    await app.prefixCommandHandler.handle(msgWithCaption);
+    const captionFiles = msgWithCaption.getReplies()[0].payload.files;
+    assert.equal(captionFiles[0].name, IGF_ATTACHMENT_NAME);
+    assert.equal(captionFiles[0].attachment.readUInt32BE(16), IGF_SIZE);
 
     // 4. Error: more than 1 attachment
     const msgMulti = createFakeMessage({
