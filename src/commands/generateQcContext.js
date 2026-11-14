@@ -8,7 +8,7 @@ export const data = new ContextMenuCommandBuilder()
 
 /**
  * Executes the "Generate QC" message context menu command.
- * Uses the target message text and original creation timestamp without username/avatar.
+ * Uses the target message text with the current execution timestamp without username/avatar.
  * @param {import('discord.js').MessageContextMenuCommandInteraction} interaction
  * @param {{ renderQcPng?: Function, timeZone?: string }} [context]
  */
@@ -26,7 +26,7 @@ export async function execute(interaction, context = {}) {
 
   await renderAndReplyQc(interaction, {
     rawText: source.rawText,
-    timestamp: source.timestamp,
+    timestamp: new Date(),
     context,
   });
 }

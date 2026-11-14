@@ -19,10 +19,10 @@ export const data = new SlashCommandBuilder()
   );
 
 /**
- * Extracts text and original message timestamp from a Discord message (reply or context menu).
+ * Extracts text from a Discord message (reply or context menu).
  * Never extracts username, display name, or avatar.
  * @param {import('discord.js').Message | null | undefined} targetMessage
- * @returns {{ rawText: string, timestamp: Date | number }}
+ * @returns {{ rawText: string }}
  */
 export function extractQcSourceFromMessage(targetMessage) {
   if (!targetMessage) {
@@ -40,12 +40,7 @@ export function extractQcSourceFromMessage(targetMessage) {
     throw new Error('Pesan yang dipilih tidak memiliki teks untuk dibuatkan gambar QC.');
   }
 
-  const timestamp =
-    targetMessage.createdTimestamp ??
-    (targetMessage.createdAt instanceof Date ? targetMessage.createdAt : null) ??
-    new Date();
-
-  return { rawText: cleanText, timestamp };
+  return { rawText: cleanText };
 }
 
 /**
@@ -102,7 +97,7 @@ export async function renderAndReplyQc(interaction, { rawText, timestamp, contex
   try {
     const renderer = context.renderQcPng ?? renderQcPng;
     const pngBuffer = await renderer(validatedText, {
-      timestamp,
+      timestamp: timestamp ?? new Date(),
       timeZone: context.timeZone,
     });
     const attachment = new AttachmentBuilder(pngBuffer, { name: QC_ATTACHMENT_NAME });
@@ -125,7 +120,6 @@ export async function execute(interaction, context = {}) {
   const manualText = interaction.options?.getString?.('text', false) ?? null;
 
   let rawText = manualText;
-  let timestamp = new Date();
 
   if (!rawText || !rawText.trim()) {
     if (interaction.message) {
@@ -133,7 +127,6 @@ export async function execute(interaction, context = {}) {
         const repliedMsg = await resolveRepliedMessage(interaction.message, prefix);
         const extracted = extractQcSourceFromMessage(repliedMsg);
         rawText = extracted.rawText;
-        timestamp = extracted.timestamp;
       } catch (error) {
         await interaction.reply({
           embeds: [buildErrorEmbed(error instanceof Error ? error.message : 'Input QC tidak valid.')],
@@ -144,7 +137,7 @@ export async function execute(interaction, context = {}) {
     }
   }
 
-  await renderAndReplyQc(interaction, { rawText, timestamp, context });
+  await renderAndReplyQc(interaction, { rawText, timestamp: new Date(), context });
 }
 
 export default { data, execute };

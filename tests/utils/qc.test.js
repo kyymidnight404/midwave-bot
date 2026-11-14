@@ -182,8 +182,8 @@ describe('QC (WhatsApp Chat Screenshot) Generator & Commands', () => {
     );
   });
 
-  it('extracts only text and original timestamp without username or avatar', () => {
-    const originalTime = new Date('2026-11-14T08:15:00Z').getTime();
+  it('extracts only text without historical timestamp, username, or avatar', () => {
+    const originalTime = new Date('2024-05-01T08:15:00Z').getTime();
     const extracted = extractQcSourceFromMessage({
       content: 'Pesan asli dari reply',
       cleanContent: 'Pesan asli dari reply',
@@ -193,8 +193,8 @@ describe('QC (WhatsApp Chat Screenshot) Generator & Commands', () => {
 
     assert.deepEqual(extracted, {
       rawText: 'Pesan asli dari reply',
-      timestamp: originalTime,
     });
+    assert.equal('timestamp' in extracted, false);
     assert.equal('username' in extracted, false);
     assert.equal('avatar' in extracted, false);
     assert.throws(() => extractQcSourceFromMessage({ content: '', cleanContent: '' }), /tidak memiliki teks/i);
@@ -230,15 +230,23 @@ describe('QC (WhatsApp Chat Screenshot) Generator & Commands', () => {
     assert.equal(slashAttachment.name, QC_ATTACHMENT_NAME);
     assert.ok(slashAttachment.attachment.subarray(0, 8).equals(PNG_SIGNATURE));
 
-    // Message Context Menu "Generate QC" uses original message timestamp
-    const targetCreated = new Date('2026-11-14T05:30:00Z').getTime();
+    // Message Context Menu "Generate QC" uses current execution timestamp (not historical createdTimestamp)
+    const targetCreated = new Date('2024-05-01T05:30:00Z').getTime();
     const ctxInteraction = createMockContextMenuInteraction({
       content: 'Pesan dari context menu',
       cleanContent: 'Pesan dari context menu',
       createdTimestamp: targetCreated,
     });
+    const beforeCtxMs = Date.now();
     await handler.handle(ctxInteraction);
-    assert.equal(capturedTimestamps[1], targetCreated);
+    const afterCtxMs = Date.now();
+    const ctxTimestampMs =
+      capturedTimestamps[1] instanceof Date ? capturedTimestamps[1].getTime() : capturedTimestamps[1];
+    assert.notEqual(ctxTimestampMs, targetCreated);
+    assert.ok(
+      ctxTimestampMs >= beforeCtxMs && ctxTimestampMs <= afterCtxMs,
+      `Expected live timestamp between ${beforeCtxMs} and ${afterCtxMs}, got ${ctxTimestampMs}`,
+    );
     assert.equal(ctxInteraction.getEvents()[1].payload.files[0].name, QC_ATTACHMENT_NAME);
 
     // Invalid empty slash input replies ephemerally
@@ -276,8 +284,9 @@ describe('QC (WhatsApp Chat Screenshot) Generator & Commands', () => {
       },
     });
 
-    // 1. Manual text mode
+    // 1. Manual text mode uses current execution timestamp
     const manualReplies = [];
+    const beforeManualMs = Date.now();
     await prefixHandler.handle({
       id: 'm1',
       content: '!qc Halo, apa kabar?',
@@ -289,12 +298,20 @@ describe('QC (WhatsApp Chat Screenshot) Generator & Commands', () => {
         return payload;
       },
     });
+    const afterManualMs = Date.now();
     assert.equal(manualReplies[0].files[0].name, QC_ATTACHMENT_NAME);
     assert.equal(capturedOpts[0].text, 'Halo, apa kabar?');
+    const manualTimestampMs =
+      capturedOpts[0].timestamp instanceof Date ? capturedOpts[0].timestamp.getTime() : capturedOpts[0].timestamp;
+    assert.ok(
+      manualTimestampMs >= beforeManualMs && manualTimestampMs <= afterManualMs,
+      `Expected live manual timestamp between ${beforeManualMs} and ${afterManualMs}, got ${manualTimestampMs}`,
+    );
 
-    // 2. Reply mode uses original replied message timestamp
-    const repliedTime = new Date('2026-11-14T11:45:00Z').getTime();
+    // 2. Reply mode uses current execution timestamp (not old replied createdTimestamp)
+    const repliedTime = new Date('2024-05-01T11:45:00Z').getTime();
     const replyModeReplies = [];
+    const beforeReplyMs = Date.now();
     await prefixHandler.handle({
       id: 'm2',
       content: '!qc',
@@ -316,9 +333,16 @@ describe('QC (WhatsApp Chat Screenshot) Generator & Commands', () => {
         return payload;
       },
     });
+    const afterReplyMs = Date.now();
     assert.equal(replyModeReplies[0].files[0].name, QC_ATTACHMENT_NAME);
     assert.equal(capturedOpts[1].text, 'Isi pesan yang direply');
-    assert.equal(capturedOpts[1].timestamp, repliedTime);
+    const replyTimestampMs =
+      capturedOpts[1].timestamp instanceof Date ? capturedOpts[1].timestamp.getTime() : capturedOpts[1].timestamp;
+    assert.notEqual(replyTimestampMs, repliedTime);
+    assert.ok(
+      replyTimestampMs >= beforeReplyMs && replyTimestampMs <= afterReplyMs,
+      `Expected live reply timestamp between ${beforeReplyMs} and ${afterReplyMs}, got ${replyTimestampMs}`,
+    );
 
     // 3. !qc without text and without reply returns helpful error embed
     const missingReplies = [];
