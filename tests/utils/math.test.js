@@ -145,7 +145,7 @@ describe('Math Evaluator & /math / !math command', () => {
     const embedJson = okReply.embeds[0].toJSON();
     assert.equal(embedJson.title, undefined);
     assert.equal(embedJson.description, undefined);
-    assert.equal(embedJson.footer.text, 'Midwave • Math Utility');
+    assert.equal(embedJson.footer, undefined);
     assert.equal(embedJson.fields.length, 2);
     assert.equal(embedJson.fields[0].name, 'Input');
     assert.equal(embedJson.fields[0].value, '`9 + 11`');
@@ -167,6 +167,6 @@ describe('Math Evaluator & /math / !math command', () => {
     assert.equal(built.fields[0].value, '`sqrt(144)`');
     assert.equal(built.fields[1].name, 'Output');
     assert.equal(built.fields[1].value, '`12`');
-    assert.equal(built.footer.text, 'Midwave • Math Utility');
+    assert.equal(built.footer, undefined);
   });
 });

@@ -324,9 +324,6 @@ export function buildWebSearchEmbed({
     if (!Number.isNaN(parsedDate.getTime())) {
       embed.setTimestamp(parsedDate);
     }
-    embed.setFooter({
-      text: cached ? 'Web Search (Cache)' : 'Web Search',
-    });
   }
 
   return embed;

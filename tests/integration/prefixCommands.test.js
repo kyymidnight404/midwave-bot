@@ -520,7 +520,7 @@ describe('Prefix Command System', () => {
     assert.equal(mathEmbed.fields[0].value, '`9 + 11`');
     assert.equal(mathEmbed.fields[1].name, 'Output');
     assert.equal(mathEmbed.fields[1].value, '`20`');
-    assert.equal(mathEmbed.footer.text, 'Midwave • Math Utility');
+    assert.equal(mathEmbed.footer, undefined);
 
     const mathSqrtMsg = createFakeMessage({
       content: '?math sqrt(144)',

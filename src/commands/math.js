@@ -15,7 +15,7 @@ export const data = new SlashCommandBuilder()
   );
 
 /**
- * Builds the minimalist Midwave Math embed containing only Input, Output, and footer.
+ * Builds the minimalist Midwave Math embed containing only Input and Output.
  * @param {{ input: string, formattedResult: string }} result
  * @returns {import('discord.js').EmbedBuilder}
  */
@@ -28,8 +28,7 @@ export function buildMathEmbed({ input, formattedResult }) {
     .addFields(
       { name: 'Input', value: `\`${safeInput}\``, inline: false },
       { name: 'Output', value: `\`${formattedResult}\``, inline: false },
-    )
-    .setFooter({ text: 'Midwave • Math Utility' });
+    );
 }
 
 /**

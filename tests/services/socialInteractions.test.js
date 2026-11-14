@@ -204,7 +204,7 @@ describe('Social Interactions System (OtakuGIFs)', () => {
       const embedJson = events[1].payload.embeds[0].toJSON();
       assert.equal(embedJson.description, expectedSnippets[cmdName]);
       assert.equal(embedJson.image.url, fakeGif);
-      assert.equal(embedJson.footer.text, 'Midwave • Social Interactions');
+      assert.equal(embedJson.footer, undefined);
       assert.ok(!embedJson.description.includes(fakeGif));
     }
 
@@ -213,7 +213,7 @@ describe('Social Interactions System (OtakuGIFs)', () => {
       message: '**<@1>** gives **<@2>** a warm hug!',
       gifUrl: 'https://cdn.otakugifs.xyz/gifs/hug/1.gif',
     }).toJSON();
-    assert.equal(direct.footer.text, 'Midwave • Social Interactions');
+    assert.equal(direct.footer, undefined);
     assert.equal(direct.image.url, 'https://cdn.otakugifs.xyz/gifs/hug/1.gif');
   });
 
@@ -292,7 +292,7 @@ describe('Social Interactions System (OtakuGIFs)', () => {
       await prefixHandler.handle(msg);
       const embed = msg.getReplies()[0].embeds[0].toJSON();
       assert.equal(embed.image.url, `https://cdn.otakugifs.xyz/gifs/${cmdName}/mock.gif`);
-      assert.equal(embed.footer.text, 'Midwave • Social Interactions');
+      assert.equal(embed.footer, undefined);
     }
 
     // Solo prefix commands

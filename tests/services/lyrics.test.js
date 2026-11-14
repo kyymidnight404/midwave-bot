@@ -347,7 +347,7 @@ describe('Lyrics Finder service, formatter, and /lyrics command', () => {
     assert.ok(embedJson.description.includes('Source: [LRCLIB (Info: Apple Music)]'));
     assert.ok(embedJson.description.length <= 4096);
     assert.equal(embedJson.thumbnail.url, 'https://example.com/cover.jpg');
-    assert.match(embedJson.footer.text, new RegExp(`Page 1/${pages.length} • Requested by @kyy`));
+    assert.equal(embedJson.footer, undefined);
 
     const firstRow = buildLyricsPaginationRow({ currentPage: 0, totalPages: pages.length }).toJSON();
     assert.equal(firstRow.components[0].disabled, true);
@@ -412,7 +412,7 @@ describe('Lyrics Finder service, formatter, and /lyrics command', () => {
     collector.emit('collect', nextBtn);
     await new Promise((r) => setTimeout(r, 10));
     const nextUpdate = nextBtn.getEvents()[0].payload;
-    assert.match(nextUpdate.embeds[0].toJSON().footer.text, /^Page 2\//);
+    assert.match(nextUpdate.components[0].toJSON().components[1].label, /^Page 2\//);
     assert.equal(nextUpdate.components[0].toJSON().components[0].disabled, false);
 
     // Owner clicks Previous -> returns to Page 1
@@ -420,7 +420,7 @@ describe('Lyrics Finder service, formatter, and /lyrics command', () => {
     collector.emit('collect', prevBtn);
     await new Promise((r) => setTimeout(r, 10));
     const prevUpdate = prevBtn.getEvents()[0].payload;
-    assert.match(prevUpdate.embeds[0].toJSON().footer.text, /^Page 1\//);
+    assert.match(prevUpdate.components[0].toJSON().components[1].label, /^Page 1\//);
 
     // Timeout ends collector -> disables all buttons
     collector.emit('end');

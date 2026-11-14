@@ -18,8 +18,7 @@ export function buildSocialEmbed({ message, gifUrl }) {
     color: COLORS.PRIMARY,
     includeThumbnail: false,
   })
-    .setImage(gifUrl)
-    .setFooter({ text: 'Midwave • Social Interactions' });
+    .setImage(gifUrl);
 }
 
 /**

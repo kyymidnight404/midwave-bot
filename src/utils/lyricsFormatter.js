@@ -132,18 +132,11 @@ export function buildLyricsEmbed(track, view) {
     : pageBody;
 
   const description = `${prefix}${safeBody}${suffix}`;
-  const username = String(view?.requesterName || 'user').replace(/^@/, '');
-
-  const footerText = `Page ${pageIndex + 1}/${totalPages} • Requested by @${username} • Midwave`;
-  const footerOptions = view?.requesterIconUrl
-    ? { text: footerText, iconURL: view.requesterIconUrl }
-    : { text: footerText };
 
   const embed = new EmbedBuilder()
     .setColor(COLORS.SECONDARY)
     .setTitle('🎵 Lyrics Finder')
-    .setDescription(description)
-    .setFooter(footerOptions);
+    .setDescription(description);
 
   if (track.thumbnailUrl) {
     embed.setThumbnail(track.thumbnailUrl);
