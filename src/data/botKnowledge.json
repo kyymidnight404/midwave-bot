@@ -70,11 +70,16 @@
       "key": "links.official.primary",
       "category": "official_links",
       "title": "Website, Profil GitHub, dan Repository Resmi Midwave",
-      "content": "Website resmi Midwave: https://midwave.ai.id/ | Profil GitHub resmi pencipta (Hengky T / kyymidnight404): https://github.com/kyymidnight404 | Repository resmi Midwave: https://github.com/kyymidnight404/midwave-bot | Dokumentasi proyek tersedia pada README.md di repository tersebut.",
-      "tags": ["website", "url", "link", "github", "midwave.ai.id", "dokumentasi", "repo", "repository"],
+      "content": "Tautan resmi Midwave: Website (https://midwave.ai.id/), Profil GitHub pencipta Hengky T / kyymidnight404 (https://github.com/kyymidnight404), Repository resmi Midwave (https://github.com/kyymidnight404/midwave-bot). Dokumentasi proyek tersedia pada README.md di repository tersebut.",
+      "links": [
+        { "label": "website", "url": "https://midwave.ai.id/" },
+        { "label": "github", "url": "https://github.com/kyymidnight404" },
+        { "label": "repository", "url": "https://github.com/kyymidnight404/midwave-bot" }
+      ],
+      "tags": ["website", "url", "link", "tautan", "github", "midwave.ai.id", "dokumentasi", "repo", "repository"],
       "verificationStatus": "verified",
       "source": "official_owner_record & package.json",
-      "updatedAt": "2026-11-14T03:35:00.000Z",
+      "updatedAt": "2026-11-14T03:50:00.000Z",
       "updatedBy": "system_audit"
     },
     {

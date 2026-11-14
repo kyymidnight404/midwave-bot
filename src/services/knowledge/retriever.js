@@ -155,7 +155,10 @@ export function formatKnowledgeContext(entries, maxChars = 2500) {
       entry.verificationStatus && entry.verificationStatus !== 'verified'
         ? ` [Status: ${entry.verificationStatus}]`
         : '';
-    const block = `[${categoryLabel}] ${entry.title}${statusNote}\n${entry.content}`;
+    const linksNote = Array.isArray(entry.links) && entry.links.length > 0
+      ? `\nDaftar Tautan Resmi (format [label](url)): ${entry.links.map((l) => `${l.label} -> ${l.url}`).join(' | ')}`
+      : '';
+    const block = `[${categoryLabel}] ${entry.title}${statusNote}\n${entry.content}${linksNote}`;
     const sep = body ? '\n\n' : '';
 
     if (header.length + body.length + sep.length + block.length + footer.length > maxChars) {

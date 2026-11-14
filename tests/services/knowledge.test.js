@@ -15,7 +15,13 @@ import {
   retrieveRelevantKnowledge,
 } from '../../src/services/knowledge/index.js';
 import { MIDWAVE_AI_SYSTEM_INSTRUCTION, askGemini } from '../../src/services/gemini.js';
+import { execute as executeAi } from '../../src/commands/ai.js';
 import { execute as executeKnowledge } from '../../src/commands/knowledge.js';
+import {
+  buildWebSearchEmbed,
+  formatDiscordAiChunks,
+  formatDiscordMaskedLinks,
+} from '../../src/utils/aiFormatter.js';
 
 function createTempKnowledgeFile() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'midwave-kb-'));
@@ -338,5 +344,119 @@ describe('Midwave Global Bot Knowledge Memory System', () => {
         assert.match(capturedContents, /https:\/\/github\.com\/kyymidnight404\/midwave-bot/);
       }
     }
+  });
+
+  it('11. Format tautan resmi Midwave di Discord menggunakan Markdown masked link [label](URL) tanpa escape atau duplikasi', async () => {
+    const store = new KnowledgeStore();
+    const linksEntry = store.load().entries.find((e) => e.id === 'links-official');
+    assert.deepEqual(linksEntry.links, [
+      { label: 'website', url: 'https://midwave.ai.id/' },
+      { label: 'github', url: 'https://github.com/kyymidnight404' },
+      { label: 'repository', url: 'https://github.com/kyymidnight404/midwave-bot' },
+    ]);
+
+    assert.match(MIDWAVE_AI_SYSTEM_INSTRUCTION, /\[label\]\(URL\)/);
+    assert.match(MIDWAVE_AI_SYSTEM_INSTRUCTION, /\[website\]\(https:\/\/midwave\.ai\.id\/\)/);
+
+    // Normalizes wrong formats (double URL, bare URL, backslash-escaped) while keeping code blocks untouched
+    assert.equal(
+      formatDiscordMaskedLinks('Website resmi: [https://midwave.ai.id/](https://midwave.ai.id/)'),
+      'Website resmi: [website](https://midwave.ai.id/)',
+    );
+    assert.equal(
+      formatDiscordMaskedLinks('GitHub pencipta: [github]\\(https\\://github.com/kyymidnight404\\)'),
+      'GitHub pencipta: [github](https://github.com/kyymidnight404)',
+    );
+    assert.equal(
+      formatDiscordMaskedLinks('Repository bot: https://github.com/kyymidnight404/midwave-bot'),
+      'Repository bot: [repository](https://github.com/kyymidnight404/midwave-bot)',
+    );
+    assert.equal(
+      formatDiscordMaskedLinks('`https://midwave.ai.id/`'),
+      '`https://midwave.ai.id/`',
+    );
+
+    const linkQuestions = [
+      {
+        q: 'Di mana website resmi Midwave?',
+        mockAnswer: 'Website resmi: [website](https://midwave.ai.id/)',
+        expected: 'Website resmi: [website](https://midwave.ai.id/)',
+      },
+      {
+        q: 'Apa GitHub penciptamu?',
+        mockAnswer: 'GitHub pencipta: [github](https://github.com/kyymidnight404)',
+        expected: 'GitHub pencipta: [github](https://github.com/kyymidnight404)',
+      },
+      {
+        q: 'Di mana repository Midwave?',
+        mockAnswer: 'Repository bot: [repository](https://github.com/kyymidnight404/midwave-bot)',
+        expected: 'Repository bot: [repository](https://github.com/kyymidnight404/midwave-bot)',
+      },
+      {
+        q: 'Berikan semua tautan resmi Midwave.',
+        mockAnswer: [
+          'Website resmi: https://midwave.ai.id/',
+          'GitHub pencipta: https://github.com/kyymidnight404',
+          'Repository bot: https://github.com/kyymidnight404/midwave-bot',
+        ].join('\n'),
+        expected: [
+          'Website resmi: [website](https://midwave.ai.id/)',
+          'GitHub pencipta: [github](https://github.com/kyymidnight404)',
+          'Repository bot: [repository](https://github.com/kyymidnight404/midwave-bot)',
+        ].join('\n'),
+      },
+    ];
+
+    for (const item of linkQuestions) {
+      const events = [];
+      const mockInteraction = {
+        commandName: 'ai',
+        user: { id: 'u-link-1', bot: false },
+        isChatInputCommand: () => true,
+        options: {
+          getString: (name) => (name === 'question' ? item.q : null),
+        },
+        async deferReply() {
+          events.push('defer');
+        },
+        async editReply(payload) {
+          events.push({ type: 'editReply', payload });
+          return payload;
+        },
+        async followUp(payload) {
+          events.push({ type: 'followUp', payload });
+          return payload;
+        },
+      };
+
+      await executeAi(mockInteraction, {
+        geminiOptions: {
+          apiKey: 'fake-key',
+          createClient: () => ({
+            models: {
+              generateContent: async (params) => {
+                assert.match(params.contents, /Daftar Tautan Resmi/);
+                return { text: item.mockAnswer };
+              },
+            },
+          }),
+        },
+      });
+
+      const edit = events.find((e) => e.type === 'editReply');
+      assert.ok(edit);
+      assert.equal(edit.payload.content, item.expected);
+    }
+
+    // Embed description also preserves masked links cleanly
+    const embed = buildWebSearchEmbed({
+      description: 'Website resmi: https://midwave.ai.id/',
+      sources: [],
+    });
+    assert.equal(embed.toJSON().description, 'Website resmi: [website](https://midwave.ai.id/)');
+    assert.deepEqual(
+      formatDiscordAiChunks('Website resmi: [website](https://midwave.ai.id/)'),
+      ['Website resmi: [website](https://midwave.ai.id/)'],
+    );
   });
 });

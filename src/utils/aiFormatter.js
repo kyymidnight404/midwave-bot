@@ -16,6 +16,51 @@ export function sanitizeAiMentions(text) {
   return text.replace(/@(everyone|here)/gi, '@\u200B$1');
 }
 
+const OFFICIAL_MIDWAVE_LINKS = [
+  { label: 'repository', url: 'https://github.com/kyymidnight404/midwave-bot' },
+  { label: 'github', url: 'https://github.com/kyymidnight404' },
+  { label: 'website', url: 'https://midwave.ai.id/' },
+];
+
+/**
+ * Ensures official Midwave URLs are formatted as clean Discord Markdown masked links
+ * (`[label](URL)`) without double URLs or backslash escaping, while leaving code blocks
+ * and all other text untouched.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function formatDiscordMaskedLinks(text) {
+  if (typeof text !== 'string' || !text) return '';
+
+  // Split by fenced code blocks or inline code so code snippets remain untouched.
+  const segments = text.split(/(```[\s\S]*?```|`[^`\n]+`)/g);
+  return segments
+    .map((segment, idx) => {
+      if (idx % 2 === 1) return segment;
+
+      let out = segment
+        // Remove accidental backslash escaping inside Markdown links: [label]\(https\://...\)
+        .replace(/\[([^\]]+)\]\s*\\\(\s*(https?)\\?:\/\/([^)\\]+)\\?\)/gi, '[$1]($2://$3)');
+
+      for (const { label, url } of OFFICIAL_MIDWAVE_LINKS) {
+        const escapedUrl = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\/$/, '/?');
+        // Fix duplicated URL label: [https://midwave.ai.id/](https://midwave.ai.id/) -> [website](https://midwave.ai.id/)
+        out = out.replace(
+          new RegExp(`\\[https?:\\/\\/[^\\]]*\\]\\((${escapedUrl})\\)`, 'gi'),
+          `[${label}](${url})`,
+        );
+        // Convert bare official URLs (not already inside ](url)) into [label](url)
+        out = out.replace(
+          new RegExp(`(?<!\\]\\()\\b(${escapedUrl})(?![a-z0-9_/-])`, 'gi'),
+          `[${label}](${url})`,
+        );
+      }
+      return out;
+    })
+    .join('');
+}
+
 /**
  * Tracks open/closed Markdown fenced code blocks across lines so splits never break formatting.
  * @param {string} text
@@ -80,7 +125,7 @@ function findSafeSplitIndex(remaining, limit) {
  * @returns {string[]}
  */
 export function formatDiscordAiChunks(rawText, maxLength = DISCORD_MAX_MESSAGE_LENGTH) {
-  const sanitized = sanitizeAiMentions(rawText).trim();
+  const sanitized = formatDiscordMaskedLinks(sanitizeAiMentions(rawText)).trim();
   if (!sanitized) {
     return [];
   }
@@ -198,7 +243,9 @@ export function buildWebSearchEmbed({
   fallbackNotice = '',
 }) {
   const isFallback = mode === 'fallback';
-  const safeDescription = sanitizeAiMentions(description || '').trim().slice(0, 4096);
+  const safeDescription = formatDiscordMaskedLinks(sanitizeAiMentions(description || ''))
+    .trim()
+    .slice(0, 4096);
 
   const embed = createBaseEmbed({
     title: isFallback ? 'Midwave AI • Mode Non-Real-Time' : 'Midwave AI • Web Search',
