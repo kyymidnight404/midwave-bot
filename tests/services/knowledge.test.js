@@ -312,17 +312,46 @@ describe('Midwave Global Bot Knowledge Memory System', () => {
     }
 
     // Non-owner cannot access /knowledge search or categories
-    for (const sub of ['search', 'categories']) {
+    for (const sub of ['search', 'categories', 'list', 'remove']) {
       const unauthInteraction = createMockKnowledgeInteraction({
         subcommand: sub,
         userId: '111111111111111111',
-        options: { query: 'Midwave' },
+        options: { query: 'Midwave', id: 'nonexistent' },
       });
       await executeKnowledge(unauthInteraction, ownerAuth);
       const unauthReply = unauthInteraction.getReplies()[0];
       assert.equal(unauthReply.flags, MessageFlags.Ephemeral);
       assert.match(unauthReply.embeds[0].toJSON().description, /Akses ditolak/i);
     }
+
+    // Owner can list and remove entries via /knowledge list & /knowledge remove
+    const listInteraction = createMockKnowledgeInteraction({
+      subcommand: 'list',
+      userId: '999999999999999999',
+      options: { category: 'bot_identity' },
+    });
+    await executeKnowledge(listInteraction, ownerAuth);
+    const listReply = listInteraction.getReplies()[0];
+    assert.equal(listReply.flags, MessageFlags.Ephemeral);
+    assert.match(listReply.embeds[0].toJSON().title, /Daftar Global Bot Knowledge/);
+
+    await executeKnowledge(
+      createMockKnowledgeInteraction({
+        subcommand: 'add',
+        userId: '999999999999999999',
+        options: { id: 'temp-remove-test', category: 'bot_identity', title: 'Temp', content: 'Temp content for remove test' },
+      }),
+      ownerAuth,
+    );
+    const removeInteraction = createMockKnowledgeInteraction({
+      subcommand: 'remove',
+      userId: '999999999999999999',
+      options: { id: 'temp-remove-test' },
+    });
+    await executeKnowledge(removeInteraction, ownerAuth);
+    const removeReply = removeInteraction.getReplies()[0];
+    assert.equal(removeReply.flags, MessageFlags.Ephemeral);
+    assert.match(removeReply.embeds[0].toJSON().title, /Dihapus/i);
 
     // Gemini receives consistent creator/website/repo context for all 5 identity consistency questions
     const consistencyQuestions = [

@@ -263,7 +263,43 @@ export async function execute(interaction, context = {}) {
       return;
     }
 
-    if (sub === 'delete') {
+    if (sub === 'list') {
+      const category = interaction.options.getString('category', false) ?? undefined;
+      const entries = store.search('', { category, limit: 25 });
+
+      if (entries.length === 0) {
+        await interaction.reply({
+          embeds: [
+            buildInfoEmbed(
+              'Daftar Global Bot Knowledge',
+              'Belum ada entri knowledge pada filter kategori tersebut.',
+              COLORS.WARNING,
+            ),
+          ],
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const lines = entries.map((entry) => {
+        const catLabel = KNOWLEDGE_CATEGORIES[entry.category] ?? entry.category;
+        return `• \`${entry.id}\` — **${entry.title}** (${catLabel} • *${entry.verificationStatus}*)`;
+      });
+      const description = lines.join('\n').slice(0, 4000);
+      await interaction.reply({
+        embeds: [
+          buildInfoEmbed(
+            `Daftar Global Bot Knowledge (${entries.length})`,
+            description,
+            COLORS.SECONDARY,
+          ),
+        ],
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (sub === 'delete' || sub === 'remove') {
       const removed = store.deleteEntry(interaction.options.getString('id', true), auth);
       await interaction.reply({
         embeds: [
@@ -275,7 +311,13 @@ export async function execute(interaction, context = {}) {
         ],
         flags: MessageFlags.Ephemeral,
       });
+      return;
     }
+
+    await interaction.reply({
+      embeds: [buildErrorEmbed(`Subcommand \`/knowledge ${sub}\` tidak dikenali.`)],
+      flags: MessageFlags.Ephemeral,
+    });
   } catch (error) {
     const message =
       error instanceof KnowledgeServiceError
