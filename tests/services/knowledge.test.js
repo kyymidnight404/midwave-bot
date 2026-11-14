@@ -297,16 +297,31 @@ describe('Midwave Global Bot Knowledge Memory System', () => {
     const tosEntry = data.entries.find((e) => e.id === 'policy-tos-official');
     assert.equal(tosEntry.verificationStatus, 'pending_verification');
 
-    // /knowledge search finds identity, creator, links, and features
+    // /knowledge search finds identity, creator, links, and features (owner-only)
+    const ownerAuth = { knowledgeStore: store, authorizedUserIds: ['999999999999999999'] };
     for (const q of ['Midwave', 'Hengky T', 'midwave.ai.id', 'download']) {
       const interaction = createMockKnowledgeInteraction({
         subcommand: 'search',
+        userId: '999999999999999999',
         options: { query: q },
       });
-      await executeKnowledge(interaction, { knowledgeStore: store });
+      await executeKnowledge(interaction, ownerAuth);
       const reply = interaction.getReplies()[0];
       assert.equal(reply.flags, MessageFlags.Ephemeral);
       assert.ok(reply.embeds[0].toJSON().fields?.length > 0, `Expected search fields for "${q}"`);
+    }
+
+    // Non-owner cannot access /knowledge search or categories
+    for (const sub of ['search', 'categories']) {
+      const unauthInteraction = createMockKnowledgeInteraction({
+        subcommand: sub,
+        userId: '111111111111111111',
+        options: { query: 'Midwave' },
+      });
+      await executeKnowledge(unauthInteraction, ownerAuth);
+      const unauthReply = unauthInteraction.getReplies()[0];
+      assert.equal(unauthReply.flags, MessageFlags.Ephemeral);
+      assert.match(unauthReply.embeds[0].toJSON().description, /Akses ditolak/i);
     }
 
     // Gemini receives consistent creator/website/repo context for all 5 identity consistency questions

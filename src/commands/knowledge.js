@@ -139,6 +139,8 @@ export async function execute(interaction, context = {}) {
   const sub = interaction.options.getSubcommand(true);
 
   try {
+    store._assertAdmin(auth);
+
     if (sub === 'categories') {
       const categories = store.listCategories();
       const lines = categories.map(
