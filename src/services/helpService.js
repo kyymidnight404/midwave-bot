@@ -158,6 +158,10 @@ function isHandlerAvailable(cmd, commandHandler, handlerRegistry) {
     );
   }
 
+  if (Array.isArray(cmd.subcommands)) {
+    return cmd.subcommands.some((sub) => typeof handlerRegistry[sub?.handler] === 'function');
+  }
+
   return false;
 }
 
@@ -187,20 +191,24 @@ function buildGenericCommandLine(cmd, { prefix, registeredPrefixCommands }) {
 
 function buildMediaEntries(cmd, { prefix, handlerRegistry, registeredPrefixCommands }) {
   const actionHelp = cmd.help?.actionHelp || {};
+  const isSubcommand = cmd.type === 'subcommand' || Array.isArray(cmd.subcommands);
   const actionOption = cmd.options?.find((opt) => opt.name === 'action');
-  const actionKeys = actionOption?.choices?.map((c) => c.value) || Object.keys(actionHelp);
+  const actionKeys = isSubcommand
+    ? (cmd.subcommands || []).map((s) => s.name)
+    : actionOption?.choices?.map((c) => c.value) || Object.keys(actionHelp);
   const category = normalizeCategoryKey(cmd.help?.category || 'media_utilities');
   const entries = [];
 
   for (const actionKey of actionKeys) {
-    const actionHandlerKey = cmd.actionHandlers?.[actionKey];
+    const matchedSub = isSubcommand ? cmd.subcommands?.find((s) => s.name === actionKey) : null;
+    const actionHandlerKey = matchedSub?.handler ?? cmd.actionHandlers?.[actionKey];
     if (handlerRegistry && actionHandlerKey && typeof handlerRegistry[actionHandlerKey] !== 'function') {
       continue;
     }
 
     const meta = actionHelp[actionKey] || {};
-    const description = meta.description || `Fitur ${actionKey}`;
-    const slashUsage = meta.usage || `${cmd.name} action:${actionKey}`;
+    const description = meta.description || matchedSub?.description || `Fitur ${actionKey}`;
+    const slashUsage = meta.usage || (isSubcommand ? `${cmd.name} ${actionKey}` : `${cmd.name} action:${actionKey}`);
     const hasPrefix = registeredPrefixCommands.has(actionKey) && Boolean(meta.prefixUsage);
 
     const line = hasPrefix
@@ -220,18 +228,24 @@ function buildMediaEntries(cmd, { prefix, handlerRegistry, registeredPrefixComma
 
 function buildGameEntries(cmd, { prefix, registeredPrefixCommands }) {
   const category = normalizeCategoryKey(cmd.help?.category || 'mini_games');
+  const isSubcommand = cmd.type === 'subcommand' || Array.isArray(cmd.subcommands);
   const actionOption = cmd.options?.find((opt) => opt.name === 'action');
-  const gameOption = cmd.options?.find((opt) => opt.name === 'game');
+  const gameOption = isSubcommand
+    ? cmd.subcommands?.find((s) => s.name === 'solo')?.options?.find((opt) => opt.name === 'game')
+    : cmd.options?.find((opt) => opt.name === 'game');
 
-  const actions = actionOption?.choices?.map((c) => c.value) || [];
+  const actions = isSubcommand
+    ? (cmd.subcommands || []).map((s) => s.name)
+    : actionOption?.choices?.map((c) => c.value) || [];
   const games = gameOption?.choices?.map((c) => c.value) || Object.values(GAME_TYPES);
   const hasPrefixGames = games.some((game) => registeredPrefixCommands.has(game));
   const hasPrefixMain = registeredPrefixCommands.has(cmd.name);
+  const slashSyntax = isSubcommand ? '/game <subcommand>' : '/game <action> [game]';
 
   const primaryLine =
     hasPrefixMain || hasPrefixGames
-      ? `• \`${prefix}<game> [aksi]\` | \`/game <action> [game]\` — Mainkan mini-game Midwave`
-      : `• \`/game <action> [game]\` *(Slash)* — Mainkan mini-game Midwave`;
+      ? `• \`${prefix}<game> [aksi]\` | \`${slashSyntax}\` — Mainkan mini-game Midwave`
+      : `• \`${slashSyntax}\` *(Slash)* — Mainkan mini-game Midwave`;
 
   const lines = [primaryLine];
   if (games.length > 0) {
@@ -241,7 +255,7 @@ function buildGameEntries(cmd, { prefix, registeredPrefixCommands }) {
     lines.push(`  ◦ **Aksi:** ${actions.map((a) => `\`${a}\``).join(', ')}`);
   }
 
-  return [
+  const entries = [
     {
       id: 'command:game',
       category,
@@ -249,6 +263,20 @@ function buildGameEntries(cmd, { prefix, registeredPrefixCommands }) {
       source: hasPrefixMain || hasPrefixGames ? 'both' : 'slash',
     },
   ];
+
+  if (isSubcommand && cmd.subcommands?.some((s) => s.name === 'list')) {
+    const hasPrefixGamesList = registeredPrefixCommands.has('games');
+    entries.push({
+      id: 'command:games',
+      category,
+      line: hasPrefixGamesList
+        ? `• \`${prefix}games\` | \`/game list\` — Lihat daftar permainan & aturan main`
+        : `• \`/game list\` *(Slash)* — Lihat daftar permainan & aturan main`,
+      source: hasPrefixGamesList ? 'both' : 'slash',
+    });
+  }
+
+  return entries;
 }
 
 function buildSocialEntries(cmd, { prefix, registeredPrefixCommands }) {
@@ -332,6 +360,7 @@ export function discoverHelpEntries({
       for (const gameEntry of buildGameEntries(cmd, { prefix, registeredPrefixCommands })) {
         addEntry(gameEntry);
       }
+      coveredPrefixNames.add('games');
       Object.values(GAME_TYPES).forEach((g) => coveredPrefixNames.add(g));
       continue;
     }

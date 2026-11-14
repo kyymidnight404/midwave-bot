@@ -7,7 +7,7 @@ import { CooldownManager } from '../../src/utils/cooldown.js';
 import { createBotApp } from '../../src/index.js';
 import { deployCommands } from '../../deploy-commands.js';
 
-function createMockInteraction(commandName, userId = '111') {
+function createMockInteraction(commandName, userId = '111', subcommand = null) {
   const replies = [];
   return {
     commandName,
@@ -15,6 +15,11 @@ function createMockInteraction(commandName, userId = '111') {
     deferred: false,
     replied: false,
     isChatInputCommand: () => true,
+    options: {
+      getSubcommand: () => subcommand,
+      getSubcommandGroup: () => null,
+      getString: () => null,
+    },
     async reply(payload) {
       this.replied = true;
       replies.push({ type: 'reply', payload });
@@ -35,32 +40,32 @@ describe('CommandHandler & InteractionHandler', () => {
   it('loads commands and creates bot app cleanly', async () => {
     assert.equal(typeof deployCommands, 'function');
     const app = await createBotApp();
-    assert.ok(app.commandHandler.get('games'));
+    assert.ok(app.commandHandler.get('game'));
     assert.ok(app.commandHandler.get('help'));
     assert.ok(app.commandHandler.toJSON().length >= 2);
     app.shutdown();
   });
 
-  it('executes loaded /games command and enforces cooldown', async () => {
+  it('executes loaded /game list command and enforces cooldown', async () => {
     let now = 10_000;
     const commandHandler = new CommandHandler();
     await commandHandler.loadCommands();
     const cooldowns = new CooldownManager(2000, () => now);
     const handler = new InteractionHandler({ commandHandler, cooldowns });
 
-    const i1 = createMockInteraction('games', 'user-1');
+    const i1 = createMockInteraction('game', 'user-1', 'list');
     await handler.handle(i1);
     assert.equal(i1.getReplies().length, 1);
     assert.equal(i1.getReplies()[0].payload.embeds.length, 1);
 
     // Immediate second call hits cooldown with ephemeral error
-    const i2 = createMockInteraction('games', 'user-1');
+    const i2 = createMockInteraction('game', 'user-1', 'list');
     await handler.handle(i2);
     assert.equal(i2.getReplies().length, 1);
     assert.equal(i2.getReplies()[0].payload.flags, MessageFlags.Ephemeral);
 
     now += 2500;
-    const i3 = createMockInteraction('games', 'user-1');
+    const i3 = createMockInteraction('game', 'user-1', 'list');
     await handler.handle(i3);
     assert.equal(i3.getReplies()[0].payload.flags, undefined);
   });
@@ -87,7 +92,7 @@ describe('CommandHandler & InteractionHandler', () => {
     assert.equal(replies[0].payload.flags, MessageFlags.Ephemeral);
   });
 
-  it('deploys all 11 application commands including /download, /game, /social, /media and Generate QC for guild and global routes', async () => {
+  it('deploys all 9 application commands including /game, /media, /social and Generate QC for guild and global routes', async () => {
     const calls = [];
     const mockRest = {
       async put(route, opts) {
@@ -106,19 +111,20 @@ describe('CommandHandler & InteractionHandler', () => {
 
     assert.equal(calls.length, 1);
     assert.equal(calls[0].route, '/applications/123/guilds/456/commands');
-    assert.equal(guildResult.length, 11);
-    const downloadCmd = guildResult.find((c) => c.name === 'download');
-    assert.ok(downloadCmd);
-    assert.equal(downloadCmd.options[0].name, 'url');
-    assert.equal(downloadCmd.options[0].required, true);
+    assert.equal(guildResult.length, 9);
+    assert.equal(guildResult.find((c) => c.name === 'download'), undefined);
     const mediaCmd = guildResult.find((c) => c.name === 'media');
     assert.ok(mediaCmd);
-    assert.equal(mediaCmd.options[0].name, 'action');
-    assert.equal(mediaCmd.options[0].required, true);
+    assert.deepEqual(
+      mediaCmd.options.map((o) => o.name),
+      ['qc', 'brat', 'lyrics', 'download'],
+    );
     const gameCmd = guildResult.find((c) => c.name === 'game');
     assert.ok(gameCmd);
-    assert.equal(gameCmd.options[0].name, 'action');
-    assert.equal(gameCmd.options[0].required, true);
+    assert.deepEqual(
+      gameCmd.options.map((o) => o.name),
+      ['solo', 'challenge', 'choose', 'drop', 'move', 'answer', 'status', 'cancel', 'list'],
+    );
     const socialCmd = guildResult.find((c) => c.name === 'social');
     assert.ok(socialCmd);
     assert.equal(socialCmd.options[0].name, 'action');
@@ -133,6 +139,6 @@ describe('CommandHandler & InteractionHandler', () => {
 
     assert.equal(calls.length, 2);
     assert.equal(calls[1].route, '/applications/123/commands');
-    assert.equal(calls[1].body.length, 11);
+    assert.equal(calls[1].body.length, 9);
   });
 });

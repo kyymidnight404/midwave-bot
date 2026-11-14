@@ -428,17 +428,17 @@ describe('Prefix Command System', () => {
 
     // Shared cooldown between prefix (!games) and slash (/games)
     const firstPrefix = createFakeMessage({
-      content: '!games',
+      content: '!help',
       author: harness.users.get(U1_ID),
       channel: harness.channel,
       userDirectory: harness.users,
     });
     await harness.prefixCommandHandler.handle(firstPrefix);
     assert.equal(firstPrefix.getReplies().length, 1);
-    assert.equal(firstPrefix.getReplies()[0].payload.embeds[0].toJSON().title, 'Daftar Permainan Midwave');
+    assert.equal(firstPrefix.getReplies()[0].payload.embeds.length, 1);
 
     const secondSlash = createMockSlashInteraction({
-      commandName: 'games',
+      commandName: 'help',
       userId: U1_ID,
       channel: harness.channel,
     });
@@ -594,10 +594,10 @@ describe('Prefix Command System', () => {
     await harness.interactionHandler.handle(
       createMockSlashInteraction({
         commandName: 'game',
-        subcommand: null,
+        subcommand: 'choose',
         userId: U2_ID,
         channel: harness.channel,
-        options: { action: 'choose', game: 'rps', choice: 'paper' },
+        options: { game: 'rps', choice: 'paper' },
       }),
     );
 

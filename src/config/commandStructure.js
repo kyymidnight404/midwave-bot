@@ -13,6 +13,7 @@ import {
   LYRICS_MAX_QUERY_LENGTH,
 } from '../services/lyricsService.js';
 import { SOCIAL_INTERACTIONS } from '../services/otakuGifsService.js';
+import { BRAT_MAX_LENGTH } from '../utils/bratGenerator.js';
 import { MATH_MAX_LENGTH } from '../utils/mathEvaluator.js';
 import { QC_MAX_LENGTH } from '../utils/qcGenerator.js';
 
@@ -26,6 +27,27 @@ const KNOWLEDGE_STATUS_CHOICES = [
   { name: 'Pending Verification', value: 'pending_verification' },
   { name: 'Unknown', value: 'unknown' },
 ];
+
+const GAME_CHOICES = [
+  { name: 'Coin Flip', value: GAME_TYPES.COINFLIP },
+  { name: 'Connect Four', value: GAME_TYPES.CONNECT4 },
+  { name: 'Dice Rolling', value: GAME_TYPES.DICE },
+  { name: 'Number Guessing', value: GAME_TYPES.GUESS },
+  { name: 'Rock Paper Scissors', value: GAME_TYPES.RPS },
+  { name: 'Tic Tac Toe', value: GAME_TYPES.TICTACTOE },
+  { name: 'Trivia Quiz', value: GAME_TYPES.TRIVIA },
+];
+
+const DIFFICULTY_CHOICES = [
+  { name: 'Easy', value: 'easy' },
+  { name: 'Normal', value: 'normal' },
+  { name: 'Hard', value: 'hard' },
+];
+
+const TRIVIA_CATEGORY_CHOICES = TRIVIA_CATEGORIES.map((cat) => ({
+  name: TRIVIA_CATEGORY_LABELS[cat],
+  value: cat,
+}));
 
 /**
  * Centralized Discord Application Command configuration for Midwave.
@@ -67,186 +89,6 @@ export const commandStructure = {
           type: 'string',
           required: true,
           maxLength: AI_MAX_QUESTION_LENGTH,
-        },
-      ],
-    },
-    {
-      name: 'game',
-      description: 'Mainkan seluruh mini-game Midwave dan kelola sesi pertandingan',
-      enabled: true,
-      type: 'choice',
-      handler: 'game',
-      help: {
-        category: 'mini_games',
-        usage: 'game <action> [game]',
-        prefixUsage: '{prefix}<game> [aksi]',
-        description: 'Mainkan 7 mini-game (coinflip, connect4, dice, guess, rps, tictactoe, trivia)',
-      },
-      options: [
-        {
-          name: 'action',
-          description: 'Aksi yang ingin dijalankan',
-          type: 'string',
-          required: true,
-          choices: [
-            { name: 'Solo (Main vs Bot/AI)', value: 'solo' },
-            { name: 'Challenge (Tantang Pemain)', value: 'challenge' },
-            { name: 'Choose (Pilih RPS / Coin Flip)', value: 'choose' },
-            { name: 'Drop (Jatuhkan Keping Connect4)', value: 'drop' },
-            { name: 'Move (Langkah Tic Tac Toe)', value: 'move' },
-            { name: 'Answer (Tebak Guess / Jawab Trivia)', value: 'answer' },
-            { name: 'Status (Lihat Sesi/Undangan Aktif)', value: 'status' },
-            { name: 'Cancel (Batalkan Sesi/Undangan)', value: 'cancel' },
-          ],
-        },
-        {
-          name: 'game',
-          description: 'Pilih jenis mini-game',
-          type: 'string',
-          required: false,
-          choices: [
-            { name: 'Coin Flip', value: GAME_TYPES.COINFLIP },
-            { name: 'Connect Four', value: GAME_TYPES.CONNECT4 },
-            { name: 'Dice Rolling', value: GAME_TYPES.DICE },
-            { name: 'Number Guessing', value: GAME_TYPES.GUESS },
-            { name: 'Rock Paper Scissors', value: GAME_TYPES.RPS },
-            { name: 'Tic Tac Toe', value: GAME_TYPES.TICTACTOE },
-            { name: 'Trivia Quiz', value: GAME_TYPES.TRIVIA },
-          ],
-        },
-        {
-          name: 'opponent',
-          description: 'Pemain lawan (untuk aksi challenge)',
-          type: 'user',
-          required: false,
-        },
-        {
-          name: 'choice',
-          description: 'Pilihan untuk RPS (rock/paper/scissors) atau Coin Flip (heads/tails)',
-          type: 'string',
-          required: false,
-          choices: [
-            { name: 'Rock (Batu — RPS)', value: 'rock' },
-            { name: 'Paper (Kertas — RPS)', value: 'paper' },
-            { name: 'Scissors (Gunting — RPS)', value: 'scissors' },
-            { name: 'Heads (Coin Flip)', value: 'heads' },
-            { name: 'Tails (Coin Flip)', value: 'tails' },
-          ],
-        },
-        {
-          name: 'column',
-          description: 'Nomor kolom 1–7 (untuk Connect Four drop)',
-          type: 'integer',
-          required: false,
-          minValue: 1,
-          maxValue: 7,
-        },
-        {
-          name: 'position',
-          description: 'Koordinat papan A1–C3 (untuk Tic Tac Toe move)',
-          type: 'string',
-          required: false,
-          choices: TTT_POSITIONS.map((pos) => ({ name: pos, value: pos })),
-        },
-        {
-          name: 'answer',
-          description: 'Tebakan angka 1–200 (Guess) atau jawaban A/B/C/D (Trivia)',
-          type: 'string',
-          required: false,
-        },
-        {
-          name: 'game_id',
-          description: 'Opsional ID sesi atau undangan (untuk status / cancel)',
-          type: 'string',
-          required: false,
-        },
-        {
-          name: 'difficulty',
-          description: 'Tingkat kesulitan AI/game (default Normal)',
-          type: 'string',
-          required: false,
-          choices: [
-            { name: 'Easy', value: 'easy' },
-            { name: 'Normal', value: 'normal' },
-            { name: 'Hard', value: 'hard' },
-          ],
-        },
-        {
-          name: 'category',
-          description: 'Kategori soal Trivia (default General Knowledge)',
-          type: 'string',
-          required: false,
-          choices: TRIVIA_CATEGORIES.map((cat) => ({
-            name: TRIVIA_CATEGORY_LABELS[cat],
-            value: cat,
-          })),
-        },
-        {
-          name: 'count',
-          description: `Jumlah dadu ${DICE_CONFIG.MIN_COUNT}–${DICE_CONFIG.MAX_COUNT} (default 1, untuk Dice)`,
-          type: 'integer',
-          required: false,
-          minValue: DICE_CONFIG.MIN_COUNT,
-          maxValue: DICE_CONFIG.MAX_COUNT,
-        },
-        {
-          name: 'sides',
-          description: `Jumlah sisi dadu ${DICE_CONFIG.MIN_SIDES}–${DICE_CONFIG.MAX_SIDES} (default 6, untuk Dice)`,
-          type: 'integer',
-          required: false,
-          minValue: DICE_CONFIG.MIN_SIDES,
-          maxValue: DICE_CONFIG.MAX_SIDES,
-        },
-      ],
-    },
-    {
-      name: 'games',
-      description: 'Tampilkan daftar seluruh permainan Midwave beserta cara memainkannya',
-      enabled: true,
-      type: 'standalone',
-      handler: 'games',
-      help: {
-        category: 'mini_games',
-        usage: 'games',
-        prefixUsage: '{prefix}games',
-        description: 'Lihat daftar permainan & aturan main',
-      },
-    },
-    {
-      name: 'help',
-      description: 'Tampilkan panduan penggunaan command dan aturan permainan Midwave',
-      enabled: true,
-      type: 'standalone',
-      handler: 'help',
-      help: {
-        category: 'general',
-        usage: 'help',
-        prefixUsage: '{prefix}help',
-        description: 'Tampilkan panduan command Midwave',
-      },
-    },
-    {
-      name: 'invite',
-      description: 'Terima atau tolak undangan pertandingan multiplayer',
-      enabled: true,
-      type: 'subcommand',
-      handler: 'invite',
-      help: {
-        category: 'mini_games',
-        usage: 'invite <accept|decline>',
-        prefixUsage: '{prefix}invite <accept|decline>',
-        description: 'Terima atau tolak undangan permainan',
-      },
-      subcommands: [
-        {
-          name: 'accept',
-          description: 'Menerima undangan pertandingan terbaru untukmu',
-          handler: 'invite',
-        },
-        {
-          name: 'decline',
-          description: 'Menolak undangan pertandingan yang masuk',
-          handler: 'invite',
         },
       ],
     },
@@ -419,6 +261,341 @@ export const commandStructure = {
       ],
     },
     {
+      name: 'help',
+      description: 'Tampilkan panduan penggunaan command dan aturan permainan Midwave',
+      enabled: true,
+      type: 'standalone',
+      handler: 'help',
+      help: {
+        category: 'general',
+        usage: 'help',
+        prefixUsage: '{prefix}help',
+        description: 'Tampilkan panduan command Midwave',
+      },
+    },
+    {
+      name: 'game',
+      description: 'Mainkan mini-game Midwave dan kelola sesi pertandingan',
+      enabled: true,
+      type: 'subcommand',
+      handler: 'game',
+      help: {
+        category: 'mini_games',
+        usage: 'game <solo|challenge|choose|drop|move|answer|status|cancel|list>',
+        prefixUsage: '{prefix}<game> [aksi]',
+        description: 'Mainkan 7 mini-game (coinflip, connect4, dice, guess, rps, tictactoe, trivia)',
+      },
+      subcommands: [
+        {
+          name: 'solo',
+          description: 'Mainkan mini-game solo melawan Bot/AI',
+          handler: 'game.solo',
+          options: [
+            {
+              name: 'game',
+              description: 'Pilih jenis mini-game',
+              type: 'string',
+              required: true,
+              choices: GAME_CHOICES,
+            },
+            {
+              name: 'difficulty',
+              description: 'Tingkat kesulitan AI/game (default Normal)',
+              type: 'string',
+              required: false,
+              choices: DIFFICULTY_CHOICES,
+            },
+            {
+              name: 'category',
+              description: 'Kategori soal Trivia (default General Knowledge)',
+              type: 'string',
+              required: false,
+              choices: TRIVIA_CATEGORY_CHOICES,
+            },
+            {
+              name: 'count',
+              description: `Jumlah dadu ${DICE_CONFIG.MIN_COUNT}–${DICE_CONFIG.MAX_COUNT} (default 1, untuk Dice)`,
+              type: 'integer',
+              required: false,
+              minValue: DICE_CONFIG.MIN_COUNT,
+              maxValue: DICE_CONFIG.MAX_COUNT,
+            },
+            {
+              name: 'sides',
+              description: `Jumlah sisi dadu ${DICE_CONFIG.MIN_SIDES}–${DICE_CONFIG.MAX_SIDES} (default 6, untuk Dice)`,
+              type: 'integer',
+              required: false,
+              minValue: DICE_CONFIG.MIN_SIDES,
+              maxValue: DICE_CONFIG.MAX_SIDES,
+            },
+          ],
+        },
+        {
+          name: 'challenge',
+          description: 'Tantang pemain lain untuk bermain multiplayer',
+          handler: 'game.challenge',
+          options: [
+            {
+              name: 'game',
+              description: 'Pilih jenis mini-game',
+              type: 'string',
+              required: true,
+              choices: GAME_CHOICES,
+            },
+            {
+              name: 'opponent',
+              description: 'Pemain lawan yang ingin ditantang',
+              type: 'user',
+              required: true,
+            },
+            {
+              name: 'difficulty',
+              description: 'Tingkat kesulitan (untuk Guess/Trivia)',
+              type: 'string',
+              required: false,
+              choices: DIFFICULTY_CHOICES,
+            },
+            {
+              name: 'category',
+              description: 'Kategori soal Trivia (default General Knowledge)',
+              type: 'string',
+              required: false,
+              choices: TRIVIA_CATEGORY_CHOICES,
+            },
+          ],
+        },
+        {
+          name: 'choose',
+          description: 'Pilih gerakan RPS atau sisi Coin Flip pada sesi aktif',
+          handler: 'game.choose',
+          options: [
+            {
+              name: 'choice',
+              description: 'Pilihan untuk RPS (rock/paper/scissors) atau Coin Flip (heads/tails)',
+              type: 'string',
+              required: true,
+              choices: [
+                { name: 'Rock (Batu — RPS)', value: 'rock' },
+                { name: 'Paper (Kertas — RPS)', value: 'paper' },
+                { name: 'Scissors (Gunting — RPS)', value: 'scissors' },
+                { name: 'Heads (Coin Flip)', value: 'heads' },
+                { name: 'Tails (Coin Flip)', value: 'tails' },
+              ],
+            },
+            {
+              name: 'game',
+              description: 'Opsional jenis game (rps atau coinflip)',
+              type: 'string',
+              required: false,
+              choices: [
+                { name: 'Rock Paper Scissors', value: GAME_TYPES.RPS },
+                { name: 'Coin Flip', value: GAME_TYPES.COINFLIP },
+              ],
+            },
+          ],
+        },
+        {
+          name: 'drop',
+          description: 'Jatuhkan keping pada kolom Connect Four (1–7)',
+          handler: 'game.drop',
+          options: [
+            {
+              name: 'column',
+              description: 'Nomor kolom 1–7',
+              type: 'integer',
+              required: true,
+              minValue: 1,
+              maxValue: 7,
+            },
+          ],
+        },
+        {
+          name: 'move',
+          description: 'Letakkan simbol pada papan Tic Tac Toe (A1–C3)',
+          handler: 'game.move',
+          options: [
+            {
+              name: 'position',
+              description: 'Koordinat papan A1–C3',
+              type: 'string',
+              required: true,
+              choices: TTT_POSITIONS.map((pos) => ({ name: pos, value: pos })),
+            },
+          ],
+        },
+        {
+          name: 'answer',
+          description: 'Kirim tebakan angka (Guess) atau jawaban A/B/C/D (Trivia)',
+          handler: 'game.answer',
+          options: [
+            {
+              name: 'answer',
+              description: 'Tebakan angka 1–200 (Guess) atau jawaban A/B/C/D (Trivia)',
+              type: 'string',
+              required: true,
+            },
+          ],
+        },
+        {
+          name: 'status',
+          description: 'Lihat status sesi game atau undangan aktif',
+          handler: 'game.status',
+          options: [
+            {
+              name: 'game_id',
+              description: 'Opsional ID sesi atau undangan',
+              type: 'string',
+              required: false,
+            },
+          ],
+        },
+        {
+          name: 'cancel',
+          description: 'Batalkan sesi game atau undangan aktif',
+          handler: 'game.cancel',
+          options: [
+            {
+              name: 'game_id',
+              description: 'Opsional ID sesi atau undangan',
+              type: 'string',
+              required: false,
+            },
+          ],
+        },
+        {
+          name: 'list',
+          description: 'Tampilkan daftar seluruh mini-game Midwave dan aturan mainnya',
+          handler: 'games',
+        },
+      ],
+    },
+    {
+      name: 'invite',
+      description: 'Terima atau tolak undangan pertandingan multiplayer',
+      enabled: true,
+      type: 'subcommand',
+      handler: 'invite',
+      help: {
+        category: 'mini_games',
+        usage: 'invite <accept|decline>',
+        prefixUsage: '{prefix}invite <accept|decline>',
+        description: 'Terima atau tolak undangan permainan',
+      },
+      subcommands: [
+        {
+          name: 'accept',
+          description: 'Menerima undangan pertandingan terbaru untukmu',
+          handler: 'invite',
+        },
+        {
+          name: 'decline',
+          description: 'Menolak undangan pertandingan yang masuk',
+          handler: 'invite',
+        },
+      ],
+    },
+    {
+      name: 'media',
+      description: 'Utilitas media Midwave: QC, Brat, Lyrics Finder, dan Downloader',
+      enabled: true,
+      type: 'subcommand',
+      actionHandlers: {
+        qc: 'media.qc',
+        brat: 'media.brat',
+        lyrics: 'media.lyrics',
+        download: 'media.download',
+      },
+      help: {
+        category: 'media_utilities',
+        actionHelp: {
+          qc: {
+            usage: 'media qc text:<teks>',
+            prefixUsage: '{prefix}qc <teks>',
+            description: 'Buat gambar chat screenshot WhatsApp',
+          },
+          brat: {
+            usage: 'media brat text:<teks>',
+            prefixUsage: '{prefix}brat <teks>',
+            description: 'Buat gambar teks gaya Brat',
+          },
+          lyrics: {
+            usage: 'media lyrics query:<judul>',
+            prefixUsage: '{prefix}lyrics <judul>',
+            description: 'Cari lirik lagu lengkap dengan cover',
+          },
+          download: {
+            usage: 'media download url:<link>',
+            prefixUsage: '{prefix}download <link>',
+            description: 'Unduh media Instagram atau TikTok',
+          },
+        },
+      },
+      subcommands: [
+        {
+          name: 'qc',
+          description: 'Buat gambar chat screenshot WhatsApp dari teks',
+          handler: 'media.qc',
+          options: [
+            {
+              name: 'text',
+              description: `Teks pesan QC (maksimal ${QC_MAX_LENGTH} karakter)`,
+              type: 'string',
+              required: true,
+              maxLength: QC_MAX_LENGTH,
+            },
+          ],
+        },
+        {
+          name: 'brat',
+          description: 'Buat gambar teks gaya Brat (1024x1024 PNG)',
+          handler: 'media.brat',
+          options: [
+            {
+              name: 'text',
+              description: `Teks Brat (maksimal ${BRAT_MAX_LENGTH} karakter)`,
+              type: 'string',
+              required: true,
+              maxLength: BRAT_MAX_LENGTH,
+            },
+          ],
+        },
+        {
+          name: 'lyrics',
+          description: 'Cari lirik lagu lengkap dengan cover dan metadata',
+          handler: 'media.lyrics',
+          options: [
+            {
+              name: 'query',
+              description: 'Judul lagu atau kata kunci lirik',
+              type: 'string',
+              required: true,
+              maxLength: LYRICS_MAX_QUERY_LENGTH,
+            },
+            {
+              name: 'artist',
+              description: 'Opsional nama penyanyi/artis untuk mempersempit pencarian',
+              type: 'string',
+              required: false,
+              maxLength: LYRICS_MAX_ARTIST_LENGTH,
+            },
+          ],
+        },
+        {
+          name: 'download',
+          description: 'Unduh media (foto/video) dari tautan publik Instagram atau TikTok',
+          handler: 'media.download',
+          options: [
+            {
+              name: 'url',
+              description: 'Tautan publik Instagram atau TikTok',
+              type: 'string',
+              required: true,
+            },
+          ],
+        },
+      ],
+    },
+    {
       name: 'math',
       description: 'Hitung ekspresi matematika secara aman dan cepat',
       enabled: true,
@@ -437,106 +614,6 @@ export const commandStructure = {
           type: 'string',
           required: true,
           maxLength: MATH_MAX_LENGTH,
-        },
-      ],
-    },
-    {
-      name: 'media',
-      description: 'Fitur media Midwave: QC chat screenshot, Brat image, Lyrics Finder, dan Downloader',
-      enabled: true,
-      type: 'choice',
-      handler: 'media',
-      actionHandlers: {
-        qc: 'media.qc',
-        brat: 'media.brat',
-        lyrics: 'media.lyrics',
-        download: 'media.download',
-      },
-      help: {
-        category: 'media_utilities',
-        actionHelp: {
-          qc: {
-            usage: 'media action:qc text:<teks>',
-            prefixUsage: '{prefix}qc <teks>',
-            description: 'Buat gambar chat screenshot WhatsApp',
-          },
-          brat: {
-            usage: 'media action:brat text:<teks>',
-            prefixUsage: '{prefix}brat <teks>',
-            description: 'Buat gambar teks gaya Brat',
-          },
-          lyrics: {
-            usage: 'media action:lyrics query:<judul>',
-            prefixUsage: '{prefix}lyrics <judul>',
-            description: 'Cari lirik lagu lengkap dengan cover',
-          },
-          download: {
-            usage: 'media action:download url:<link>',
-            prefixUsage: '{prefix}download <link>',
-            description: 'Unduh media Instagram atau TikTok',
-          },
-        },
-      },
-      options: [
-        {
-          name: 'action',
-          description: 'Fitur media yang ingin dijalankan',
-          type: 'string',
-          required: true,
-          choices: [
-            { name: 'qc — Buat gambar chat screenshot WhatsApp', value: 'qc' },
-            { name: 'brat — Buat gambar teks gaya Brat (1024x1024 PNG)', value: 'brat' },
-            { name: 'lyrics — Cari lirik lagu lengkap dengan cover', value: 'lyrics' },
-            { name: 'download — Unduh media Instagram atau TikTok', value: 'download' },
-          ],
-        },
-        {
-          name: 'text',
-          description: 'Teks untuk action qc (maks 2000) atau brat (maks 1000)',
-          type: 'string',
-          required: false,
-          maxLength: QC_MAX_LENGTH,
-        },
-        {
-          name: 'query',
-          description: 'Judul lagu atau kata kunci untuk action lyrics',
-          type: 'string',
-          required: false,
-          maxLength: LYRICS_MAX_QUERY_LENGTH,
-        },
-        {
-          name: 'url',
-          description: 'Tautan publik Instagram atau TikTok untuk action download',
-          type: 'string',
-          required: false,
-        },
-        {
-          name: 'artist',
-          description: 'Opsional nama penyanyi/artis untuk mempersempit pencarian lyrics',
-          type: 'string',
-          required: false,
-          maxLength: LYRICS_MAX_ARTIST_LENGTH,
-        },
-      ],
-    },
-    {
-      name: 'download',
-      description: 'Unduh media (foto/video) dari tautan publik Instagram atau TikTok',
-      enabled: true,
-      type: 'standalone',
-      handler: 'download',
-      help: {
-        category: 'media_utilities',
-        usage: 'download url:<link>',
-        prefixUsage: '{prefix}download <link>',
-        description: 'Unduh media Instagram atau TikTok',
-      },
-      options: [
-        {
-          name: 'url',
-          description: 'Tautan publik Instagram atau TikTok',
-          type: 'string',
-          required: true,
         },
       ],
     },

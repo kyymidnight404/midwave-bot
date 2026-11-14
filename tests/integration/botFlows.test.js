@@ -146,16 +146,14 @@ function createMockCommandInteraction({
 }
 
 describe('Integration: Slash Commands & End-to-End Flows', () => {
-  it('registers all 11 Discord commands within API limits (no duplicates or option ordering violations)', async () => {
+  it('registers all 9 Discord commands within API limits (no duplicates or option ordering violations)', async () => {
     const app = await createBotApp();
     const payloads = app.commandHandler.toJSON();
     const names = payloads.map((c) => c.name).sort();
     assert.deepEqual(names, [
       'Generate QC',
       'ai',
-      'download',
       'game',
-      'games',
       'help',
       'invite',
       'knowledge',
@@ -163,7 +161,7 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
       'media',
       'social',
     ]);
-    assert.equal(new Set(payloads.map((c) => c.name)).size, 11);
+    assert.equal(new Set(payloads.map((c) => c.name)).size, 9);
 
     for (const cmd of payloads) {
       if (cmd.type === 3) {
@@ -213,7 +211,8 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     // 1. P1 challenges P2 via /game
     const chInt = createMockCommandInteraction({
       commandName: 'game',
-      userId: 'p1',
+      subcommand: 'challenge',
+        userId: 'p1',
       channel,
       options: { action: 'challenge', game: 'rps', opponent: { id: 'p2', bot: false } },
     });
@@ -234,7 +233,8 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     // 3. P1 submits secret choice (ephemeral!)
     const p1Choose = createMockCommandInteraction({
       commandName: 'game',
-      userId: 'p1',
+      subcommand: 'choose',
+        userId: 'p1',
       channel,
       options: { action: 'choose', game: 'rps', choice: 'rock' },
     });
@@ -253,7 +253,8 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     // 4. P2 submits secret choice -> finishes match and cleans up RAM
     const p2Choose = createMockCommandInteraction({
       commandName: 'game',
-      userId: 'p2',
+      subcommand: 'choose',
+        userId: 'p2',
       channel,
       options: { action: 'choose', game: 'rps', choice: 'scissors' },
     });
@@ -290,7 +291,8 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     // Start solo TicTacToe
     const startInt = createMockCommandInteraction({
       commandName: 'game',
-      userId: 'solo-1',
+      subcommand: 'solo',
+        userId: 'solo-1',
       channel,
       options: { action: 'solo', game: 'tictactoe', difficulty: 'easy' },
     });
@@ -303,7 +305,8 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
 
     const moveInt = createMockCommandInteraction({
       commandName: 'game',
-      userId: 'solo-1',
+      subcommand: 'move',
+        userId: 'solo-1',
       channel,
       options: { action: 'move', game: 'tictactoe', position: 'B2' },
     });
@@ -316,7 +319,8 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     // Cancel via /game action:cancel
     const cancelInt = createMockCommandInteraction({
       commandName: 'game',
-      userId: 'solo-1',
+      subcommand: 'cancel',
+        userId: 'solo-1',
       channel,
       options: { action: 'cancel' },
     });
@@ -326,7 +330,8 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     // Instant solo Dice & CoinFlip
     const diceInt = createMockCommandInteraction({
       commandName: 'game',
-      userId: 'solo-1',
+      subcommand: 'solo',
+        userId: 'solo-1',
       channel,
       options: { action: 'solo', game: 'dice', count: 3, sides: 10 },
     });
@@ -335,7 +340,8 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
 
     const coinInt = createMockCommandInteraction({
       commandName: 'game',
-      userId: 'solo-1',
+      subcommand: 'solo',
+        userId: 'solo-1',
       channel,
       options: { action: 'solo', game: 'coinflip', choice: 'heads' },
     });
@@ -375,6 +381,7 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     await app.interactionHandler.handle(
       createMockCommandInteraction({
         commandName: 'game',
+        subcommand: 'challenge',
         userId: 'p1',
         channel,
         options: {
@@ -400,6 +407,7 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     await app.interactionHandler.handle(
       createMockCommandInteraction({
         commandName: 'game',
+        subcommand: 'challenge',
         userId: 'p1',
         channel,
         options: {
@@ -422,7 +430,8 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
 
     const statusInt = createMockCommandInteraction({
       commandName: 'game',
-      userId: 'p1',
+      subcommand: 'status',
+        userId: 'p1',
       channel,
       options: { action: 'status' },
     });
@@ -461,9 +470,10 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
       gameManager,
     });
 
-    const runGame = async (options, userId = 'u-test-1') => {
+    const runGame = async ({ action, ...options }, userId = 'u-test-1') => {
       const interaction = createMockCommandInteraction({
         commandName: 'game',
+        subcommand: action,
         userId,
         channel,
         options,
@@ -566,9 +576,10 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
       cached: false,
     });
 
-    const runMedia = async (options) => {
+    const runMedia = async ({ action, ...options }) => {
       const interaction = createMockCommandInteraction({
         commandName: 'media',
+        subcommand: action,
         userId: 'u-media-1',
         channel,
         options,
@@ -611,7 +622,7 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     app.shutdown();
   });
 
-  it('dispatches standalone /download and prefix !download cleanly', async () => {
+  it('dispatches /media download and prefix !download cleanly', async () => {
     const channel = createFakeChannel('ch-download');
     const client = createFakeClient(channel);
     const app = await createBotApp({
@@ -634,7 +645,8 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     app.prefixCommandHandler.context.downloadMedia = mockDownload;
 
     const slashInteraction = createMockCommandInteraction({
-      commandName: 'download',
+      commandName: 'media',
+      subcommand: 'download',
       userId: 'dl-slash-user',
       username: 'SlashDL',
       channel,

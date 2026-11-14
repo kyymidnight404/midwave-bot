@@ -39,6 +39,8 @@ function createMockSlashInteraction(text, action = 'qc') {
     isChatInputCommand: () => true,
     isMessageContextMenuCommand: () => false,
     options: {
+      getSubcommand: () => action,
+      getSubcommandGroup: () => null,
       getString: (name) => {
         if (name === 'action') return action;
         if (name === 'text') return text;

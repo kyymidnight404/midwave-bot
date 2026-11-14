@@ -98,12 +98,21 @@ export class InteractionHandler {
       ? `${interaction.user.id}:${interaction.commandName}:${actionPart}`
       : `${interaction.user.id}:${interaction.commandName}`;
 
-    const mappedActionHandler = command.config?.actionHandlers?.[actionOption] ?? command.config?.handler ?? '';
+    const matchedSubcommand = subcommand
+      ? (subcommandGroup
+          ? command.config?.groups?.find((g) => g.name === subcommandGroup)?.subcommands?.find((s) => s.name === subcommand)
+          : command.config?.subcommands?.find((s) => s.name === subcommand))
+      : null;
+    const mappedActionHandler =
+      matchedSubcommand?.handler ??
+      command.config?.actionHandlers?.[actionOption] ??
+      command.config?.handler ??
+      '';
     const normalizedHandlerBase = mappedActionHandler.includes('.')
       ? mappedActionHandler.split('.').pop()
       : mappedActionHandler;
     const cooldownTarget =
-      (interaction.commandName === 'media' && actionOption) ||
+      (interaction.commandName === 'media' && (subcommand || actionOption)) ||
       (normalizedHandlerBase && Object.hasOwn(COMMAND_COOLDOWNS, normalizedHandlerBase)
         ? normalizedHandlerBase
         : interaction.commandName);
