@@ -71,6 +71,7 @@ export class MessageCommandAdapter {
     this.isSecretChoice = isSecretChoice;
     this.canManageMessages = canManageMessages;
 
+    this.id = message.id ?? null;
     this.commandName = parsed.commandName;
     this.user = message.author;
     this.guildId = message.guildId ?? null;

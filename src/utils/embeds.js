@@ -374,7 +374,8 @@ export function buildHelpEmbed(prefix = '!') {
       value: [
         `\`/ai question:<pertanyaan>\` atau \`${safePrefix}ai <pertanyaan>\` — Tanya Midwave AI (stateless Gemini)`,
         `\`/brat text:<teks>\` atau \`${safePrefix}brat <teks>\` — Buat gambar teks bergaya Brat (1024×1024 PNG, maks. 100 karakter)`,
-        `\`/lyrics query:<judul> [artist:<artis>]\` — Cari lirik lagu dengan cover album dan pagination`,
+        `\`/lyrics query:<judul> [artist:<artis>]\` atau \`${safePrefix}lyrics <judul> [| <artis>]\` — Cari lirik lagu dengan cover album dan pagination`,
+        `\`/download url:<tautan>\` — Unduh media publik dari Instagram atau TikTok`,
       ].join('\n'),
       inline: false,
     },
@@ -413,4 +414,74 @@ export function buildHelpEmbed(prefix = '!') {
   );
 
   return embed;
+}
+
+const PLATFORM_BADGES = Object.freeze({
+  Instagram: '📸 Instagram',
+  TikTok: '🎵 TikTok',
+});
+
+/**
+ * Builds the processing status embed shown while media is being extracted and uploaded.
+ *
+ * @param {{ platformLabel: string }} params
+ * @returns {EmbedBuilder}
+ */
+export function buildDownloadProcessingEmbed({ platformLabel }) {
+  const badge = PLATFORM_BADGES[platformLabel] || platformLabel;
+  return createBaseEmbed({
+    title: 'MIDWAVE MEDIA DOWNLOADER',
+    description: `${badge}\n\n⏳ **Memproses unduhan...**\nMengekstrak dan memvalidasi file media sebelum diunggah ke Discord.`,
+    color: COLORS.SECONDARY,
+    includeThumbnail: false,
+  });
+}
+
+/**
+ * Builds the dark Midwave-styled completion embed for `/download`.
+ *
+ * @param {{
+ *   platformLabel: string,
+ *   mediaType: string,
+ *   fileFormat: string,
+ *   formattedSize: string,
+ *   requesterId: string,
+ *   truncatedCount?: number,
+ * }} params
+ * @returns {EmbedBuilder}
+ */
+export function buildDownloadSuccessEmbed({
+  platformLabel,
+  mediaType,
+  fileFormat,
+  formattedSize,
+  requesterId,
+  truncatedCount = 0,
+}) {
+  const badge = PLATFORM_BADGES[platformLabel] || platformLabel;
+  const lines = [
+    badge,
+    '',
+    '**Download Completed**',
+    `• **Platform:** ${platformLabel}`,
+    `• **Media Type:** ${mediaType}`,
+    `• **File Format:** ${fileFormat}`,
+    `• **File Size:** ${formattedSize}`,
+  ];
+
+  if (truncatedCount > 0) {
+    lines.push(
+      '',
+      `⚠️ *${truncatedCount} item carousel lainnya tidak disertakan karena batas maksimal 10 lampiran atau ukuran unggahan Discord.*`,
+    );
+  }
+
+  lines.push('', `Requested by: <@${requesterId}>`);
+
+  return createBaseEmbed({
+    title: 'MIDWAVE MEDIA DOWNLOADER',
+    description: lines.join('\n'),
+    color: COLORS.PRIMARY,
+    includeThumbnail: false,
+  });
 }

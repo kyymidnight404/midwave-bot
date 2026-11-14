@@ -1,5 +1,6 @@
 import { PermissionFlagsBits } from 'discord.js';
 import { AI_COOLDOWN_MS } from '../services/gemini.js';
+import { LYRICS_COOLDOWN_MS } from '../services/lyricsService.js';
 import { GAME_MODES, GAME_TYPES } from '../utils/constants.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
 import { parsePrefixInvocation, resolvePrefix } from '../utils/prefixParser.js';
@@ -7,6 +8,10 @@ import { MessageCommandAdapter, resolveUserFromMessage } from './MessageCommandA
 import igfCommand from '../prefixCommands/igf.js';
 
 const PREFIX_ONLY_COMMANDS = new Map([[igfCommand.name, igfCommand]]);
+const COMMAND_COOLDOWNS = Object.freeze({
+  ai: AI_COOLDOWN_MS,
+  lyrics: LYRICS_COOLDOWN_MS,
+});
 
 const COMMANDS_REQUIRING_ATTACH_FILES = new Set([
   'brat',
@@ -190,9 +195,10 @@ export class PrefixCommandHandler {
     const cooldownKey = parsed.subcommand
       ? `${message.author.id}:${parsed.commandName}:${parsed.subcommand}`
       : `${message.author.id}:${parsed.commandName}`;
+    const specialCooldown = COMMAND_COOLDOWNS[parsed.commandName];
     const cooldownTtl =
-      parsed.commandName === 'ai' && this.cooldowns.defaultTtlMs > 0
-        ? Math.max(this.cooldowns.defaultTtlMs, AI_COOLDOWN_MS)
+      specialCooldown && this.cooldowns.defaultTtlMs > 0
+        ? Math.max(this.cooldowns.defaultTtlMs, specialCooldown)
         : this.cooldowns.defaultTtlMs;
     const cooldownResult = this.cooldowns.tryAcquire(cooldownKey, cooldownTtl);
     if (!cooldownResult.allowed) {

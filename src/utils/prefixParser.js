@@ -8,6 +8,9 @@ import {
 
 const COMMAND_ALIASES = Object.freeze({
   ai: 'ai',
+  lyrics: 'lyrics',
+  lyric: 'lyrics',
+  lirik: 'lyrics',
   games: 'games',
   help: 'help',
   game: 'game',
@@ -262,6 +265,38 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
       };
     }
     return { commandName, subcommand: null, options: { question: rawRest } };
+  }
+
+  if (commandName === 'lyrics') {
+    if (!rawRest) {
+      return {
+        commandName,
+        subcommand: null,
+        options: {},
+        error: `Judul lagu wajib diisi. Contoh: \`${prefix}lyrics APT\` atau \`${prefix}lyrics Love | wave to earth\`.`,
+      };
+    }
+
+    const pipeIndex = rawRest.indexOf('|');
+    if (pipeIndex !== -1) {
+      const queryPart = rawRest.slice(0, pipeIndex).trim();
+      const artistPart = rawRest.slice(pipeIndex + 1).trim();
+      if (!queryPart) {
+        return {
+          commandName,
+          subcommand: null,
+          options: {},
+          error: `Judul lagu wajib diisi sebelum \`|\`. Contoh: \`${prefix}lyrics Love | wave to earth\`.`,
+        };
+      }
+      return {
+        commandName,
+        subcommand: null,
+        options: artistPart ? { query: queryPart, artist: artistPart } : { query: queryPart },
+      };
+    }
+
+    return { commandName, subcommand: null, options: { query: rawRest } };
   }
 
   if (commandName === 'brat') {

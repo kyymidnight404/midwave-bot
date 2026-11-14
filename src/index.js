@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { Client, GatewayIntentBits } from 'discord.js';
 import { CommandHandler } from './handlers/CommandHandler.js';
+import { AutoDownloaderHandler } from './handlers/AutoDownloaderHandler.js';
 import { InteractionHandler } from './handlers/InteractionHandler.js';
 import { PrefixCommandHandler } from './handlers/PrefixCommandHandler.js';
 import { SessionManager } from './managers/SessionManager.js';
@@ -89,6 +90,14 @@ export async function createBotApp(options = {}) {
   });
   context.prefixCommandHandler = prefixCommandHandler;
 
+  const autoDownloaderHandler =
+    options.autoDownloaderHandler ??
+    new AutoDownloaderHandler({
+      cooldowns,
+      prefix,
+    });
+  context.autoDownloaderHandler = autoDownloaderHandler;
+
   const events = [readyEvent, interactionCreateEvent, messageCreateEvent];
   for (const event of events) {
     if (event.once) {
@@ -108,6 +117,7 @@ export async function createBotApp(options = {}) {
     commandHandler,
     interactionHandler,
     prefixCommandHandler,
+    autoDownloaderHandler,
     cooldowns,
     sessionManager,
     inviteManager,

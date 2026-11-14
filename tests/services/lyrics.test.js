@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { MessageFlags } from 'discord.js';
+import { MessageFlags, PermissionFlagsBits } from 'discord.js';
 import lyricsCommand, { data as lyricsData, execute as executeLyrics } from '../../src/commands/lyrics.js';
 import { createBotApp } from '../../src/index.js';
 import {
@@ -15,6 +15,7 @@ import {
   validateLyricsInput,
 } from '../../src/services/lyricsService.js';
 import { CooldownManager } from '../../src/utils/cooldown.js';
+import { parsePrefixInvocation } from '../../src/utils/prefixParser.js';
 import {
   LYRICS_EMBED_MAX_PAGE_CHARS,
   buildLyricsEmbed,
@@ -479,6 +480,95 @@ describe('Lyrics Finder service, formatter, and /lyrics command', () => {
     // Helper coverage sanity check
     assert.equal(stripLrcTimestamps('[00:01.00] Hello\n[00:02.50] World'), 'Hello\nWorld');
     assert.equal(pickBestLrclibMatch([], 'x'), null);
+
+    app.shutdown();
+  });
+
+  it('parses !lyrics / !lyric / !lirik prefix commands and executes via PrefixCommandHandler with shared cooldown', async () => {
+    assert.deepEqual(parsePrefixInvocation('!lyrics APT'), {
+      commandName: 'lyrics',
+      subcommand: null,
+      options: { query: 'APT' },
+    });
+    assert.deepEqual(parsePrefixInvocation('!lyrics Love | wave to earth'), {
+      commandName: 'lyrics',
+      subcommand: null,
+      options: { query: 'Love', artist: 'wave to earth' },
+    });
+    assert.deepEqual(parsePrefixInvocation('!lirik Blue'), {
+      commandName: 'lyrics',
+      subcommand: null,
+      options: { query: 'Blue' },
+    });
+    const missing = parsePrefixInvocation('!lyric');
+    assert.equal(missing.commandName, 'lyrics');
+    assert.match(missing.error, /Judul lagu wajib diisi/i);
+
+    let now = 50_000;
+    const cooldowns = new CooldownManager(2_000, () => now);
+    const app = await createBotApp({ cooldowns });
+    app.commandHandler.commands.set('lyrics', {
+      data: lyricsData,
+      execute: async (int) => executeLyrics(int, {
+        searchLyrics: async ({ query, artist }) => ({
+          title: query,
+          artist: artist || 'wave to earth',
+          album: '0.1 flaws and all.',
+          thumbnailUrl: 'https://example.com/cover.jpg',
+          lyrics: 'Between people and people\nBetween wind and wind',
+          sourceName: 'LRCLIB (Info: Apple Music)',
+          sourceUrl: 'https://music.apple.com/us/album/love/123',
+          cached: false,
+        }),
+      }),
+    });
+
+    const sentReplies = [];
+    let typingCalls = 0;
+    const fakeMessage = {
+      id: 'msg-prefix-lyrics-1',
+      content: '!lyrics Love | wave to earth',
+      author: {
+        id: 'u-prefix-lyrics',
+        bot: false,
+        username: 'kyy',
+        globalName: 'kyy',
+      },
+      guild: {
+        id: 'guild-1',
+        members: { me: { id: 'bot-1' } },
+      },
+      channel: {
+        id: 'ch-1',
+        isTextBased: () => true,
+        permissionsFor: () =>
+          new Set([
+            PermissionFlagsBits.ViewChannel,
+            PermissionFlagsBits.SendMessages,
+            PermissionFlagsBits.EmbedLinks,
+          ]),
+        async sendTyping() {
+          typingCalls += 1;
+        },
+      },
+      async reply(payload) {
+        sentReplies.push(payload);
+        return createFakeReplyMessage();
+      },
+    };
+
+    await app.prefixCommandHandler.handle(fakeMessage);
+    assert.equal(typingCalls, 1);
+    assert.equal(sentReplies.length, 1);
+    const embedJson = sentReplies[0].embeds[0].toJSON();
+    assert.equal(embedJson.title, '🎵 Lyrics Finder');
+    assert.ok(embedJson.description.includes('**Love — wave to earth**'));
+
+    // Within 5s cooldown -> shared with /lyrics & !lyrics
+    now += 2_500;
+    await app.prefixCommandHandler.handle(fakeMessage);
+    assert.equal(sentReplies.length, 2);
+    assert.match(sentReplies[1].embeds[0].toJSON().description, /Terlalu cepat/i);
 
     app.shutdown();
   });

@@ -26,6 +26,10 @@ Midwave stores active sessions and invitations purely in **in-memory JavaScript 
 - **Utility Feature — Lyrics Finder** (`/lyrics`):
   - Searches song lyrics by title (`query`) and optional `artist` via **LRCLIB REST API** (`lrclib.net`), enriched with album metadata, cover art thumbnail, and official source links (**Apple Music iTunes Search API** and optional official **Genius REST API** via `GENIUS_API_KEY`).
   - Features interactive `Previous` / `Page X/Y` / `Next` button pagination (owner-locked with automatic button disable on timeout), in-memory TTL caching (10 minutes), and per-user cooldown protection.
+- **Utility Feature — Media Downloader** (`/download` & Chat Auto-Downloader):
+  - Downloads public media from **Instagram** and **TikTok** using a single unified **RapidAPI + Axios** engine (`social-media-video-downloader.p.rapidapi.com`).
+  - Supports Slash Command (`/download url:<tautan>`) and automatic link detection in regular chat messages (`messageCreate`, with `sendTyping()`, `suppressEmbeds(true)` on success, and automatic direct CDN embed+button fallback if files exceed Discord's 10 MB standard attachment limit).
+  - Isolates each download in temporary `fs.mkdtemp` directories, verifies binary magic bytes (`MP4`/`MOV`/`WEBM`/`JPG`/`PNG`/`GIF`/`WEBP`) and file sizes, supports carousels up to 10 attachments, and cleans up temp folders automatically.
 - **Slash Command & Prefix Command Support** — Supports both Discord Slash Commands (`/`) and Prefix Commands (`!` by default, configurable via `PREFIX` in `.env`), sharing the same game engines, sessions, invites, and cooldowns.
 - **In-Memory Session & Invite Lifecycle** — Automatic invite expiration (60s), idle session timeout (120s), per-session concurrency lock, cooldowns, and clean timer/listener disposal.
 - **Zero Database** — All temporary match state lives in RAM and resets cleanly on bot restart.
@@ -56,6 +60,7 @@ midwave/
 │   │   ├── coinflip.js
 │   │   ├── connect4.js
 │   │   ├── dice.js
+│   │   ├── download.js           # /download Instagram & TikTok Media Downloader command
 │   │   ├── game.js
 │   │   ├── games.js
 │   │   ├── guess.js
@@ -84,6 +89,7 @@ midwave/
 │   │   ├── TriviaBank.js
 │   │   └── TriviaGame.js
 │   ├── handlers/
+│   │   ├── AutoDownloaderHandler.js
 │   │   ├── CommandHandler.js
 │   │   ├── InteractionHandler.js
 │   │   ├── MessageCommandAdapter.js
@@ -95,6 +101,8 @@ midwave/
 │   ├── prefixCommands/
 │   │   └── igf.js                # !igf Instagram Post Frame command
 │   ├── services/
+│   │   ├── downloader/           # Downloader config, URL/SSRF guard, magic-byte file manager & errors
+│   │   ├── downloader.js         # Unified RapidAPI + Axios downloader service (/download & Auto-Downloader)
 │   │   ├── gemini.js             # Stateless Google Gemini API client
 │   │   └── lyricsService.js      # LRCLIB + Apple Music / optional Genius REST lyrics service
 │   ├── utils/
@@ -103,6 +111,7 @@ midwave/
 │   │   ├── bratGenerator.js      # In-memory SVG -> PNG Brat image renderer
 │   │   ├── constants.js
 │   │   ├── cooldown.js
+│   │   ├── urlDetector.js        # TikTok & Instagram URL regex detector for chat Auto-Downloader
 │   │   ├── discordBoard.js
 │   │   ├── embeds.js
 │   │   ├── gameCommandHelpers.js
@@ -201,6 +210,7 @@ midwave/
 | `/help` | Shows bot usage instructions, utility commands, and match rules |
 | `/ai question` | Asks Midwave AI (Google Gemini) a single independent question |
 | `/brat text` | Generates a 1024×1024 Brat-style PNG image (`midwave-brat.png`, max 100 chars) |
+| `/download url` | Downloads public Instagram or TikTok media via RapidAPI and attaches the file directly |
 | `/lyrics query [artist]` | Searches song lyrics with album art, source link, and paginated buttons |
 | `/game status` | Displays your active match or pending invite (ephemeral) |
 | `/game cancel` | Cancels your active match or outgoing pending invite |
@@ -225,7 +235,7 @@ midwave/
 
 Midwave supports configurable prefix commands (`PREFIX=!` in `.env`) using the same underlying game engines, `SessionManager`, `InviteManager`, and cooldowns as Slash Commands:
 
-- **Core & Utility**: `!games`, `!help`, `!ai <pertanyaan>`, `!brat <text>`, `!igf [caption]`, `!game status`, `!game cancel`, `!invite accept`, `!invite decline`
+- **Core & Utility**: `!games`, `!help`, `!ai <pertanyaan>`, `!brat <text>`, `!igf [caption]`, `!lyrics <judul> [| <artis>]` (aliases: `!lyric`, `!lirik`), `!game status`, `!game cancel`, `!invite accept`, `!invite decline`
 - **Solo**: `!guess [easy|normal|hard]`, `!rps <rock|paper|scissors>`, `!trivia [category] [difficulty]`, `!coinflip <heads|tails>`, `!dice [count] [sides]` (or `!dice 2d6`), `!tictactoe [easy|normal|hard]` (alias `!ttt`), `!connect4 [easy|normal|hard]` (alias `!c4`)
 - **In-Game Moves**: `!guess <number>`, `!rps choose <choice>`, `!trivia <A|B|C|D>`, `!coinflip choose <choice>`, `!tictactoe <A1-C3>`, `!connect4 <1-7>`
 - **Multiplayer**: `!guess @user [difficulty]`, `!rps challenge @user`, `!trivia @user [category] [difficulty]`, `!coinflip challenge @user`, `!dice @user [2d6]`, `!tictactoe challenge @user`, `!connect4 challenge @user`
@@ -252,9 +262,8 @@ Midwave supports configurable prefix commands (`PREFIX=!` in `.env`) using the s
 ## Lyrics Finder (`/lyrics`)
 
 - **Usage**:
-  - `/lyrics query: APT`
-  - `/lyrics query: Love artist: wave to earth`
-  - `/lyrics query: Blue`
+  - Slash Command: `/lyrics query: APT`, `/lyrics query: Love artist: wave to earth`, `/lyrics query: Blue`
+  - Prefix Command: `!lyrics APT`, `!lyrics Love | wave to earth`, `!lirik Blue` (aliases: `!lyric`, `!lirik`)
 - **Architecture & Library Choice**:
   - Uses Node.js built-in `fetch` (`AbortSignal.timeout`) with **zero extra npm dependencies** (avoiding `lyrics-finder`'s fragile Google scraping, `genius-lyrics`'s Cloudflare `403` HTML scraping blocks, and `lyricsgenius`'s Python runtime requirement).
   - **Lyrics source**: [LRCLIB](https://lrclib.net) open REST API (`/api/search`), with in-memory TTL caching (10 minutes) and 5-second per-user cooldown.
@@ -266,6 +275,36 @@ Midwave supports configurable prefix commands (`PREFIX=!` in `.env`) using the s
 - **Limitations & Attribution**:
   - Availability of lyrics depends on LRCLIB's community catalog; instrumental tracks or unlisted songs return an informative status message without fabricating lyrics.
   - Every embed displays source attribution and a link to the official/provider URL.
+
+---
+
+## Media Downloader (RapidAPI — `/download` & Auto-Downloader)
+
+- **Usage**:
+  - **Slash Command**: `/download url:https://www.instagram.com/reel/...` or `/download url:https://www.tiktok.com/@user/video/...`
+  - **Chat Auto-Downloader (`messageCreate`)**: Paste any valid public Instagram or TikTok link directly in chat; Midwave triggers `sendTyping()`, uploads attachments (up to 10 files / 10 MB standard limit, or sends a direct CDN link button embed if larger), and runs `suppressEmbeds(true)` once delivered.
+- **Supported Platforms**:
+  - **Instagram**: `instagram.com` (`reel/`, `p/`, `stories/`), `instagr.am` (Reels, videos, photos, carousels when returned by RapidAPI)
+  - **TikTok**: `tiktok.com`, `vm.tiktok.com`, `vt.tiktok.com` (public videos, HD watermark-free when provided by RapidAPI, photo slideshows)
+  - **Threads**: Currently **disabled / not supported** (`UNSUPPORTED_PLATFORM`) until an endpoint & schema are verified.
+- **Getting & Configuring RapidAPI**:
+  1. Sign up on [RapidAPI](https://rapidapi.com/) and subscribe to **Social Media Video Downloader** (`social-media-video-downloader.p.rapidapi.com`).
+  2. Copy your `X-RapidAPI-Key` from the RapidAPI Playground.
+  3. Set in `.env` or Wispbyte Environment Variables:
+     - `RAPIDAPI_KEY=your_rapidapi_key_here`
+     - `RAPIDAPI_HOST=social-media-video-downloader.p.rapidapi.com`
+     - *(Optional)* `RAPIDAPI_ENDPOINT=https://social-media-video-downloader.p.rapidapi.com/smvd/get/all` — override if your RapidAPI Playground Test Endpoint uses a different path (for example `/smvd/get/tiktok` or `/smvd/get/`).
+     - *(Optional tuning)* `DOWNLOAD_MAX_SIZE_MB=25`, `DOWNLOAD_TIMEOUT_MS=25000`, `DOWNLOAD_MAX_CONCURRENT=3`, `DOWNLOAD_COOLDOWN_SECONDS=10`
+- **Security, Quotas & Limits**:
+  - Enforces strict `https://` + domain allowlist validation, DNS private/loopback IP blocking (anti-SSRF), and manual redirect checks on both user URLs and extracted CDN URLs.
+  - Streams media via `axios` into isolated `fs.mkdtemp` job folders, checks actual binary magic bytes (`MP4`, `MOV`, `WEBM`, `JPG`, `PNG`, `GIF`, `WEBP`), rejects HTML/text payloads masquerading as video/images, and cleans up temp folders inside `finally`.
+  - Respects RapidAPI free-tier/monthly request quotas, per-user cooldown (`10s` default), and concurrency limits (`3` concurrent jobs default; recommended `2` on 612 MB Wispbyte containers).
+  - Attachment limits: Auto-Downloader enforces `10 MB` max (falling back to a direct CDN embed + link button when larger); `/download` scales up to server boost Tier 2 (`50 MB`) / Tier 3 (`100 MB`) bounded by `DOWNLOAD_MAX_SIZE_MB`.
+- **Troubleshooting**:
+  - *`RAPIDAPI_KEY` belum dikonfigurasi*: Add `RAPIDAPI_KEY` to `.env` or Wispbyte panel and restart the bot (`npm run deploy` if `/download` is not registered yet).
+  - *401 / 403 / Not subscribed*: Verify `RAPIDAPI_KEY` is valid and actively subscribed to `social-media-video-downloader.p.rapidapi.com`.
+  - *429 / Quota exceeded*: Monthly/per-minute RapidAPI quota reached; wait for quota reset or upgrade plan.
+  - *Link CDN fallback muncul di chat*: File exceeded Discord's 10 MB standard attachment limit or CDN rejected direct attachment download; use the embedded button/link.
 
 ---
 
