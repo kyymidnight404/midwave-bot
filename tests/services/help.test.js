@@ -1,11 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
-import { MessageFlags, PermissionFlagsBits } from 'discord.js';
+import { PermissionFlagsBits } from 'discord.js';
 import '../../src/handlers/PrefixCommandHandler.js';
 import helpCommand from '../../src/commands/help.js';
 import {
-  HELP_SELECT_CUSTOM_ID,
   buildDynamicHelpEmbed,
   buildHelpCategoryMenu,
   discoverHelpEntries,
@@ -14,20 +12,6 @@ import { buildHelpEmbed } from '../../src/utils/embeds.js';
 import { COLORS, EMBED_FOOTER, LOGO_ATTACHMENT_URL } from '../../src/utils/constants.js';
 import defaultCommandStructure from '../../src/config/commandStructure.js';
 import { DEFAULT_HANDLER_REGISTRY } from '../../src/config/commandRegistry.js';
-
-function createMockReplyWithCollector() {
-  const collector = new EventEmitter();
-  const edits = [];
-  const message = {
-    edits,
-    createMessageComponentCollector: () => collector,
-    edit: async (payload) => {
-      edits.push(payload);
-      return message;
-    },
-  };
-  return { message, collector };
-}
 
 test('Help Embed: single embed with Midnight Ocean visual identity & all 5 categories', () => {
   const entries = discoverHelpEntries({ prefix: '!' });
@@ -207,15 +191,14 @@ test('Help Content: includes all 10 social actions and all 7 mini-games without 
   }
 });
 
-test('Help Interactive Menu: category filtering, owner lock, and timeout disable', async () => {
-  const { message, collector } = createMockReplyWithCollector();
+test('Help Command: sends embed without category select menu components', async () => {
   const replies = [];
   const mockInteraction = {
     user: { id: 'owner-1' },
     memberPermissions: null,
     reply: async (payload) => {
       replies.push(payload);
-      return message;
+      return {};
     },
   };
 
@@ -223,45 +206,7 @@ test('Help Interactive Menu: category filtering, owner lock, and timeout disable
 
   assert.equal(replies.length, 1);
   assert.equal(replies[0].embeds.length, 1);
-  assert.equal(replies[0].components.length, 1);
-
-  const outsiderReplies = [];
-  await collector.emit('collect', {
-    customId: HELP_SELECT_CUSTOM_ID,
-    user: { id: 'other-user' },
-    values: ['mini_games'],
-    reply: async (payload) => {
-      outsiderReplies.push(payload);
-    },
-    update: async () => {
-      throw new Error('Outsider should not trigger update');
-    },
-  });
-  await new Promise((r) => setTimeout(r, 10));
-  assert.equal(outsiderReplies.length, 1);
-  assert.equal(outsiderReplies[0].flags, MessageFlags.Ephemeral);
-
-  const updates = [];
-  collector.emit('collect', {
-    customId: HELP_SELECT_CUSTOM_ID,
-    user: { id: 'owner-1' },
-    values: ['mini_games'],
-    update: async (payload) => {
-      updates.push(payload);
-    },
-  });
-  await new Promise((r) => setTimeout(r, 10));
-
-  assert.equal(updates.length, 1);
-  const filteredJson = updates[0].embeds[0].toJSON();
-  assert.equal(filteredJson.fields.length, 1);
-  assert.ok(filteredJson.fields[0].name.includes('Mini Games'));
-
-  collector.emit('end');
-  await new Promise((r) => setTimeout(r, 10));
-  assert.equal(message.edits.length, 1);
-  const disabledMenu = message.edits[0].components[0].toJSON();
-  assert.equal(disabledMenu.components[0].disabled, true);
+  assert.equal(replies[0].components, undefined);
 });
 
 test('Help Embed & SelectMenu: respects Discord embed length & component limits', () => {
