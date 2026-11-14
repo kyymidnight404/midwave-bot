@@ -86,4 +86,41 @@ describe('CommandHandler & InteractionHandler', () => {
     assert.equal(replies.length, 1);
     assert.equal(replies[0].payload.flags, MessageFlags.Ephemeral);
   });
+
+  it('deploys all 15 slash commands including /download for guild and global routes', async () => {
+    const calls = [];
+    const mockRest = {
+      async put(route, opts) {
+        calls.push({ route, body: opts.body });
+        return opts.body.map((cmd, idx) => ({ id: String(idx + 1), ...cmd }));
+      },
+    };
+    const silentLogger = { log() {} };
+
+    const guildResult = await deployCommands({
+      global: false,
+      restClient: mockRest,
+      env: { DISCORD_TOKEN: 'tok', CLIENT_ID: '123', GUILD_ID: '456' },
+      logger: silentLogger,
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].route, '/applications/123/guilds/456/commands');
+    assert.equal(guildResult.length, 15);
+    const downloadCmd = guildResult.find((c) => c.name === 'download');
+    assert.ok(downloadCmd);
+    assert.equal(downloadCmd.options[0].name, 'url');
+    assert.equal(downloadCmd.options[0].required, true);
+
+    await deployCommands({
+      global: true,
+      restClient: mockRest,
+      env: { DISCORD_TOKEN: 'tok', CLIENT_ID: '123' },
+      logger: silentLogger,
+    });
+
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].route, '/applications/123/commands');
+    assert.equal(calls[1].body.length, 15);
+  });
 });
