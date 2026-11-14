@@ -15,25 +15,19 @@ export const data = new SlashCommandBuilder()
   );
 
 /**
- * Builds the MIDWAVE CALCULATOR embed with consistent Midnight Ocean styling.
- * @param {{ input: string, formattedResult: string, operation: string }} result
+ * Builds the minimalist Midwave Math embed containing only Input, Output, and footer.
+ * @param {{ input: string, formattedResult: string }} result
  * @returns {import('discord.js').EmbedBuilder}
  */
-export function buildMathEmbed({ input, formattedResult, operation }) {
+export function buildMathEmbed({ input, formattedResult }) {
   const safeInput = input.replace(/`/g, "'");
   return createBaseEmbed({
-    title: 'MIDWAVE CALCULATOR',
     color: COLORS.PRIMARY,
     includeThumbnail: false,
   })
     .addFields(
       { name: 'Input', value: `\`${safeInput}\``, inline: false },
-      { name: 'Result', value: `\`${formattedResult}\``, inline: false },
-      {
-        name: 'Additional Information',
-        value: `• Operation: ${operation}\n• Status: Success`,
-        inline: false,
-      },
+      { name: 'Output', value: `\`${formattedResult}\``, inline: false },
     )
     .setFooter({ text: 'Midwave • Math Utility' });
 }

@@ -1,10 +1,14 @@
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { ApplicationCommandType, AttachmentBuilder, MessageFlags } from 'discord.js';
 import {
   formatQcTimestamp,
+  loadQcAssets,
   QC_ATTACHMENT_NAME,
   QC_DEFAULT_TIMEZONE,
+  QC_EMOJI_ASSETS,
+  QC_ICON_ASSETS,
   QC_MAX_LENGTH,
   QC_MIN_HEIGHT,
   QC_WIDTH,
@@ -74,6 +78,47 @@ function createMockContextMenuInteraction(targetMessage) {
 }
 
 describe('QC (WhatsApp Chat Screenshot) Generator & Commands', () => {
+  it('loads all 7 local Apple-iOS-style RGBA emoji PNGs (>=128px, 1:1 ratio) and 7 icon PNGs without external URLs', () => {
+    assert.equal(QC_EMOJI_ASSETS.length, 7);
+    for (const spec of QC_EMOJI_ASSETS) {
+      assert.ok(existsSync(spec.path), `Missing emoji PNG asset: ${spec.path}`);
+      const buf = readFileSync(spec.path);
+      assert.ok(buf.subarray(0, 8).equals(PNG_SIGNATURE), `Invalid PNG signature: ${spec.name}`);
+      const width = buf.readUInt32BE(16);
+      const height = buf.readUInt32BE(20);
+      const colorType = buf.readUInt8(25);
+      assert.ok(width >= 128 && height >= 128, `${spec.name} must be high-res >= 128x128`);
+      assert.equal(width, height, `${spec.name} must preserve 1:1 aspect ratio`);
+      assert.equal(colorType, 6, `${spec.name} must be RGBA PNG with transparent background`);
+    }
+
+    const expectedIcons = ['dropdown', 'reply', 'copy', 'pin', 'forward', 'delete', 'select'];
+    assert.deepEqual(Object.keys(QC_ICON_ASSETS).sort(), [...expectedIcons].sort());
+    for (const key of expectedIcons) {
+      const iconPath = QC_ICON_ASSETS[key];
+      assert.ok(existsSync(iconPath), `Missing icon PNG asset: ${iconPath}`);
+      const buf = readFileSync(iconPath);
+      assert.ok(buf.subarray(0, 8).equals(PNG_SIGNATURE), `Invalid PNG signature for icon: ${key}`);
+      assert.ok(buf.readUInt32BE(16) >= 72 && buf.readUInt32BE(20) >= 72, `${key} icon must be >= 72x72`);
+    }
+
+    const loaded = loadQcAssets();
+    assert.equal(loaded.reactionEmojis.length, 7);
+    assert.equal(Object.keys(loaded.icons).length, 7);
+
+    // Ensure rendering makes zero external fetch calls
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = () => {
+      throw new Error('QC rendering must not call external URLs');
+    };
+    try {
+      const png = renderQcPng('Test offline rendering ❤️🤝👍👎🔥🥰👏');
+      assert.ok(png.subarray(0, 8).equals(PNG_SIGNATURE));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('validates text input, preserves newlines, and enforces max length', () => {
     assert.throws(() => validateQcText(''), /kosong/i);
     assert.throws(() => validateQcText('   \n\t '), /kosong/i);
@@ -93,8 +138,8 @@ describe('QC (WhatsApp Chat Screenshot) Generator & Commands', () => {
     assert.equal(formatQcTimestamp(new Date('2026-11-14T17:00:00Z'), 'Asia/Jakarta'), '00:00');
   });
 
-  it('renders 1080x1080 PNG for short text and dynamically expands canvas height for long text', () => {
-    const shortPng = renderQcPng('Halo, apa kabar? ❤️🔥', {
+  it('renders 1080x1080 PNG for short/medium text and dynamically expands canvas height for long text', () => {
+    const shortPng = renderQcPng('hi ❤️', {
       timestamp: new Date('2026-11-14T13:04:00Z'),
       timeZone: 'Asia/Jakarta',
     });
@@ -102,8 +147,13 @@ describe('QC (WhatsApp Chat Screenshot) Generator & Commands', () => {
     assert.equal(shortPng.readUInt32BE(16), QC_WIDTH);
     assert.equal(shortPng.readUInt32BE(20), QC_MIN_HEIGHT);
 
+    const mediumPng = renderQcPng('Halo, apa kabar? ❤️🤝👍👎🔥🥰👏');
+    assert.ok(mediumPng.subarray(0, 8).equals(PNG_SIGNATURE));
+    assert.equal(mediumPng.readUInt32BE(16), QC_WIDTH);
+    assert.equal(mediumPng.readUInt32BE(20), QC_MIN_HEIGHT);
+
     const longText = Array.from({ length: 24 }, (_, idx) =>
-      `Baris pesan ke-${idx + 1}: itu aku baru dengerin sekali lagunya terus keinget kamu.`,
+      `Baris pesan ke-${idx + 1}: itu aku baru dengerin sekali lagunya terus keinget kamu. 🔥`,
     ).join('\n');
     const longPng = renderQcPng(longText);
     assert.ok(longPng.subarray(0, 8).equals(PNG_SIGNATURE));

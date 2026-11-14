@@ -491,17 +491,33 @@ describe('Prefix Command System', () => {
     const overEmbed = JSON.stringify(bratOverMsg.getReplies()[0].payload.embeds[0].toJSON());
     assert.match(overEmbed, /maksimal 1000 karakter/i);
 
-    // ?math integration through PrefixCommandHandler
+    // ?math integration through PrefixCommandHandler (minimalist embed)
     const mathMsg = createFakeMessage({
-      content: '?math 15% of 200',
+      content: '?math 9 + 11',
       author: u1,
       channel: harness.channel,
       userDirectory: harness.users,
     });
     await harness.prefixCommandHandler.handle(mathMsg);
     const mathEmbed = mathMsg.getReplies()[0].payload.embeds[0].toJSON();
-    assert.equal(mathEmbed.title, 'MIDWAVE CALCULATOR');
-    assert.equal(mathEmbed.fields[1].value, '`30`');
+    assert.equal(mathEmbed.title, undefined);
+    assert.equal(mathEmbed.description, undefined);
+    assert.equal(mathEmbed.fields.length, 2);
+    assert.equal(mathEmbed.fields[0].name, 'Input');
+    assert.equal(mathEmbed.fields[0].value, '`9 + 11`');
+    assert.equal(mathEmbed.fields[1].name, 'Output');
+    assert.equal(mathEmbed.fields[1].value, '`20`');
+    assert.equal(mathEmbed.footer.text, 'Midwave • Math Utility');
+
+    const mathSqrtMsg = createFakeMessage({
+      content: '?math sqrt(144)',
+      author: u1,
+      channel: harness.channel,
+      userDirectory: harness.users,
+    });
+    await harness.prefixCommandHandler.handle(mathSqrtMsg);
+    const sqrtEmbed = mathSqrtMsg.getReplies()[0].payload.embeds[0].toJSON();
+    assert.equal(sqrtEmbed.fields[1].value, '`12`');
 
     // Solo TicTacToe gameplay via prefix commands
     await harness.prefixCommandHandler.handle(

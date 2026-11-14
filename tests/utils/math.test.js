@@ -127,28 +127,30 @@ describe('Math Evaluator & /math / !math command', () => {
     }
   });
 
-  it('builds consistent MIDWAVE CALCULATOR embed and executes /math and !math', async () => {
+  it('builds minimalist Input/Output/Footer embed and executes /math and !math', async () => {
     assert.equal(mathCommand.data.name, 'math');
     assert.equal(mathCommand.data.options[0].max_length, MATH_MAX_LENGTH);
 
-    const parsed = parsePrefixInvocation('!math (25 + 15) * 2');
+    const parsed = parsePrefixInvocation('!math 9 + 11');
     assert.deepEqual(parsed, {
       commandName: 'math',
       subcommand: null,
-      options: { expression: '(25 + 15) * 2' },
+      options: { expression: '9 + 11' },
     });
     assert.ok(parsePrefixInvocation('!math')?.error);
 
-    const okInteraction = createMockInteraction('(25 + 15) * 2');
+    const okInteraction = createMockInteraction('9 + 11');
     await executeMath(okInteraction);
     const okReply = okInteraction.getReplies()[0];
     const embedJson = okReply.embeds[0].toJSON();
-    assert.equal(embedJson.title, 'MIDWAVE CALCULATOR');
+    assert.equal(embedJson.title, undefined);
+    assert.equal(embedJson.description, undefined);
     assert.equal(embedJson.footer.text, 'Midwave • Math Utility');
-    assert.equal(embedJson.fields[0].value, '`(25 + 15) * 2`');
-    assert.equal(embedJson.fields[1].value, '`80`');
-    assert.match(embedJson.fields[2].value, /Operation: Arithmetic/);
-    assert.match(embedJson.fields[2].value, /Status: Success/);
+    assert.equal(embedJson.fields.length, 2);
+    assert.equal(embedJson.fields[0].name, 'Input');
+    assert.equal(embedJson.fields[0].value, '`9 + 11`');
+    assert.equal(embedJson.fields[1].name, 'Output');
+    assert.equal(embedJson.fields[1].value, '`20`');
 
     const errInteraction = createMockInteraction('10 / 0');
     await executeMath(errInteraction);
@@ -158,6 +160,13 @@ describe('Math Evaluator & /math / !math command', () => {
 
     // Direct buildMathEmbed check
     const built = buildMathEmbed(evaluateMathExpression('sqrt(144)')).toJSON();
+    assert.equal(built.title, undefined);
+    assert.equal(built.description, undefined);
+    assert.equal(built.fields.length, 2);
+    assert.equal(built.fields[0].name, 'Input');
+    assert.equal(built.fields[0].value, '`sqrt(144)`');
+    assert.equal(built.fields[1].name, 'Output');
     assert.equal(built.fields[1].value, '`12`');
+    assert.equal(built.footer.text, 'Midwave • Math Utility');
   });
 });
