@@ -1,5 +1,6 @@
 import dns from 'node:dns';
 import { GoogleGenAI } from '@google/genai';
+import { formatKnowledgeContext, retrieveRelevantKnowledge } from './knowledge/index.js';
 
 // Prefer IPv4 first on hosts/containers (e.g., Docker) where broken IPv6 routes stall fetch().
 try {
@@ -25,6 +26,7 @@ export const MIDWAVE_AI_SYSTEM_INSTRUCTION = [
   '- Jangan pernah mengaku sebagai manusia; akui dirimu sebagai AI (Midwave AI) jika ditanya.',
   '- Untuk pertanyaan sederhana, berikan jawaban ringkas dan langsung ke inti; gunakan Markdown Discord yang rapi jika membantu keterbacaan.',
   '- Setiap permintaan bersifat independen tanpa riwayat percakapan sebelumnya, jadi jangan berasumsi ada konteks chat terdahulu.',
+  '- Jika tersedia blok <global_bot_knowledge>, gunakan sebagai data referensi resmi tentang Midwave (identitas, pembuat, website/tautan, fitur, teknis, kebijakan); jangan mengarang fitur, tautan, atau informasi developer yang tidak ada atau berstatus pending_verification/unknown.',
 ].join('\n');
 
 export const MIDWAVE_WEB_SEARCH_SYSTEM_INSTRUCTION = [
@@ -364,16 +366,30 @@ export async function askGemini(rawQuestion, options = {}) {
     }
   }
 
+  let knowledgeBlock = '';
+  if (options.enableGlobalKnowledge !== false) {
+    try {
+      const relevantEntries = retrieveRelevantKnowledge(userQuestion, {
+        store: options.knowledgeStore,
+      });
+      knowledgeBlock = formatKnowledgeContext(relevantEntries);
+    } catch {
+      knowledgeBlock = '';
+    }
+  }
+
   let contents = typeof rawQuestion === 'string' && options.skipQuestionLengthValidation
     ? rawQuestion.trim()
     : userQuestion;
 
   if (Array.isArray(options.history) || typeof options.contextText === 'string') {
     const maxPayloadChars = options.maxPayloadChars ?? AI_MAX_PAYLOAD_CHARS;
-    const contextText = typeof options.contextText === 'string' ? options.contextText.trim() : '';
+    const combinedContext = [knowledgeBlock, typeof options.contextText === 'string' ? options.contextText.trim() : '']
+      .filter(Boolean)
+      .join('\n\n');
     const historyBudget = Math.max(
       0,
-      maxPayloadChars - countUnicodeChars(userQuestion) - countUnicodeChars(contextText) - 200,
+      maxPayloadChars - countUnicodeChars(userQuestion) - countUnicodeChars(combinedContext) - 200,
     );
     const trimmedHistory = trimConversationHistory(options.history || [], {
       maxMessages: AI_MAX_HISTORY_MESSAGES,
@@ -387,11 +403,13 @@ export async function askGemini(rawQuestion, options = {}) {
         .join('\n');
       sections.push(`Riwayat percakapan terakhir:\n${historyBlock}`);
     }
-    if (contextText) {
-      sections.push(contextText);
+    if (combinedContext) {
+      sections.push(combinedContext);
     }
     sections.push(`Pertanyaan pengguna:\n${userQuestion}`);
     contents = sections.join('\n\n');
+  } else if (knowledgeBlock) {
+    contents = `${knowledgeBlock}\n\nPertanyaan pengguna:\n${contents}`;
   }
 
   const maxPayloadChars = options.maxPayloadChars ?? AI_MAX_PAYLOAD_CHARS;

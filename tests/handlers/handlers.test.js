@@ -87,7 +87,7 @@ describe('CommandHandler & InteractionHandler', () => {
     assert.equal(replies[0].payload.flags, MessageFlags.Ephemeral);
   });
 
-  it('deploys all 15 slash commands including /download for guild and global routes', async () => {
+  it('deploys all 16 slash commands including /download and /knowledge for guild and global routes', async () => {
     const calls = [];
     const mockRest = {
       async put(route, opts) {
@@ -106,7 +106,7 @@ describe('CommandHandler & InteractionHandler', () => {
 
     assert.equal(calls.length, 1);
     assert.equal(calls[0].route, '/applications/123/guilds/456/commands');
-    assert.equal(guildResult.length, 15);
+    assert.equal(guildResult.length, 16);
     const downloadCmd = guildResult.find((c) => c.name === 'download');
     assert.ok(downloadCmd);
     assert.equal(downloadCmd.options[0].name, 'url');
@@ -121,6 +121,6 @@ describe('CommandHandler & InteractionHandler', () => {
 
     assert.equal(calls.length, 2);
     assert.equal(calls[1].route, '/applications/123/commands');
-    assert.equal(calls[1].body.length, 15);
+    assert.equal(calls[1].body.length, 16);
   });
 });
