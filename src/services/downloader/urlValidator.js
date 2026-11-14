@@ -183,6 +183,33 @@ export async function assertSafeRemoteHost(hostname, options = {}) {
   }
 }
 
+const TRACKING_QUERY_PARAMS = new Set([
+  'igsh',
+  'igshid',
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_content',
+  'utm_term',
+  '_t',
+  '_r',
+  'is_from_webapp',
+  'sender_device',
+  'fbclid',
+  's',
+]);
+
+function isLoginWallUrl(platform, pathname) {
+  const lowerPath = String(pathname || '').toLowerCase();
+  if (platform === PLATFORMS.INSTAGRAM) {
+    return lowerPath.startsWith('/accounts/login') || lowerPath.startsWith('/challenge');
+  }
+  if (platform === PLATFORMS.TIKTOK) {
+    return lowerPath === '/login' || lowerPath.startsWith('/login/');
+  }
+  return false;
+}
+
 /**
  * Parses, normalizes, and strictly validates a user-submitted media URL.
  * Enforces HTTPS, disallows credentials/custom ports/IPs, and checks the platform allowlist.
@@ -273,6 +300,16 @@ export function validateMediaUrl(rawUrl) {
     );
   }
 
+  if (isLoginWallUrl(platform, parsed.pathname)) {
+    throw new DownloaderError(
+      DOWNLOADER_ERROR_CODES.PRIVATE_OR_RESTRICTED,
+      'Konten memerlukan login atau bersifat privat pada platform sumber.',
+    );
+  }
+
+  for (const param of TRACKING_QUERY_PARAMS) {
+    parsed.searchParams.delete(param);
+  }
   parsed.hash = '';
 
   return {

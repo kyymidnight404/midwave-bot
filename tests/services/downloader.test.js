@@ -518,6 +518,141 @@ describe('Downloader — Unified RapidAPI + Axios Pipeline', () => {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
   });
+
+  it('normalizes tracking query params, rejects login walls, and handles object-map / JSON-string RapidAPI schemas', () => {
+    const igClean = validateMediaUrl(
+      'https://www.instagram.com/reel/AbCdEf123/?igsh=MzRlODBiNWFlZA==&utm_source=ig_web_copy_link',
+    );
+    assert.equal(igClean.normalizedUrl, 'https://www.instagram.com/reel/AbCdEf123/');
+
+    const ttClean = validateMediaUrl(
+      'https://www.tiktok.com/@midwave/video/7400000000000000000?_t=8pABC&_r=1',
+    );
+    assert.equal(ttClean.normalizedUrl, 'https://www.tiktok.com/@midwave/video/7400000000000000000');
+
+    assert.throws(
+      () => validateMediaUrl('https://www.instagram.com/accounts/login/?next=/reel/123/'),
+      (err) => err.code === DOWNLOADER_ERROR_CODES.PRIVATE_OR_RESTRICTED,
+    );
+
+    const fromMap = parseRapidApiResponse(
+      JSON.stringify({
+        success: true,
+        links: {
+          hd_no_watermark: 'https://v16.tiktokcdn.com/hd.mp4',
+          sd: 'https://v16.tiktokcdn.com/sd.mp4',
+          audio: 'https://v16.tiktokcdn.com/audio.mp3',
+        },
+      }),
+    );
+    assert.equal(fromMap.mode, 'video');
+    assert.equal(fromMap.candidates[0].url, 'https://v16.tiktokcdn.com/hd.mp4');
+
+    assert.throws(
+      () => parseRapidApiResponse({ success: false, message: 'Invalid API key' }),
+      (err) => err.code === DOWNLOADER_ERROR_CODES.PRIVATE_OR_RESTRICTED,
+    );
+
+    assert.throws(
+      () => parseRapidApiResponse({ success: false, message: 'Unsupported URL' }),
+      (err) => err.code === DOWNLOADER_ERROR_CODES.UNSUPPORTED_PLATFORM,
+    );
+  });
+
+  it('falls back from /smvd/get/all (404) to platform endpoint and avoids masking missing endpoint 404 as NOT_FOUND while logging safely', async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'midwave-test-fallback-'));
+    const secretKey = 'SUPER_SECRET_RAPIDAPI_KEY_12345';
+    const warnLogs = [];
+    const safeLogger = {
+      warn: (msg) => warnLogs.push(String(msg)),
+    };
+
+    try {
+      const config = {
+        ...getDownloaderConfig({ RAPIDAPI_KEY: secretKey }),
+        tempBaseDir: tempRoot,
+      };
+
+      const requestedUrls = [];
+      const fallbackResult = await downloadMediaFromUrl({
+        url: 'https://www.instagram.com/reel/NewPost2026/?igsh=xyz',
+        config,
+        deps: {
+          lookupFn: publicLookupStub,
+          logger: safeLogger,
+          axiosClient: {
+            async get(targetUrl) {
+              requestedUrls.push(targetUrl);
+              if (targetUrl.endsWith('/smvd/get/all')) {
+                const err = new Error('Not Found');
+                err.response = {
+                  status: 404,
+                  data: { message: "Endpoint '/smvd/get/all' does not exist" },
+                };
+                throw err;
+              }
+              if (targetUrl.endsWith('/smvd/get/instagram')) {
+                return {
+                  data: {
+                    success: true,
+                    links: [{ quality: 'hd', link: 'https://scontent.cdninstagram.com/reel.mp4' }],
+                  },
+                };
+              }
+              return {
+                status: 200,
+                headers: { 'content-type': 'video/mp4' },
+                data: Readable.from(FAKE_MP4_HEADER),
+              };
+            },
+          },
+        },
+      });
+
+      assert.equal(fallbackResult.items.length, 1);
+      assert.ok(requestedUrls.some((u) => u.endsWith('/smvd/get/all')));
+      assert.ok(requestedUrls.some((u) => u.endsWith('/smvd/get/instagram')));
+      await cleanupTempDir(fallbackResult.jobDir);
+
+      // Custom endpoint returning missing-route 404 must map to EXTRACTION_FAILED (not NOT_FOUND) and never log API key
+      const customConfig = {
+        ...getDownloaderConfig({
+          RAPIDAPI_KEY: secretKey,
+          RAPIDAPI_ENDPOINT: 'https://social-media-video-downloader.p.rapidapi.com/custom/wrong',
+        }),
+        tempBaseDir: tempRoot,
+      };
+
+      await assert.rejects(
+        downloadMediaFromUrl({
+          url: 'https://www.tiktok.com/@creator/video/123',
+          config: customConfig,
+          deps: {
+            lookupFn: publicLookupStub,
+            logger: safeLogger,
+            axiosClient: {
+              async get() {
+                const err = new Error('Not Found');
+                err.response = {
+                  status: 404,
+                  data: { message: "Endpoint '/custom/wrong' does not exist" },
+                };
+                throw err;
+              },
+            },
+          },
+        }),
+        (err) => err.code === DOWNLOADER_ERROR_CODES.EXTRACTION_FAILED,
+      );
+
+      assert.ok(warnLogs.length >= 2);
+      for (const line of warnLogs) {
+        assert.equal(line.includes(secretKey), false);
+      }
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('Downloader — Discord /download Command & Cooldown Integration', () => {

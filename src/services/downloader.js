@@ -145,14 +145,62 @@ function inferCandidateKind(entry, url) {
   return 'video';
 }
 
+function sanitizeLogText(value, maxLen = 160) {
+  return String(value ?? '')
+    .replace(/(x-rapidapi-key|api[_-]?key|token|authorization)\s*[:=]\s*\S+/gi, '$1=[REDACTED]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLen);
+}
+
+function getSafeEndpointLabel(endpointUrl) {
+  try {
+    const parsed = new URL(endpointUrl);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return 'invalid-endpoint';
+  }
+}
+
+function extractApiErrorMessage(data) {
+  if (!data) return '';
+  if (typeof data === 'string') return data;
+  if (typeof data === 'object') {
+    return String(
+      data.message || data.error_message || data.error || data.detail || data.msg || '',
+    );
+  }
+  return '';
+}
+
+function isMissingEndpointMessage(lowerMsg) {
+  return (
+    lowerMsg.includes('endpoint') &&
+    (lowerMsg.includes('does not exist') || lowerMsg.includes('not found'))
+  ) ||
+    lowerMsg.includes('no route') ||
+    lowerMsg.includes('cannot get') ||
+    lowerMsg.includes('route not found');
+}
+
 /**
  * Normalizes flexible RapidAPI JSON responses (`links`, `medias`, `images`, `items`, or single `url`)
  * into prioritized download candidates.
  *
  * @param {unknown} rawData
+ * @param {{ logger?: Console }} [options]
  */
-export function parseRapidApiResponse(rawData) {
-  const root = rawData && typeof rawData === 'object' ? rawData : null;
+export function parseRapidApiResponse(rawData, options = {}) {
+  let normalizedRaw = rawData;
+  if (typeof normalizedRaw === 'string') {
+    try {
+      normalizedRaw = JSON.parse(normalizedRaw);
+    } catch {
+      normalizedRaw = null;
+    }
+  }
+
+  const root = normalizedRaw && typeof normalizedRaw === 'object' ? normalizedRaw : null;
   if (!root || Array.isArray(root)) {
     throw new DownloaderError(
       DOWNLOADER_ERROR_CODES.EXTRACTION_FAILED,
@@ -166,30 +214,65 @@ export function parseRapidApiResponse(rawData) {
     (root.result && typeof root.result === 'object' && !Array.isArray(root.result) ? root.result : null) ||
     root;
 
-  if (root.success === false || payload.success === false || root.error === true) {
-    const apiMsg = String(payload.message || root.message || root.error || '').toLowerCase();
+  if (
+    root.success === false ||
+    payload.success === false ||
+    root.error === true ||
+    payload.error === true
+  ) {
+    const rawMsg = extractApiErrorMessage(payload) || extractApiErrorMessage(root);
+    const apiMsg = rawMsg.toLowerCase();
+
+    if (
+      apiMsg.includes('invalid api key') ||
+      apiMsg.includes('not subscribed') ||
+      apiMsg.includes('unauthorized') ||
+      apiMsg.includes('forbidden') ||
+      apiMsg.includes('subscription')
+    ) {
+      throw new DownloaderError(
+        DOWNLOADER_ERROR_CODES.PRIVATE_OR_RESTRICTED,
+        'Autentikasi RapidAPI gagal atau belum berlangganan API (`RAPIDAPI_KEY`).',
+        { details: sanitizeLogText(rawMsg) },
+      );
+    }
     if (apiMsg.includes('quota') || apiMsg.includes('exceeded') || apiMsg.includes('limit')) {
       throw new DownloaderError(
         DOWNLOADER_ERROR_CODES.RATE_LIMITED,
         'Kuota atau batas permintaan RapidAPI telah habis. Coba lagi nanti.',
+        { details: sanitizeLogText(rawMsg) },
       );
     }
-    if (apiMsg.includes('private') || apiMsg.includes('login') || apiMsg.includes('restricted')) {
+    if (
+      apiMsg.includes('private') ||
+      apiMsg.includes('login') ||
+      apiMsg.includes('restricted') ||
+      apiMsg.includes('age')
+    ) {
       throw new DownloaderError(
         DOWNLOADER_ERROR_CODES.PRIVATE_OR_RESTRICTED,
         'Konten bersifat privat atau dibatasi oleh platform sumber.',
+        { details: sanitizeLogText(rawMsg) },
+      );
+    }
+    if (apiMsg.includes('unsupported') || apiMsg.includes('not supported') || apiMsg.includes('invalid url')) {
+      throw new DownloaderError(
+        DOWNLOADER_ERROR_CODES.UNSUPPORTED_PLATFORM,
+        'Format URL atau jenis postingan ini belum didukung oleh RapidAPI.',
+        { details: sanitizeLogText(rawMsg) },
       );
     }
     if (apiMsg.includes('not found') || apiMsg.includes('unavailable') || apiMsg.includes('deleted')) {
       throw new DownloaderError(
         DOWNLOADER_ERROR_CODES.NOT_FOUND,
         'Media tidak ditemukan atau postingan telah dihapus.',
+        { details: sanitizeLogText(rawMsg) },
       );
     }
     throw new DownloaderError(
       DOWNLOADER_ERROR_CODES.EXTRACTION_FAILED,
       'RapidAPI gagal mengekstrak media dari tautan tersebut.',
-      { details: apiMsg.slice(0, 160) },
+      { details: sanitizeLogText(rawMsg) },
     );
   }
 
@@ -204,14 +287,14 @@ export function parseRapidApiResponse(rawData) {
   ).trim();
 
   const rawEntries = [];
-  const pushEntry = (entry, forcedKind = null) => {
+  const pushEntry = (entry, forcedKind = null, fallbackQuality = 'hd') => {
     if (typeof entry === 'string') {
       const clean = sanitizeCdnUrl(entry);
       if (clean) {
         rawEntries.push({
           url: clean,
-          quality: 'default',
-          kind: forcedKind || inferCandidateKind({}, clean),
+          quality: fallbackQuality,
+          kind: forcedKind || inferCandidateKind({ quality: fallbackQuality }, clean),
         });
       }
       return;
@@ -219,7 +302,17 @@ export function parseRapidApiResponse(rawData) {
     if (!entry || typeof entry !== 'object') return;
 
     const candidateUrl = sanitizeCdnUrl(
-      entry.link || entry.url || entry.download_url || entry.src || entry.play || entry.hdplay,
+      entry.link ||
+        entry.url ||
+        entry.download_url ||
+        entry.downloadUrl ||
+        entry.videoUrl ||
+        entry.imageUrl ||
+        entry.src ||
+        entry.href ||
+        entry.play ||
+        entry.hdplay ||
+        entry.media,
     );
     if (!candidateUrl) return;
 
@@ -228,33 +321,48 @@ export function parseRapidApiResponse(rawData) {
 
     rawEntries.push({
       url: candidateUrl,
-      quality: String(entry.quality || entry.label || entry.resolution || 'hd'),
+      quality: String(entry.quality || entry.label || entry.resolution || fallbackQuality),
       watermark: entry.watermark,
       kind,
     });
   };
 
+  const pushCollection = (collection, forcedKind = null) => {
+    if (Array.isArray(collection)) {
+      collection.forEach((item) => pushEntry(item, forcedKind));
+      return;
+    }
+    if (collection && typeof collection === 'object') {
+      for (const [key, value] of Object.entries(collection)) {
+        if (AUDIO_ONLY_RE.test(key)) continue;
+        if (typeof value === 'string') {
+          pushEntry(value, forcedKind, key);
+        } else if (value && typeof value === 'object') {
+          pushEntry({ quality: key, ...value }, forcedKind, key);
+        }
+      }
+    }
+  };
+
   for (const listKey of ['links', 'medias', 'media', 'items', 'carousel', 'downloads']) {
-    if (Array.isArray(payload[listKey])) {
-      payload[listKey].forEach((item) => pushEntry(item));
-    } else if (Array.isArray(root[listKey])) {
-      root[listKey].forEach((item) => pushEntry(item));
+    pushCollection(payload[listKey]);
+    if (root[listKey] !== payload[listKey]) {
+      pushCollection(root[listKey]);
     }
   }
 
   for (const imageKey of ['images', 'photos', 'gallery']) {
-    if (Array.isArray(payload[imageKey])) {
-      payload[imageKey].forEach((item) => pushEntry(item, 'image'));
-    } else if (Array.isArray(root[imageKey])) {
-      root[imageKey].forEach((item) => pushEntry(item, 'image'));
+    pushCollection(payload[imageKey], 'image');
+    if (root[imageKey] !== payload[imageKey]) {
+      pushCollection(root[imageKey], 'image');
     }
   }
 
-  for (const singleKey of ['hdplay', 'play', 'video', 'url', 'download_url', 'wmplay']) {
+  for (const singleKey of ['hdplay', 'play', 'video', 'url', 'download_url', 'downloadUrl', 'wmplay']) {
     const val = payload[singleKey] ?? root[singleKey];
     if (typeof val === 'string') {
       pushEntry({ url: val, quality: singleKey, watermark: singleKey === 'wmplay' }, 'video');
-    } else if (val && typeof val === 'object' && typeof val.url === 'string') {
+    } else if (val && typeof val === 'object' && typeof (val.url || val.link) === 'string') {
       pushEntry(val);
     }
   }
@@ -268,9 +376,14 @@ export function parseRapidApiResponse(rawData) {
   const unique = [...uniqueMap.values()];
 
   if (unique.length === 0) {
+    const responseKeys = Object.keys(payload).slice(0, 15).join(', ');
+    options.logger?.warn?.(
+      `[Downloader] RapidAPI response contained 0 usable media URLs (keys: ${responseKeys || 'none'})`,
+    );
     throw new DownloaderError(
       DOWNLOADER_ERROR_CODES.NOT_FOUND,
       'Tidak ada URL media yang valid ditemukan pada respons RapidAPI.',
+      { details: `keys=${responseKeys}` },
     );
   }
 
@@ -320,7 +433,8 @@ function mapRapidApiError(error) {
   }
 
   const status = error?.response?.status;
-  const bodyMsg = String(error?.response?.data?.message || error?.message || '').toLowerCase();
+  const rawBodyMsg = extractApiErrorMessage(error?.response?.data) || String(error?.message || '');
+  const bodyMsg = rawBodyMsg.toLowerCase();
 
   if (status === 429) {
     const isQuota = bodyMsg.includes('quota') || bodyMsg.includes('monthly') || bodyMsg.includes('exceeded');
@@ -329,6 +443,7 @@ function mapRapidApiError(error) {
       isQuota
         ? 'Kuota RapidAPI telah habis. Silakan periksa langganan atau tunggu reset kuota.'
         : 'Batas permintaan RapidAPI tercapai (HTTP 429). Coba lagi beberapa saat lagi.',
+      { details: sanitizeLogText(`HTTP 429: ${rawBodyMsg}`) },
     );
   }
 
@@ -337,18 +452,66 @@ function mapRapidApiError(error) {
       return new DownloaderError(
         DOWNLOADER_ERROR_CODES.PRIVATE_OR_RESTRICTED,
         'Postingan bersifat privat atau dibatasi oleh platform sumber.',
+        { details: sanitizeLogText(`HTTP ${status}: ${rawBodyMsg}`) },
       );
     }
     return new DownloaderError(
       DOWNLOADER_ERROR_CODES.PRIVATE_OR_RESTRICTED,
       'Autentikasi RapidAPI gagal atau belum berlangganan API (`RAPIDAPI_KEY`).',
+      { details: sanitizeLogText(`HTTP ${status}: ${rawBodyMsg}`) },
     );
   }
 
+  if (status === 400 || status === 422) {
+    if (bodyMsg.includes('unsupported') || bodyMsg.includes('not supported')) {
+      return new DownloaderError(
+        DOWNLOADER_ERROR_CODES.UNSUPPORTED_PLATFORM,
+        'Tautan atau jenis konten ini belum didukung oleh endpoint RapidAPI.',
+        { details: sanitizeLogText(`HTTP ${status}: ${rawBodyMsg}`) },
+      );
+    }
+    if (bodyMsg.includes('invalid url') || bodyMsg.includes('url is required')) {
+      return new DownloaderError(
+        DOWNLOADER_ERROR_CODES.INVALID_URL,
+        'Format tautan ditolak oleh RapidAPI. Pastikan tautan postingan valid.',
+        { details: sanitizeLogText(`HTTP ${status}: ${rawBodyMsg}`) },
+      );
+    }
+    if (bodyMsg.includes('private') || bodyMsg.includes('login')) {
+      return new DownloaderError(
+        DOWNLOADER_ERROR_CODES.PRIVATE_OR_RESTRICTED,
+        'Postingan bersifat privat atau memerlukan login.',
+        { details: sanitizeLogText(`HTTP ${status}: ${rawBodyMsg}`) },
+      );
+    }
+  }
+
   if (status === 404) {
+    if (isMissingEndpointMessage(bodyMsg)) {
+      return new DownloaderError(
+        DOWNLOADER_ERROR_CODES.EXTRACTION_FAILED,
+        'Endpoint RapidAPI tidak ditemukan. Periksa konfigurasi `RAPIDAPI_ENDPOINT`.',
+        { details: sanitizeLogText(`HTTP 404 endpoint mismatch: ${rawBodyMsg}`) },
+      );
+    }
+    if (bodyMsg.includes('unsupported')) {
+      return new DownloaderError(
+        DOWNLOADER_ERROR_CODES.UNSUPPORTED_PLATFORM,
+        'Jenis tautan ini tidak didukung oleh endpoint RapidAPI.',
+        { details: sanitizeLogText(`HTTP 404: ${rawBodyMsg}`) },
+      );
+    }
+    if (bodyMsg.includes('private') || bodyMsg.includes('login')) {
+      return new DownloaderError(
+        DOWNLOADER_ERROR_CODES.PRIVATE_OR_RESTRICTED,
+        'Postingan bersifat privat atau dibatasi.',
+        { details: sanitizeLogText(`HTTP 404: ${rawBodyMsg}`) },
+      );
+    }
     return new DownloaderError(
       DOWNLOADER_ERROR_CODES.NOT_FOUND,
       'Postingan tidak ditemukan atau tautan sudah tidak valid.',
+      { details: sanitizeLogText(`HTTP 404: ${rawBodyMsg}`) },
     );
   }
 
@@ -411,26 +574,58 @@ function summarizeDownloadedMedia(items) {
  * @param {ReturnType<typeof getDownloaderConfig>} config
  * @param {typeof axios} axiosClient
  */
-async function requestRapidApiMetadata(targetUrl, config, axiosClient) {
+async function requestRapidApiMetadata(targetUrl, config, axiosClient, options = {}) {
+  const { platform = null, logger = console } = options;
+  const defaultUniversalEndpoint = `https://${DEFAULT_RAPIDAPI_HOST}${DEFAULT_RAPIDAPI_PATH}`;
+  const endpoints = [config.rapidApiEndpoint];
+
+  if (
+    config.rapidApiHost === DEFAULT_RAPIDAPI_HOST &&
+    config.rapidApiEndpoint === defaultUniversalEndpoint &&
+    (platform === PLATFORMS.INSTAGRAM || platform === PLATFORMS.TIKTOK)
+  ) {
+    endpoints.push(`https://${config.rapidApiHost}/smvd/get/${platform}`);
+  }
+
   let lastError = null;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      const response = await axiosClient.get(config.rapidApiEndpoint, {
-        params: { url: targetUrl },
-        headers: {
-          'x-rapidapi-key': config.rapidApiKey,
-          'x-rapidapi-host': config.rapidApiHost,
-        },
-        timeout: config.timeoutMs,
-      });
-      return parseRapidApiResponse(response.data);
-    } catch (error) {
-      const mapped = mapRapidApiError(error);
-      lastError = mapped;
-      if (attempt === 0 && mapped.retryable) {
-        continue;
+  for (let epIdx = 0; epIdx < endpoints.length; epIdx += 1) {
+    const endpoint = endpoints[epIdx];
+    const endpointLabel = getSafeEndpointLabel(endpoint);
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const response = await axiosClient.get(endpoint, {
+          params: { url: targetUrl },
+          headers: {
+            'x-rapidapi-key': config.rapidApiKey,
+            'x-rapidapi-host': config.rapidApiHost,
+          },
+          timeout: config.timeoutMs,
+        });
+        return parseRapidApiResponse(response.data, { logger });
+      } catch (error) {
+        const status = error?.response?.status;
+        const mapped = mapRapidApiError(error);
+        lastError = mapped;
+
+        logger?.warn?.(
+          `[Downloader] RapidAPI request failed (${endpointLabel}, platform=${platform || 'unknown'}, status=${status ?? error?.code ?? 'ERR'}, code=${mapped.code}): ${sanitizeLogText(mapped.details || mapped.userMessage)}`,
+        );
+
+        if (attempt === 0 && mapped.retryable) {
+          continue;
+        }
+
+        const canTryPlatformEndpoint =
+          epIdx === 0 &&
+          endpoints.length > 1 &&
+          (status === 404 || mapped.code === DOWNLOADER_ERROR_CODES.NOT_FOUND);
+
+        if (canTryPlatformEndpoint) {
+          break;
+        }
+        throw mapped;
       }
-      throw mapped;
     }
   }
   throw lastError;
@@ -496,7 +691,10 @@ export async function downloadMediaFromUrl(params) {
       timeoutMs: Math.min(config.timeoutMs, 15_000),
     });
 
-    const parsed = await requestRapidApiMetadata(resolved.normalizedUrl, config, axiosClient);
+    const parsed = await requestRapidApiMetadata(resolved.normalizedUrl, config, axiosClient, {
+      platform: resolved.platform,
+      logger: deps.logger || console,
+    });
     jobDir = await createJobTempDir(config.tempBaseDir);
 
     const downloadOpts = {
