@@ -374,7 +374,10 @@ export function buildHelpEmbed(prefix = '!') {
       value: [
         `\`/ai question:<pertanyaan>\` atau \`${safePrefix}ai <pertanyaan>\` — Tanya Midwave AI (stateless Gemini)`,
         `\`/brat text:<teks>\` atau \`${safePrefix}brat <teks>\` — Buat gambar teks bergaya Brat (1024×1024 PNG, maks. 100 karakter)`,
+        `\`/qc text:<teks>\` atau \`${safePrefix}qc [teks / reply pesan]\` — Buat screenshot chat bergaya WhatsApp`,
         `\`/lyrics query:<judul> [artist:<artis>]\` atau \`${safePrefix}lyrics <judul> [| <artis>]\` — Cari lirik lagu dengan cover album dan pagination`,
+        `\`/math expression:<ekspresi>\` atau \`${safePrefix}math <ekspresi>\` — Kalkulator matematika interaktif`,
+        `\`/hug\`, \`/pat\`, \`/slap\`, \`/bonk\`, \`/poke\`, \`/yeet\`, \`/highfive\`, \`/wave\`, \`/laugh\`, \`/cry\` (juga via \`${safePrefix}\`) — Interaksi sosial dengan GIF anime`,
         `\`/download url:<tautan>\` — Unduh media publik dari Instagram atau TikTok`,
       ].join('\n'),
       inline: false,

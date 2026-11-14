@@ -69,13 +69,17 @@ export class InteractionHandler {
    * @param {import('discord.js').Interaction} interaction
    */
   async handle(interaction) {
-    if (!interaction || !interaction.isChatInputCommand()) {
+    const isSlash = typeof interaction?.isChatInputCommand === 'function' && interaction.isChatInputCommand();
+    const isContextMenu =
+      typeof interaction?.isMessageContextMenuCommand === 'function' &&
+      interaction.isMessageContextMenuCommand();
+    if (!interaction || (!isSlash && !isContextMenu)) {
       return;
     }
 
     const command = this.commandHandler.get(interaction.commandName);
     if (!command) {
-      await safeReplyError(interaction, `Command \`/${interaction.commandName}\` tidak ditemukan.`);
+      await safeReplyError(interaction, `Command \`${isSlash ? '/' : ''}${interaction.commandName}\` tidak ditemukan.`);
       return;
     }
 

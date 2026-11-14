@@ -5,6 +5,7 @@ import {
   TRIVIA_CATEGORIES,
   TTT_POSITIONS,
 } from './constants.js';
+import { SOLO_SOCIAL_COMMANDS, TARGETED_SOCIAL_COMMANDS } from '../services/otakuGifsService.js';
 
 const COMMAND_ALIASES = Object.freeze({
   ai: 'ai',
@@ -17,6 +18,18 @@ const COMMAND_ALIASES = Object.freeze({
   invite: 'invite',
   brat: 'brat',
   igf: 'igf',
+  qc: 'qc',
+  math: 'math',
+  hug: 'hug',
+  pat: 'pat',
+  slap: 'slap',
+  bonk: 'bonk',
+  poke: 'poke',
+  yeet: 'yeet',
+  highfive: 'highfive',
+  wave: 'wave',
+  laugh: 'laugh',
+  cry: 'cry',
   guess: 'guess',
   ng: 'guess',
   rps: 'rps',
@@ -51,6 +64,8 @@ const TRIVIA_CATEGORY_SET = new Set(TRIVIA_CATEGORIES);
 const DIFFICULTY_SET = new Set(DIFFICULTIES);
 const TTT_POSITION_SET = new Set(TTT_POSITIONS);
 const TRIVIA_OPTION_SET = new Set(['A', 'B', 'C', 'D']);
+const TARGETED_SOCIAL_SET = new Set(TARGETED_SOCIAL_COMMANDS);
+const SOLO_SOCIAL_SET = new Set(SOLO_SOCIAL_COMMANDS);
 
 /**
  * Resolves the configured command prefix, defaulting to `!`.
@@ -255,6 +270,14 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
     };
   }
 
+  if (commandName === 'qc') {
+    return {
+      commandName,
+      subcommand: null,
+      options: rawRest ? { text: rawRest } : {},
+    };
+  }
+
   if (commandName === 'ai') {
     if (!rawRest) {
       return {
@@ -309,6 +332,43 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
       };
     }
     return { commandName, subcommand: null, options: { text: rawRest } };
+  }
+
+  if (commandName === 'math') {
+    if (!rawRest) {
+      return {
+        commandName,
+        subcommand: null,
+        options: {},
+        error: `Ekspresi matematika wajib diisi. Contoh: \`${prefix}math 2 + 2\`.`,
+      };
+    }
+    return { commandName, subcommand: null, options: { expression: rawRest } };
+  }
+
+  if (SOLO_SOCIAL_SET.has(commandName)) {
+    return { commandName, subcommand: null, options: {} };
+  }
+
+  if (TARGETED_SOCIAL_SET.has(commandName)) {
+    if (!args[0]) {
+      return {
+        commandName,
+        subcommand: null,
+        options: {},
+        error: `Mention pengguna target terlebih dahulu. Contoh: \`${prefix}${commandName} @user\`.`,
+      };
+    }
+    const targetId = extractMentionOrId(args[0]);
+    if (!targetId) {
+      return {
+        commandName,
+        subcommand: null,
+        options: {},
+        error: `Target harus berupa mention atau ID pengguna Discord yang valid. Contoh: \`${prefix}${commandName} @user\`.`,
+      };
+    }
+    return { commandName, subcommand: null, options: { userId: targetId } };
   }
 
   if (commandName === 'game') {

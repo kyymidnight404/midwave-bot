@@ -491,6 +491,18 @@ describe('Prefix Command System', () => {
     const overEmbed = JSON.stringify(bratOverMsg.getReplies()[0].payload.embeds[0].toJSON());
     assert.match(overEmbed, /maksimal 1000 karakter/i);
 
+    // ?math integration through PrefixCommandHandler
+    const mathMsg = createFakeMessage({
+      content: '?math 15% of 200',
+      author: u1,
+      channel: harness.channel,
+      userDirectory: harness.users,
+    });
+    await harness.prefixCommandHandler.handle(mathMsg);
+    const mathEmbed = mathMsg.getReplies()[0].payload.embeds[0].toJSON();
+    assert.equal(mathEmbed.title, 'MIDWAVE CALCULATOR');
+    assert.equal(mathEmbed.fields[1].value, '`30`');
+
     // Solo TicTacToe gameplay via prefix commands
     await harness.prefixCommandHandler.handle(
       createFakeMessage({ content: '?tictactoe', author: u1, channel: harness.channel, userDirectory: harness.users }),

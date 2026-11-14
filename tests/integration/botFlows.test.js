@@ -146,33 +146,51 @@ function createMockCommandInteraction({
 }
 
 describe('Integration: Slash Commands & End-to-End Flows', () => {
-  it('registers all 16 valid Discord slash commands within API limits', async () => {
+  it('registers all 29 valid Discord commands within API limits', async () => {
     const app = await createBotApp();
     const payloads = app.commandHandler.toJSON();
     const names = payloads.map((c) => c.name).sort();
     assert.deepEqual(names, [
+      'Generate QC',
       'ai',
+      'bonk',
       'brat',
       'coinflip',
       'connect4',
+      'cry',
       'dice',
       'download',
       'game',
       'games',
       'guess',
       'help',
+      'highfive',
+      'hug',
       'invite',
       'knowledge',
+      'laugh',
       'lyrics',
+      'math',
+      'pat',
+      'poke',
+      'qc',
       'rps',
+      'slap',
       'tictactoe',
       'trivia',
+      'wave',
+      'yeet',
     ]);
 
     for (const cmd of payloads) {
-      assert.ok(/^[a-z0-9_-]{1,32}$/.test(cmd.name), `Invalid command name ${cmd.name}`);
-      assert.ok(cmd.description && cmd.description.length <= 100);
-      assert.ok((cmd.options?.length ?? 0) <= 25);
+      if (cmd.type === 3) {
+        assert.ok(cmd.name.length >= 1 && cmd.name.length <= 32);
+        assert.equal(cmd.description, undefined);
+      } else {
+        assert.ok(/^[a-z0-9_-]{1,32}$/.test(cmd.name), `Invalid command name ${cmd.name}`);
+        assert.ok(cmd.description && cmd.description.length <= 100);
+        assert.ok((cmd.options?.length ?? 0) <= 25);
+      }
     }
     app.shutdown();
   });

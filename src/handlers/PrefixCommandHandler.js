@@ -1,6 +1,7 @@
 import { PermissionFlagsBits } from 'discord.js';
 import { AI_COOLDOWN_MS } from '../services/gemini.js';
 import { LYRICS_COOLDOWN_MS } from '../services/lyricsService.js';
+import { SOCIAL_COOLDOWN_MS, SOCIAL_INTERACTIONS } from '../services/otakuGifsService.js';
 import { GAME_MODES, GAME_TYPES } from '../utils/constants.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
 import { parsePrefixInvocation, resolvePrefix } from '../utils/prefixParser.js';
@@ -11,11 +12,13 @@ const PREFIX_ONLY_COMMANDS = new Map([[igfCommand.name, igfCommand]]);
 const COMMAND_COOLDOWNS = Object.freeze({
   ai: AI_COOLDOWN_MS,
   lyrics: LYRICS_COOLDOWN_MS,
+  ...Object.fromEntries(Object.keys(SOCIAL_INTERACTIONS).map((cmd) => [cmd, SOCIAL_COOLDOWN_MS])),
 });
 
 const COMMANDS_REQUIRING_ATTACH_FILES = new Set([
   'brat',
   'igf',
+  'qc',
   'games',
   'help',
   'invite',
@@ -29,7 +32,7 @@ const COMMANDS_REQUIRING_ATTACH_FILES = new Set([
 ]);
 
 function requiresAttachFiles(commandName, subcommand) {
-  if (commandName === 'brat' || commandName === 'igf' || commandName === 'games' || commandName === 'help') {
+  if (commandName === 'brat' || commandName === 'igf' || commandName === 'qc' || commandName === 'games' || commandName === 'help') {
     return true;
   }
   if (commandName === 'invite' && subcommand === 'accept') {
@@ -226,6 +229,18 @@ export class PrefixCommandHandler {
         return;
       }
       resolvedUsers.set(parsed.options.opponentId, opponentUser);
+    }
+
+    if (parsed.options?.userId) {
+      const targetUser = await resolveUserFromMessage(message, parsed.options.userId);
+      if (!targetUser) {
+        await this._safeReplyError(
+          message,
+          'Pengguna target tidak ditemukan. Mention pengguna Discord yang valid.',
+        );
+        return;
+      }
+      resolvedUsers.set(parsed.options.userId, targetUser);
     }
 
     const status = this.context?.gameManager?.getStatus?.(message.author.id);
