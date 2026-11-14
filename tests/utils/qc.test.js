@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createCanvas } from '@napi-rs/canvas';
 import { ApplicationCommandType, AttachmentBuilder, MessageFlags } from 'discord.js';
 import {
   formatQcTimestamp,
@@ -78,7 +79,7 @@ function createMockContextMenuInteraction(targetMessage) {
 }
 
 describe('QC (WhatsApp Chat Screenshot) Generator & Commands', () => {
-  it('loads all 7 local Apple-iOS-style RGBA emoji PNGs (>=128px, 1:1 ratio) and 7 icon PNGs without external URLs', () => {
+  it('loads all 7 local RGBA emoji PNGs (>=128px, 1:1 ratio) and 7 icon PNGs without external URLs', () => {
     assert.equal(QC_EMOJI_ASSETS.length, 7);
     for (const spec of QC_EMOJI_ASSETS) {
       assert.ok(existsSync(spec.path), `Missing emoji PNG asset: ${spec.path}`);
@@ -105,6 +106,23 @@ describe('QC (WhatsApp Chat Screenshot) Generator & Commands', () => {
     const loaded = loadQcAssets();
     assert.equal(loaded.reactionEmojis.length, 7);
     assert.equal(Object.keys(loaded.icons).length, 7);
+
+    // Ensure every emoji asset has transparent corners (no white box background) and opaque interior artwork
+    const probeCanvas = createCanvas(64, 64);
+    const probeCtx = probeCanvas.getContext('2d');
+    for (const img of loaded.reactionEmojis) {
+      probeCtx.clearRect(0, 0, 64, 64);
+      probeCtx.drawImage(img, 0, 0, 64, 64);
+      const corners = [
+        probeCtx.getImageData(0, 0, 1, 1).data[3],
+        probeCtx.getImageData(63, 0, 1, 1).data[3],
+        probeCtx.getImageData(0, 63, 1, 1).data[3],
+        probeCtx.getImageData(63, 63, 1, 1).data[3],
+      ];
+      assert.deepEqual(corners, [0, 0, 0, 0], 'Expected transparent corners on 3D emoji PNG');
+      const centerAlpha = probeCtx.getImageData(32, 32, 1, 1).data[3];
+      assert.ok(centerAlpha > 200, 'Expected opaque 3D artwork at canvas center');
+    }
 
     // Ensure rendering makes zero external fetch calls
     const originalFetch = globalThis.fetch;
