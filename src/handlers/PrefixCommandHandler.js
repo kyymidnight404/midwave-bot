@@ -1,4 +1,5 @@
 import { PermissionFlagsBits } from 'discord.js';
+import { DEFAULT_HANDLER_REGISTRY } from '../config/commandRegistry.js';
 import bratPrefixCommand from '../prefixCommands/brat.js';
 import igfCommand from '../prefixCommands/igf.js';
 import lyricsPrefixCommand from '../prefixCommands/lyrics.js';
@@ -19,6 +20,12 @@ const PREFIX_EXECUTORS = new Map([
   [bratPrefixCommand.name, bratPrefixCommand],
   [qcPrefixCommand.name, qcPrefixCommand],
   [sayPrefixCommand.name, sayPrefixCommand],
+  ['ai', { execute: DEFAULT_HANDLER_REGISTRY.ai }],
+  ['math', { execute: DEFAULT_HANDLER_REGISTRY.math }],
+  ['games', { execute: DEFAULT_HANDLER_REGISTRY.games }],
+  ['help', { execute: DEFAULT_HANDLER_REGISTRY.help }],
+  ['invite', { execute: DEFAULT_HANDLER_REGISTRY.invite }],
+  ['game', { execute: DEFAULT_HANDLER_REGISTRY.game }],
   [lyricsPrefixCommand.name, lyricsPrefixCommand],
   ...Object.keys(SOCIAL_INTERACTIONS).map((cmd) => [
     cmd,

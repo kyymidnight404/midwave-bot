@@ -10,6 +10,7 @@
   "scripts": {
     "start": "node --env-file=.env src/index.js",
     "deploy": "node --env-file=.env deploy-commands.js",
+    "deploy:preview": "node --env-file=.env deploy-commands.js --preview",
     "deploy:global": "node --env-file=.env deploy-commands.js --global",
     "test": "node --test \"tests/**/*.test.js\"",
     "bench:c4": "node scripts/bench-c4.js"

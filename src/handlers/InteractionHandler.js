@@ -88,19 +88,25 @@ export class InteractionHandler {
     }
 
     const subcommand = interaction.options?.getSubcommand?.(false) ?? '';
+    const subcommandGroup = interaction.options?.getSubcommandGroup?.(false) ?? '';
     const actionOption =
-      !subcommand && ACTION_COOLDOWN_COMMANDS.has(interaction.commandName)
-        ? (interaction.options?.getString?.('action', false)?.trim().toLowerCase() ?? '')
+      !subcommand && (ACTION_COOLDOWN_COMMANDS.has(interaction.commandName) || command.config?.type === 'choice')
+        ? (interaction.options?.getString?.(command.config?.actionOptionName || 'action', false)?.trim().toLowerCase() ?? '')
         : '';
-    const actionPart = subcommand || actionOption;
+    const actionPart = [subcommandGroup, subcommand || actionOption].filter(Boolean).join(':');
     const cooldownKey = actionPart
       ? `${interaction.user.id}:${interaction.commandName}:${actionPart}`
       : `${interaction.user.id}:${interaction.commandName}`;
 
+    const mappedActionHandler = command.config?.actionHandlers?.[actionOption] ?? command.config?.handler ?? '';
+    const normalizedHandlerBase = mappedActionHandler.includes('.')
+      ? mappedActionHandler.split('.').pop()
+      : mappedActionHandler;
     const cooldownTarget =
-      interaction.commandName === 'media' && actionOption
-        ? actionOption
-        : interaction.commandName;
+      (interaction.commandName === 'media' && actionOption) ||
+      (normalizedHandlerBase && Object.hasOwn(COMMAND_COOLDOWNS, normalizedHandlerBase)
+        ? normalizedHandlerBase
+        : interaction.commandName);
     const specialCooldown = COMMAND_COOLDOWNS[cooldownTarget];
     const cooldownTtl =
       specialCooldown && this.cooldowns.defaultTtlMs > 0
