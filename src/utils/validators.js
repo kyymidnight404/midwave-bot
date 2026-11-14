@@ -20,7 +20,7 @@ export function validateOpponent(challengerId, opponent) {
     return { valid: false, error: 'Lawan tidak valid.' };
   }
   if (opponent.bot) {
-    return { valid: false, error: 'Kamu tidak dapat menantang bot di mode multiplayer. Gunakan mode `/... solo`.' };
+    return { valid: false, error: 'Kamu tidak dapat menantang bot di mode multiplayer. Gunakan mode `/game action:solo`.' };
   }
   if (opponent.id === challengerId) {
     return { valid: false, error: 'Kamu tidak dapat menantang dirimu sendiri.' };

@@ -16,7 +16,7 @@ import { buildErrorEmbed } from '../utils/embeds.js';
 
 export const data = new SlashCommandBuilder()
   .setName('ai')
-  .setDescription('Tanya apa saja ke Midwave AI (stateless, tanpa riwayat percakapan)')
+  .setDescription('Tanya apa saja ke Midwave AI — cerdas, ringkas, dan kontekstual')
   .addStringOption((option) =>
     option
       .setName('question')
@@ -24,6 +24,43 @@ export const data = new SlashCommandBuilder()
       .setRequired(true)
       .setMaxLength(AI_MAX_QUESTION_LENGTH),
   );
+
+/**
+ * Extracts text or embed summary from a replied-to Discord message on prefix `!ai`.
+ * Never throws or assumes reply presence.
+ *
+ * @param {import('discord.js').ChatInputCommandInteraction | import('../handlers/MessageCommandAdapter.js').MessageCommandAdapter} interaction
+ * @returns {Promise<string>}
+ */
+async function extractReplyContext(interaction) {
+  const message = interaction?.message;
+  if (!message?.reference?.messageId || typeof message.fetchReference !== 'function') {
+    return '';
+  }
+
+  try {
+    const referenced = await message.fetchReference();
+    if (!referenced) {
+      return '';
+    }
+    const textPart =
+      (typeof referenced.cleanContent === 'string' && referenced.cleanContent.trim()) ||
+      (typeof referenced.content === 'string' && referenced.content.trim()) ||
+      (typeof referenced.embeds?.[0]?.description === 'string' && referenced.embeds[0].description.trim()) ||
+      '';
+    if (!textPart) {
+      return '';
+    }
+    const snippet = textPart.slice(0, 1000).trim();
+    const isFromBot = Boolean(referenced.author?.bot);
+    const label = isFromBot
+      ? 'Pesan respons Midwave yang direply pengguna'
+      : `Pesan yang direply pengguna (${referenced.author?.globalName || referenced.author?.username || 'pengguna'})`;
+    return `${label}:\n${snippet}`;
+  } catch {
+    return '';
+  }
+}
 
 /**
  * Safely edits or sends a fallback error embed if Discord delivery permits.
@@ -43,12 +80,13 @@ async function sendSafeAiError(interaction, message) {
 }
 
 /**
- * Executes the `/ai` and `!ai` command using stateless Gemini AI generation
- * with intent-based Tavily Web Search grounding when real-time info is needed.
+ * Executes `/ai` and `!ai` with contextual short-term RAM continuity, reply-chain awareness,
+ * Global Bot Knowledge grounding, and selective Tavily Web Search.
  * @param {import('discord.js').ChatInputCommandInteraction} interaction
  * @param {{
  *   askGemini?: Function,
  *   askAiWithWebSearch?: typeof askAiWithWebSearch,
+ *   aiConversationManager?: import('../managers/AiConversationManager.js').AiConversationManager,
  *   geminiOptions?: object,
  *   webSearchOptions?: object,
  * }} [context]
@@ -72,18 +110,43 @@ export async function execute(interaction, context = {}) {
 
   await interaction.deferReply();
 
+  const conversationManager = context.aiConversationManager ?? null;
+  const scope = {
+    guildId: interaction.guildId ?? null,
+    channelId: interaction.channelId ?? null,
+    userId: interaction.user?.id ?? null,
+  };
+  const history =
+    context.geminiOptions?.history ??
+    (conversationManager ? conversationManager.getHistory(scope) : undefined);
+
+  const replyContext = await extractReplyContext(interaction);
+  const combinedContextText = [context.geminiOptions?.contextText, replyContext]
+    .filter((item) => typeof item === 'string' && item.trim())
+    .join('\n\n') || undefined;
+
+  const geminiOptions =
+    context.geminiOptions || (Array.isArray(history) && history.length > 0) || combinedContextText
+      ? {
+          ...(context.geminiOptions || {}),
+          ...(Array.isArray(history) && history.length > 0 ? { history } : {}),
+          ...(combinedContextText ? { contextText: combinedContextText } : {}),
+        }
+      : undefined;
+
   let aiResult;
   let chunks = [];
+  let sanitizedText = '';
   try {
     const orchestrateFn = context.askAiWithWebSearch ?? askAiWithWebSearch;
     aiResult = await orchestrateFn(question, {
       userId: interaction.user?.id,
       ...(context.webSearchOptions || {}),
       askGeminiFn: context.askGemini,
-      geminiOptions: context.geminiOptions,
+      ...(geminiOptions ? { geminiOptions } : {}),
     });
 
-    const sanitizedText = sanitizeAiMentions(aiResult?.text).trim();
+    sanitizedText = sanitizeAiMentions(aiResult?.text).trim();
     if (!sanitizedText) {
       throw new GeminiServiceError(
         'EMPTY_RESPONSE',
@@ -106,6 +169,8 @@ export async function execute(interaction, context = {}) {
     await sendSafeAiError(interaction, mapped.message);
     return;
   }
+
+  conversationManager?.appendTurn(scope, question, sanitizedText);
 
   try {
     const safeMentions = { parse: [], repliedUser: false };

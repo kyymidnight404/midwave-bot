@@ -10,6 +10,8 @@ import {
   TARGETED_SOCIAL_COMMANDS,
   validateGifUrl,
 } from '../../src/services/otakuGifsService.js';
+import socialCommand, { data as socialData } from '../../src/commands/social.js';
+import { InteractionHandler } from '../../src/handlers/InteractionHandler.js';
 import { buildSocialEmbed, createSocialCommand } from '../../src/utils/socialCommand.js';
 import { parsePrefixInvocation } from '../../src/utils/prefixParser.js';
 import { CommandHandler } from '../../src/handlers/CommandHandler.js';
@@ -319,5 +321,144 @@ describe('Social Interactions System (OtakuGIFs)', () => {
     const invalidTargetMsg = createFakeMessage({ content: '!slap @notvalid', author });
     await prefixHandler.handle(invalidTargetMsg);
     assert.match(invalidTargetMsg.getReplies()[0].embeds[0].toJSON().description, /mention atau ID/i);
+  });
+
+  it('executes consolidated /social slash command across all 10 actions with target validation & cooldown', async () => {
+    const json = socialData.toJSON();
+    assert.equal(json.name, 'social');
+    assert.equal(json.options[0].name, 'action');
+    assert.equal(json.options[0].required, true);
+    assert.equal(json.options[0].choices.length, 10);
+    assert.equal(json.options[1].name, 'user');
+    assert.equal(json.options[1].required, false);
+
+    let now = 10_000;
+    const commandHandler = new CommandHandler();
+    await commandHandler.loadCommands();
+    assert.equal(commandHandler.get('hug'), undefined);
+    assert.ok(commandHandler.get('social'));
+
+    const handler = new InteractionHandler({
+      commandHandler,
+      cooldowns: new CooldownManager(3_000, () => now),
+      context: {
+        getReactionGif: async (reaction) => `https://cdn.otakugifs.xyz/gifs/${reaction}/consolidated.gif`,
+      },
+    });
+
+    const author = { id: '111111111111111111', bot: false };
+    const target = { id: '222222222222222222', bot: false };
+
+    for (const action of TARGETED_SOCIAL_COMMANDS) {
+      const events = [];
+      await handler.handle({
+        commandName: 'social',
+        user: author,
+        isChatInputCommand: () => true,
+        options: {
+          getSubcommand: () => null,
+          getString: (name) => (name === 'action' ? action : null),
+          getUser: (name) => (name === 'user' ? target : null),
+        },
+        async deferReply(opts = {}) {
+          events.push({ type: 'deferReply', payload: opts });
+        },
+        async reply(payload) {
+          events.push({ type: 'reply', payload });
+          return payload;
+        },
+        async editReply(payload) {
+          events.push({ type: 'editReply', payload });
+          return payload;
+        },
+      });
+      assert.equal(events[0].type, 'deferReply');
+      const embed = events[1].payload.embeds[0].toJSON();
+      assert.ok(embed.image.url.endsWith('/consolidated.gif'));
+      assert.ok(embed.description.includes(`<@${author.id}>`));
+      assert.ok(embed.description.includes(`<@${target.id}>`));
+    }
+
+    for (const action of SOLO_SOCIAL_COMMANDS) {
+      const events = [];
+      await handler.handle({
+        commandName: 'social',
+        user: author,
+        isChatInputCommand: () => true,
+        options: {
+          getSubcommand: () => null,
+          getString: (name) => (name === 'action' ? action : null),
+          getUser: () => null,
+        },
+        async deferReply(opts = {}) {
+          events.push({ type: 'deferReply', payload: opts });
+        },
+        async reply(payload) {
+          events.push({ type: 'reply', payload });
+          return payload;
+        },
+        async editReply(payload) {
+          events.push({ type: 'editReply', payload });
+          return payload;
+        },
+      });
+      assert.equal(events[0].type, 'deferReply');
+      const embed = events[1].payload.embeds[0].toJSON();
+      assert.ok(embed.image.url.endsWith('/consolidated.gif'));
+      assert.ok(embed.description.includes(`<@${author.id}>`));
+    }
+
+    // Immediate repeat of same action triggers SOCIAL_COOLDOWN_MS (3000 ms)
+    const cooldownEvents = [];
+    await handler.handle({
+      commandName: 'social',
+      user: author,
+      isChatInputCommand: () => true,
+      options: {
+        getSubcommand: () => null,
+        getString: (name) => (name === 'action' ? 'hug' : null),
+        getUser: (name) => (name === 'user' ? target : null),
+      },
+      async reply(payload) {
+        cooldownEvents.push({ type: 'reply', payload });
+        return payload;
+      },
+    });
+    assert.equal(cooldownEvents[0].payload.flags, MessageFlags.Ephemeral);
+    assert.match(cooldownEvents[0].payload.embeds[0].toJSON().description, /Terlalu cepat/i);
+
+    // Targeted action without user replies ephemerally without deferring
+    now += 5_000;
+    const missingUserEvents = [];
+    await socialCommand.execute({
+      commandName: 'social',
+      user: author,
+      options: {
+        getString: (name) => (name === 'action' ? 'bonk' : null),
+        getUser: () => null,
+      },
+      async reply(payload) {
+        missingUserEvents.push({ type: 'reply', payload });
+        return payload;
+      },
+    });
+    assert.equal(missingUserEvents[0].payload.flags, MessageFlags.Ephemeral);
+    assert.match(missingUserEvents[0].payload.embeds[0].toJSON().description, /target/i);
+
+    // Invalid action rejects ephemerally
+    const badActionEvents = [];
+    await socialCommand.execute({
+      commandName: 'social',
+      user: author,
+      options: {
+        getString: (name) => (name === 'action' ? 'dance' : null),
+        getUser: () => null,
+      },
+      async reply(payload) {
+        badActionEvents.push({ type: 'reply', payload });
+        return payload;
+      },
+    });
+    assert.equal(badActionEvents[0].payload.flags, MessageFlags.Ephemeral);
   });
 });

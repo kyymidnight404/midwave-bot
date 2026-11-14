@@ -1,138 +1,150 @@
-import { MessageFlags, SlashCommandBuilder } from 'discord.js';
-import { COLORS, GAME_METADATA } from '../utils/constants.js';
+import { SlashCommandBuilder } from 'discord.js';
 import {
-  buildErrorEmbed,
-  buildInfoEmbed,
-  buildLobbyEmbed,
-  buildStatusEmbed,
-  formatPlayer,
-} from '../utils/embeds.js';
-import { updatePublicMessage } from '../utils/discordBoard.js';
+  DICE_CONFIG,
+  GAME_TYPES,
+  TRIVIA_CATEGORIES,
+  TRIVIA_CATEGORY_LABELS,
+  TTT_POSITIONS,
+} from '../utils/constants.js';
+import { executeGameCommand } from '../utils/gameDispatcher.js';
 
-export default {
-  data: new SlashCommandBuilder()
-    .setName('game')
-    .setDescription('Kelola pertandingan yang sedang berjalan')
-    .addSubcommand((sub) =>
-      sub.setName('status').setDescription('Lihat informasi pertandingan aktif atau undangan pending'),
-    )
-    .addSubcommand((sub) =>
-      sub.setName('cancel').setDescription('Batalkan pertandingan aktif atau undangan yang kamu buat'),
-    ),
+const ACTION_CHOICES = [
+  { name: 'Solo (Main vs Bot/AI)', value: 'solo' },
+  { name: 'Challenge (Tantang Pemain)', value: 'challenge' },
+  { name: 'Choose (Pilih RPS / Coin Flip)', value: 'choose' },
+  { name: 'Drop (Jatuhkan Keping Connect4)', value: 'drop' },
+  { name: 'Move (Langkah Tic Tac Toe)', value: 'move' },
+  { name: 'Answer (Tebak Guess / Jawab Trivia)', value: 'answer' },
+  { name: 'Status (Lihat Sesi/Undangan Aktif)', value: 'status' },
+  { name: 'Cancel (Batalkan Sesi/Undangan)', value: 'cancel' },
+];
 
-  /**
-   * @param {import('discord.js').ChatInputCommandInteraction} interaction
-   * @param {object} context
-   */
-  async execute(interaction, context) {
-    const sub = interaction.options.getSubcommand();
-    const { gameManager, client } = context;
+const GAME_CHOICES = [
+  { name: 'Coin Flip', value: GAME_TYPES.COINFLIP },
+  { name: 'Connect Four', value: GAME_TYPES.CONNECT4 },
+  { name: 'Dice Rolling', value: GAME_TYPES.DICE },
+  { name: 'Number Guessing', value: GAME_TYPES.GUESS },
+  { name: 'Rock Paper Scissors', value: GAME_TYPES.RPS },
+  { name: 'Tic Tac Toe', value: GAME_TYPES.TICTACTOE },
+  { name: 'Trivia Quiz', value: GAME_TYPES.TRIVIA },
+];
 
-    if (sub === 'status') {
-      const status = gameManager.getStatus(interaction.user.id);
-      if (status.type === 'session') {
-        const embed = buildStatusEmbed(status.session);
-        await interaction.reply({
-          embeds: [embed],
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
+const CHOICE_OPTIONS = [
+  { name: 'Rock (Batu — RPS)', value: 'rock' },
+  { name: 'Paper (Kertas — RPS)', value: 'paper' },
+  { name: 'Scissors (Gunting — RPS)', value: 'scissors' },
+  { name: 'Heads (Coin Flip)', value: 'heads' },
+  { name: 'Tails (Coin Flip)', value: 'tails' },
+];
 
-      if (status.type === 'invite') {
-        const inv = status.invite;
-        const meta = GAME_METADATA[inv.gameType];
-        const remainingSec = Math.max(0, Math.ceil((inv.expiresAt - Date.now()) / 1000));
-        const embed = buildLobbyEmbed({
-          gameTitle: meta?.name ?? inv.gameType,
-          hostId: inv.hostId,
-          opponentId: inv.opponentId,
-          status: `Menunggu respons (${remainingSec} detik tersisa)`,
-        });
-        await interaction.reply({
-          embeds: [embed],
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
+const POSITION_OPTIONS = TTT_POSITIONS.map((pos) => ({ name: pos, value: pos }));
 
-      await interaction.reply({
-        embeds: [
-          buildInfoEmbed(
-            'Tidak Ada Pertandingan Aktif',
-            'Kamu sedang tidak berada di pertandingan atau undangan apa pun. Gunakan `/games` untuk melihat daftar game.',
-            COLORS.MUTED,
-          ),
-        ],
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
+const DIFFICULTY_OPTIONS = [
+  { name: 'Easy', value: 'easy' },
+  { name: 'Normal', value: 'normal' },
+  { name: 'Hard', value: 'hard' },
+];
 
-    if (sub === 'cancel') {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+const CATEGORY_OPTIONS = TRIVIA_CATEGORIES.map((cat) => ({
+  name: TRIVIA_CATEGORY_LABELS[cat],
+  value: cat,
+}));
 
-      let outcome;
-      try {
-        outcome = gameManager.cancelByUser(interaction.user.id);
-      } catch (err) {
-        await interaction.editReply({
-          embeds: [buildErrorEmbed(err.message)],
-        });
-        return;
-      }
+export const data = new SlashCommandBuilder()
+  .setName('game')
+  .setDescription('Mainkan seluruh mini-game Midwave dan kelola sesi pertandingan')
+  .addStringOption((opt) =>
+    opt
+      .setName('action')
+      .setDescription('Aksi yang ingin dijalankan')
+      .setRequired(true)
+      .addChoices(...ACTION_CHOICES),
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName('game')
+      .setDescription('Pilih jenis mini-game')
+      .setRequired(false)
+      .addChoices(...GAME_CHOICES),
+  )
+  .addUserOption((opt) =>
+    opt
+      .setName('opponent')
+      .setDescription('Pemain lawan (untuk aksi challenge)')
+      .setRequired(false),
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName('choice')
+      .setDescription('Pilihan untuk RPS (rock/paper/scissors) atau Coin Flip (heads/tails)')
+      .setRequired(false)
+      .addChoices(...CHOICE_OPTIONS),
+  )
+  .addIntegerOption((opt) =>
+    opt
+      .setName('column')
+      .setDescription('Nomor kolom 1–7 (untuk Connect Four drop)')
+      .setRequired(false)
+      .setMinValue(1)
+      .setMaxValue(7),
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName('position')
+      .setDescription('Koordinat papan A1–C3 (untuk Tic Tac Toe move)')
+      .setRequired(false)
+      .addChoices(...POSITION_OPTIONS),
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName('answer')
+      .setDescription('Tebakan angka 1–200 (Guess) atau jawaban A/B/C/D (Trivia)')
+      .setRequired(false),
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName('game_id')
+      .setDescription('Opsional ID sesi atau undangan (untuk status / cancel)')
+      .setRequired(false),
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName('difficulty')
+      .setDescription('Tingkat kesulitan AI/game (default Normal)')
+      .setRequired(false)
+      .addChoices(...DIFFICULTY_OPTIONS),
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName('category')
+      .setDescription('Kategori soal Trivia (default General Knowledge)')
+      .setRequired(false)
+      .addChoices(...CATEGORY_OPTIONS),
+  )
+  .addIntegerOption((opt) =>
+    opt
+      .setName('count')
+      .setDescription(`Jumlah dadu Dice (${DICE_CONFIG.MIN_COUNT}–${DICE_CONFIG.MAX_COUNT}, default 1)`)
+      .setRequired(false)
+      .setMinValue(DICE_CONFIG.MIN_COUNT)
+      .setMaxValue(DICE_CONFIG.MAX_COUNT),
+  )
+  .addIntegerOption((opt) =>
+    opt
+      .setName('sides')
+      .setDescription(`Jumlah sisi dadu Dice (${DICE_CONFIG.MIN_SIDES}–${DICE_CONFIG.MAX_SIDES}, default 6)`)
+      .setRequired(false)
+      .setMinValue(DICE_CONFIG.MIN_SIDES)
+      .setMaxValue(DICE_CONFIG.MAX_SIDES),
+  );
 
-      if (outcome.type === 'session') {
-        const session = outcome.session;
-        const meta = GAME_METADATA[session.gameType];
-        const cancelEmbed = buildInfoEmbed(
-          `${meta?.name ?? session.gameType} — Dibatalkan`,
-          `Pertandingan dibatalkan oleh ${formatPlayer(interaction.user.id)}.`,
-          COLORS.WARNING,
-        );
+/**
+ * Executes the consolidated `/game` slash command (and `!game status|cancel` via prefix).
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @param {object} [context]
+ */
+export async function execute(interaction, context = {}) {
+  return executeGameCommand(interaction, context);
+}
 
-        await updatePublicMessage(
-          client,
-          session.boardMessageRef,
-          { embeds: [cancelEmbed] },
-          session.channelId,
-        );
-
-        await interaction.editReply({
-          content: 'Pertandingan aktif telah dibatalkan.',
-        });
-        return;
-      }
-
-      if (outcome.type === 'invite') {
-        const inv = outcome.invite;
-        const meta = GAME_METADATA[inv.gameType];
-        const cancelEmbed = buildLobbyEmbed({
-          gameTitle: meta?.name ?? inv.gameType,
-          hostId: inv.hostId,
-          opponentId: inv.opponentId,
-          status: 'Dibatalkan oleh Host',
-          instructions: 'Undangan dibatalkan.',
-          color: COLORS.WARNING,
-        });
-
-        await updatePublicMessage(
-          client,
-          inv.lobbyMessageRef,
-          { embeds: [cancelEmbed] },
-          inv.channelId,
-        );
-
-        await interaction.editReply({
-          embeds: [
-            buildInfoEmbed(
-              'Undangan Dibatalkan',
-              `Undangan ke ${formatPlayer(inv.opponentId)} telah dibatalkan.`,
-              COLORS.WARNING,
-            ),
-          ],
-        });
-      }
-    }
-  },
-};
+export default { data, execute };

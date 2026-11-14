@@ -153,7 +153,7 @@ export const GuessGame = {
       instructions:
         state.status === MATCH_STATUS.FINISHED
           ? undefined
-          : 'Gunakan `/guess play number:<angka>` untuk mengirim tebakan.',
+          : 'Gunakan `/game action:answer game:guess answer:<angka>` untuk mengirim tebakan.',
     };
   },
 

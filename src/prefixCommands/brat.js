@@ -1,30 +1,18 @@
-import { AttachmentBuilder, MessageFlags, SlashCommandBuilder } from 'discord.js';
+import { AttachmentBuilder, MessageFlags } from 'discord.js';
 import {
   BRAT_ATTACHMENT_NAME,
-  BRAT_MAX_LENGTH,
   renderBratPngAsync,
   validateBratText,
 } from '../utils/bratGenerator.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
 
-export const data = new SlashCommandBuilder()
-  .setName('brat')
-  .setDescription('Buat gambar teks bergaya Brat minimalis (1024x1024 PNG)')
-  .addStringOption((option) =>
-    option
-      .setName('text')
-      .setDescription(`Teks yang ingin ditampilkan (maksimal ${BRAT_MAX_LENGTH} karakter)`)
-      .setRequired(true)
-      .setMaxLength(BRAT_MAX_LENGTH),
-  );
-
 /**
- * Executes the `/brat` utility command.
+ * Executes Brat image generation for both `/media action:brat` and `!brat`.
  * @param {import('discord.js').ChatInputCommandInteraction} interaction
  * @param {{ renderBratPng?: (text: string) => Buffer | Promise<Buffer> }} [context]
  */
 export async function execute(interaction, context = {}) {
-  const rawText = interaction.options.getString('text', true);
+  const rawText = interaction.options?.getString?.('text', false) ?? '';
 
   try {
     validateBratText(rawText);
@@ -52,4 +40,4 @@ export async function execute(interaction, context = {}) {
   }
 }
 
-export default { data, execute };
+export default { name: 'brat', execute };

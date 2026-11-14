@@ -5,10 +5,8 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 import { describe, it } from 'node:test';
 import { MessageFlags } from 'discord.js';
-import {
-  data as downloadData,
-  execute as executeDownload,
-} from '../../src/commands/download.js';
+import mediaCommand, { data as mediaData } from '../../src/commands/media.js';
+import { execute as executeDownload } from '../../src/prefixCommands/download.js';
 import { createBotApp } from '../../src/index.js';
 import {
   DEFAULT_INSTAGRAM_RAPIDAPI_PATH,
@@ -55,6 +53,7 @@ function publicLookupStub() {
 
 function createMockDownloadInteraction({
   url = '',
+  action = 'download',
   userId = 'u-dl-1',
   guild = { id: 'g-1', premiumTier: 0 },
   bot = false,
@@ -64,13 +63,15 @@ function createMockDownloadInteraction({
   let replied = false;
 
   return {
-    commandName: 'download',
+    commandName: 'media',
     guild,
     guildId: guild?.id ?? null,
     channelId: 'ch-dl-1',
     user: { id: userId, username: 'tester', bot },
+    isChatInputCommand: () => true,
     options: {
       getString(name, required) {
+        if (name === 'action') return action;
         if (name === 'url') {
           if (required && !url) return '';
           return url;
@@ -1044,13 +1045,25 @@ describe('Downloader — Unified RapidAPI + Axios Pipeline', () => {
   });
 });
 
-describe('Downloader — Discord /download Command & Cooldown Integration', () => {
-  it('registers /download with required url option cleanly', () => {
-    const json = downloadData.toJSON();
-    assert.equal(json.name, 'download');
-    assert.equal(json.options.length, 1);
-    assert.equal(json.options[0].name, 'url');
+describe('Downloader — Discord /media action:download Command & Cooldown Integration', () => {
+  it('registers /media with action:download and optional url option cleanly', () => {
+    const json = mediaData.toJSON();
+    assert.equal(json.name, 'media');
+    assert.equal(json.options[0].name, 'action');
     assert.equal(json.options[0].required, true);
+    assert.ok(json.options[0].choices.some((c) => c.value === 'download'));
+    const urlOption = json.options.find((o) => o.name === 'url');
+    assert.ok(urlOption);
+    assert.equal(urlOption.required, false);
+    assert.equal(typeof mediaCommand.execute, 'function');
+  });
+
+  it('replies ephemerally when url is omitted on /media action:download', async () => {
+    const missingUrl = createMockDownloadInteraction({ url: null });
+    await executeDownload(missingUrl);
+    assert.equal(missingUrl.deferred, false);
+    assert.equal(missingUrl.replied, true);
+    assert.equal(missingUrl.getEvents()[0].payload.flags, MessageFlags.Ephemeral);
   });
 
   it('replies ephemerally on invalid or unsupported URL (including Threads) without deferring', async () => {
@@ -1184,12 +1197,12 @@ describe('Downloader — Discord /download Command & Cooldown Integration', () =
     await assert.rejects(fs.stat(jobDir));
   });
 
-  it('enforces dedicated /download cooldown inside InteractionHandler', async () => {
+  it('enforces dedicated /media action:download cooldown inside InteractionHandler', async () => {
     let now = 10_000;
     const cooldowns = new CooldownManager(2_500, () => now);
     const app = await createBotApp({ cooldowns });
-    app.commandHandler.commands.set('download', {
-      data: downloadData,
+    app.commandHandler.commands.set('media', {
+      data: mediaData,
       async execute(inter) {
         await inter.reply({ content: 'ok' });
       },

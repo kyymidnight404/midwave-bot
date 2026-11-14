@@ -1,17 +1,45 @@
 import { PermissionFlagsBits } from 'discord.js';
+import bratPrefixCommand from '../prefixCommands/brat.js';
+import igfCommand from '../prefixCommands/igf.js';
+import lyricsPrefixCommand from '../prefixCommands/lyrics.js';
+import qcPrefixCommand from '../prefixCommands/qc.js';
+import sayPrefixCommand, { SAY_COOLDOWN_MS } from '../prefixCommands/say.js';
 import { AI_COOLDOWN_MS } from '../services/gemini.js';
 import { LYRICS_COOLDOWN_MS } from '../services/lyricsService.js';
 import { SOCIAL_COOLDOWN_MS, SOCIAL_INTERACTIONS } from '../services/otakuGifsService.js';
 import { GAME_MODES, GAME_TYPES } from '../utils/constants.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
+import { executeGameCommand } from '../utils/gameDispatcher.js';
 import { parsePrefixInvocation, resolvePrefix } from '../utils/prefixParser.js';
+import { executeSocialAction } from '../utils/socialCommand.js';
 import { MessageCommandAdapter, resolveUserFromMessage } from './MessageCommandAdapter.js';
-import igfCommand from '../prefixCommands/igf.js';
 
-const PREFIX_ONLY_COMMANDS = new Map([[igfCommand.name, igfCommand]]);
+const PREFIX_EXECUTORS = new Map([
+  [igfCommand.name, igfCommand],
+  [bratPrefixCommand.name, bratPrefixCommand],
+  [qcPrefixCommand.name, qcPrefixCommand],
+  [sayPrefixCommand.name, sayPrefixCommand],
+  [lyricsPrefixCommand.name, lyricsPrefixCommand],
+  ...Object.keys(SOCIAL_INTERACTIONS).map((cmd) => [
+    cmd,
+    { execute: (interaction, context) => executeSocialAction(interaction, cmd, context) },
+  ]),
+  ...Object.values(GAME_TYPES).map((gameType) => [
+    gameType,
+    {
+      execute: (interaction, context) =>
+        executeGameCommand(interaction, context, {
+          forcedGameType: gameType,
+          forcedAction: interaction.options.getSubcommand(false),
+        }),
+    },
+  ]),
+]);
+
 const COMMAND_COOLDOWNS = Object.freeze({
   ai: AI_COOLDOWN_MS,
   lyrics: LYRICS_COOLDOWN_MS,
+  say: SAY_COOLDOWN_MS,
   ...Object.fromEntries(Object.keys(SOCIAL_INTERACTIONS).map((cmd) => [cmd, SOCIAL_COOLDOWN_MS])),
 });
 
@@ -92,8 +120,13 @@ export class PrefixCommandHandler {
   /**
    * @param {import('discord.js').Message} message
    * @param {string} errorMessage
+   * @param {boolean} [canEmbedLinks]
    */
-  async _safeReplyError(message, errorMessage) {
+  async _safeReplyError(message, errorMessage, canEmbedLinks = true) {
+    if (!canEmbedLinks) {
+      await this._safeReplyPlain(message, errorMessage);
+      return;
+    }
     const payload = {
       embeds: [buildErrorEmbed(errorMessage)],
       allowedMentions: { repliedUser: false },
@@ -115,48 +148,51 @@ export class PrefixCommandHandler {
    * @param {import('discord.js').Message} message
    * @param {string} commandName
    * @param {string | null} subcommand
-   * @returns {Promise<{ allowed: boolean, canManageMessages: boolean }>}
+   * @returns {Promise<{ allowed: boolean, canManageMessages: boolean, canEmbedLinks: boolean }>}
    */
   async _checkPermissions(message, commandName, subcommand) {
     if (!message.guild || typeof message.channel?.permissionsFor !== 'function') {
-      return { allowed: true, canManageMessages: false };
+      return { allowed: true, canManageMessages: false, canEmbedLinks: true };
     }
 
     const botMember =
       message.guild.members?.me ??
       (message.client?.user?.id ? message.guild.members?.cache?.get?.(message.client.user.id) : null);
     if (!botMember) {
-      return { allowed: true, canManageMessages: false };
+      return { allowed: true, canManageMessages: false, canEmbedLinks: true };
     }
 
     const perms = message.channel.permissionsFor(botMember);
     if (!perms) {
-      return { allowed: true, canManageMessages: false };
+      return { allowed: true, canManageMessages: false, canEmbedLinks: true };
     }
 
     if (!perms.has(PermissionFlagsBits.ViewChannel) || !perms.has(PermissionFlagsBits.SendMessages)) {
-      return { allowed: false, canManageMessages: false };
+      return { allowed: false, canManageMessages: false, canEmbedLinks: false };
     }
 
-    if (!perms.has(PermissionFlagsBits.EmbedLinks)) {
+    const canEmbedLinks = Boolean(perms.has(PermissionFlagsBits.EmbedLinks));
+    if (commandName !== 'say' && !canEmbedLinks) {
       await this._safeReplyPlain(
         message,
         `Bot memerlukan izin **Embed Links** di channel ini untuk menjalankan \`${this.prefix}${commandName}\`.`,
       );
-      return { allowed: false, canManageMessages: false };
+      return { allowed: false, canManageMessages: false, canEmbedLinks: false };
     }
 
     if (requiresAttachFiles(commandName, subcommand) && !perms.has(PermissionFlagsBits.AttachFiles)) {
       await this._safeReplyError(
         message,
         `Bot memerlukan izin **Attach Files** di channel ini untuk menjalankan \`${this.prefix}${commandName}\`.`,
+        canEmbedLinks,
       );
-      return { allowed: false, canManageMessages: false };
+      return { allowed: false, canManageMessages: false, canEmbedLinks };
     }
 
     return {
       allowed: true,
       canManageMessages: Boolean(perms.has(PermissionFlagsBits.ManageMessages)),
+      canEmbedLinks,
     };
   }
 
@@ -185,7 +221,7 @@ export class PrefixCommandHandler {
       return;
     }
 
-    const command = this.commandHandler.get(parsed.commandName) ?? PREFIX_ONLY_COMMANDS.get(parsed.commandName);
+    const command = PREFIX_EXECUTORS.get(parsed.commandName) ?? this.commandHandler.get(parsed.commandName);
     if (!command) {
       return;
     }
@@ -209,12 +245,13 @@ export class PrefixCommandHandler {
       await this._safeReplyError(
         message,
         `Terlalu cepat! Tunggu ${waitSec} detik sebelum menjalankan \`${this.prefix}${parsed.commandName}\` lagi.`,
+        permCheck.canEmbedLinks,
       );
       return;
     }
 
     if (parsed.error) {
-      await this._safeReplyError(message, parsed.error);
+      await this._safeReplyError(message, parsed.error, permCheck.canEmbedLinks);
       return;
     }
 
@@ -262,6 +299,7 @@ export class PrefixCommandHandler {
       resolvedUsers,
       isSecretChoice,
       canManageMessages: permCheck.canManageMessages,
+      canEmbedLinks: permCheck.canEmbedLinks,
     });
 
     try {

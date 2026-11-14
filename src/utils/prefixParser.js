@@ -19,6 +19,7 @@ const COMMAND_ALIASES = Object.freeze({
   brat: 'brat',
   igf: 'igf',
   qc: 'qc',
+  say: 'say',
   math: 'math',
   hug: 'hug',
   pat: 'pat',
@@ -268,6 +269,18 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
       subcommand: null,
       options: rawRest ? { caption: rawRest } : {},
     };
+  }
+
+  if (commandName === 'say') {
+    if (!rawRest) {
+      return {
+        commandName,
+        subcommand: null,
+        options: {},
+        error: `Masukkan pesan yang ingin diulang. Contoh: \`${prefix}say Halo semuanya!\`.`,
+      };
+    }
+    return { commandName, subcommand: null, options: { text: rawRest } };
   }
 
   if (commandName === 'qc') {

@@ -146,41 +146,23 @@ function createMockCommandInteraction({
 }
 
 describe('Integration: Slash Commands & End-to-End Flows', () => {
-  it('registers all 29 valid Discord commands within API limits', async () => {
+  it('registers all 10 consolidated Discord commands within API limits (no duplicates or option ordering violations)', async () => {
     const app = await createBotApp();
     const payloads = app.commandHandler.toJSON();
     const names = payloads.map((c) => c.name).sort();
     assert.deepEqual(names, [
       'Generate QC',
       'ai',
-      'bonk',
-      'brat',
-      'coinflip',
-      'connect4',
-      'cry',
-      'dice',
-      'download',
       'game',
       'games',
-      'guess',
       'help',
-      'highfive',
-      'hug',
       'invite',
       'knowledge',
-      'laugh',
-      'lyrics',
       'math',
-      'pat',
-      'poke',
-      'qc',
-      'rps',
-      'slap',
-      'tictactoe',
-      'trivia',
-      'wave',
-      'yeet',
+      'media',
+      'social',
     ]);
+    assert.equal(new Set(payloads.map((c) => c.name)).size, 10);
 
     for (const cmd of payloads) {
       if (cmd.type === 3) {
@@ -189,7 +171,19 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
       } else {
         assert.ok(/^[a-z0-9_-]{1,32}$/.test(cmd.name), `Invalid command name ${cmd.name}`);
         assert.ok(cmd.description && cmd.description.length <= 100);
-        assert.ok((cmd.options?.length ?? 0) <= 25);
+        const options = cmd.options ?? [];
+        assert.ok(options.length <= 25);
+        let seenOptional = false;
+        for (const opt of options) {
+          if (opt.required) {
+            assert.equal(seenOptional, false, `Required option ${opt.name} on /${cmd.name} must precede optional options`);
+          } else {
+            seenOptional = true;
+          }
+          if (Array.isArray(opt.choices)) {
+            assert.ok(opt.choices.length <= 25, `Too many choices on /${cmd.name}.${opt.name}`);
+          }
+        }
       }
     }
     app.shutdown();
@@ -215,13 +209,12 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
       gameManager,
     });
 
-    // 1. P1 challenges P2
+    // 1. P1 challenges P2 via /game
     const chInt = createMockCommandInteraction({
-      commandName: 'rps',
-      subcommand: 'challenge',
+      commandName: 'game',
       userId: 'p1',
       channel,
-      options: { opponent: { id: 'p2', bot: false } },
+      options: { action: 'challenge', game: 'rps', opponent: { id: 'p2', bot: false } },
     });
     await app.interactionHandler.handle(chInt);
     assert.equal(inviteManager.count, 1);
@@ -239,11 +232,10 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
 
     // 3. P1 submits secret choice (ephemeral!)
     const p1Choose = createMockCommandInteraction({
-      commandName: 'rps',
-      subcommand: 'choose',
+      commandName: 'game',
       userId: 'p1',
       channel,
-      options: { choice: 'rock' },
+      options: { action: 'choose', game: 'rps', choice: 'rock' },
     });
     await app.interactionHandler.handle(p1Choose);
     assert.equal(p1Choose.getReplies()[0].payload.flags, MessageFlags.Ephemeral);
@@ -259,11 +251,10 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
 
     // 4. P2 submits secret choice -> finishes match and cleans up RAM
     const p2Choose = createMockCommandInteraction({
-      commandName: 'rps',
-      subcommand: 'choose',
+      commandName: 'game',
       userId: 'p2',
       channel,
-      options: { choice: 'scissors' },
+      options: { action: 'choose', game: 'rps', choice: 'scissors' },
     });
     await app.interactionHandler.handle(p2Choose);
     assert.deepEqual(sessionManager.getStats(), { activeGamesCount: 0, playerSessionsCount: 0 });
@@ -297,11 +288,10 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
 
     // Start solo TicTacToe
     const startInt = createMockCommandInteraction({
-      commandName: 'tictactoe',
-      subcommand: 'solo',
+      commandName: 'game',
       userId: 'solo-1',
       channel,
-      options: { difficulty: 'easy' },
+      options: { action: 'solo', game: 'tictactoe', difficulty: 'easy' },
     });
     await app.interactionHandler.handle(startInt);
     const session = sessionManager.getPlayerSession('solo-1');
@@ -311,11 +301,10 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     deletedIds.add(session.boardMessageRef.messageId);
 
     const moveInt = createMockCommandInteraction({
-      commandName: 'tictactoe',
-      subcommand: 'move',
+      commandName: 'game',
       userId: 'solo-1',
       channel,
-      options: { position: 'B2' },
+      options: { action: 'move', game: 'tictactoe', position: 'B2' },
     });
     await app.interactionHandler.handle(moveInt);
 
@@ -323,33 +312,31 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     assert.notEqual(session.boardMessageRef.messageId, deletedIds.values().next().value);
     assert.equal(moveInt.getReplies()[0].payload.flags, MessageFlags.Ephemeral);
 
-    // Cancel via /game cancel
+    // Cancel via /game action:cancel
     const cancelInt = createMockCommandInteraction({
       commandName: 'game',
-      subcommand: 'cancel',
       userId: 'solo-1',
       channel,
+      options: { action: 'cancel' },
     });
     await app.interactionHandler.handle(cancelInt);
     assert.deepEqual(sessionManager.getStats(), { activeGamesCount: 0, playerSessionsCount: 0 });
 
     // Instant solo Dice & CoinFlip
     const diceInt = createMockCommandInteraction({
-      commandName: 'dice',
-      subcommand: 'solo',
+      commandName: 'game',
       userId: 'solo-1',
       channel,
-      options: { count: 3, sides: 10 },
+      options: { action: 'solo', game: 'dice', count: 3, sides: 10 },
     });
     await app.interactionHandler.handle(diceInt);
     assert.equal(diceInt.getReplies().length, 1);
 
     const coinInt = createMockCommandInteraction({
-      commandName: 'coinflip',
-      subcommand: 'solo',
+      commandName: 'game',
       userId: 'solo-1',
       channel,
-      options: { choice: 'heads' },
+      options: { action: 'solo', game: 'coinflip', choice: 'heads' },
     });
     await app.interactionHandler.handle(coinInt);
     assert.equal(coinInt.getReplies().length, 1);
@@ -383,14 +370,19 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     await app.interactionHandler.handle(helpInt);
     assert.equal(helpInt.getReplies().length, 1);
 
-    // /trivia challenge -> /invite decline
+    // /game action:challenge game:trivia -> /invite decline
     await app.interactionHandler.handle(
       createMockCommandInteraction({
-        commandName: 'trivia',
-        subcommand: 'challenge',
+        commandName: 'game',
         userId: 'p1',
         channel,
-        options: { opponent: { id: 'p2', bot: false }, category: 'science', difficulty: 'easy' },
+        options: {
+          action: 'challenge',
+          game: 'trivia',
+          opponent: { id: 'p2', bot: false },
+          category: 'science',
+          difficulty: 'easy',
+        },
       }),
     );
     await app.interactionHandler.handle(
@@ -403,14 +395,19 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     );
     assert.equal(inviteManager.count, 0);
 
-    // /trivia challenge -> /invite accept -> /game status
+    // /game action:challenge game:trivia -> /invite accept -> /game action:status
     await app.interactionHandler.handle(
       createMockCommandInteraction({
-        commandName: 'trivia',
-        subcommand: 'challenge',
+        commandName: 'game',
         userId: 'p1',
         channel,
-        options: { opponent: { id: 'p2', bot: false }, category: 'science', difficulty: 'easy' },
+        options: {
+          action: 'challenge',
+          game: 'trivia',
+          opponent: { id: 'p2', bot: false },
+          category: 'science',
+          difficulty: 'easy',
+        },
       }),
     );
     await app.interactionHandler.handle(
@@ -424,9 +421,9 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
 
     const statusInt = createMockCommandInteraction({
       commandName: 'game',
-      subcommand: 'status',
       userId: 'p1',
       channel,
+      options: { action: 'status' },
     });
     await app.interactionHandler.handle(statusInt);
     assert.equal(statusInt.getReplies()[0].payload.flags, MessageFlags.Ephemeral);
@@ -440,6 +437,176 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     }
 
     assert.deepEqual(sessionManager.getStats(), { activeGamesCount: 0, playerSessionsCount: 0 });
+    app.shutdown();
+  });
+
+  it('validates /game valid combinations across all 7 games and rejects invalid game/action combinations & missing params', async () => {
+    const channel = createFakeChannel('ch-4');
+    const client = createFakeClient(channel);
+    const sessionManager = new SessionManager({ defaultIdleTimeoutMs: 0 });
+    const inviteManager = new InviteManager({ sessionManager, defaultTtlMs: 0 });
+    const gameManager = new GameManager({
+      sessionManager,
+      inviteManager,
+      rng: createSeededRng(11),
+    });
+    registerDefaultGames(gameManager);
+
+    const app = await createBotApp({
+      client,
+      cooldowns: new CooldownManager(0),
+      sessionManager,
+      inviteManager,
+      gameManager,
+    });
+
+    const runGame = async (options, userId = 'u-test-1') => {
+      const interaction = createMockCommandInteraction({
+        commandName: 'game',
+        userId,
+        channel,
+        options,
+      });
+      await app.interactionHandler.handle(interaction);
+      return interaction.getReplies();
+    };
+
+    // 1. Missing required game on solo/challenge & unknown action
+    const noGameSolo = await runGame({ action: 'solo' });
+    assert.equal(noGameSolo[0].payload.flags, MessageFlags.Ephemeral);
+    assert.match(noGameSolo[0].payload.embeds[0].toJSON().description, /parameter `game`/i);
+
+    const badAction = await runGame({ action: 'fly', game: 'dice' });
+    assert.equal(badAction[0].payload.flags, MessageFlags.Ephemeral);
+
+    // 2. Invalid (game, action) combinations
+    const invalidPairs = [
+      { action: 'drop', game: 'dice', column: 1 },
+      { action: 'move', game: 'coinflip', position: 'A1' },
+      { action: 'drop', game: 'guess', column: 2 },
+      { action: 'answer', game: 'connect4', answer: '5' },
+      { action: 'choose', game: 'trivia', choice: 'rock' },
+      { action: 'choose', game: 'tictactoe', choice: 'rock' },
+    ];
+    for (const pair of invalidPairs) {
+      const replies = await runGame(pair);
+      assert.equal(replies[0].payload.flags, MessageFlags.Ephemeral);
+      assert.match(replies[0].payload.embeds[0].toJSON().description, /tidak tersedia untuk/i);
+    }
+
+    // 3. Challenge without opponent
+    const missingOpponent = await runGame({ action: 'challenge', game: 'connect4' });
+    assert.equal(missingOpponent[0].payload.flags, MessageFlags.Ephemeral);
+    assert.match(missingOpponent[0].payload.embeds[0].toJSON().description, /opponent/i);
+
+    // 4. Guess solo -> answer without specifying game (auto-detects active session) -> cancel with game_id
+    await runGame({ action: 'solo', game: 'guess' });
+    const guessSession = sessionManager.getPlayerSession('u-test-1');
+    assert.equal(guessSession.gameType, 'guess');
+
+    const badGuessAnswer = await runGame({ action: 'answer', answer: 'not-a-number' });
+    assert.equal(badGuessAnswer[0].payload.flags, MessageFlags.Ephemeral);
+
+    const validGuessAnswer = await runGame({ action: 'answer', answer: '50' });
+    assert.equal(validGuessAnswer[0].payload.flags, MessageFlags.Ephemeral);
+
+    // Mismatched game vs active session
+    const mismatchAnswer = await runGame({ action: 'answer', game: 'trivia', answer: 'A' });
+    assert.equal(mismatchAnswer[0].payload.flags, MessageFlags.Ephemeral);
+
+    if (sessionManager.getPlayerSession('u-test-1')) {
+      const wrongGameIdCancel = await runGame({ action: 'cancel', game_id: 'nonexistent-id' });
+      assert.match(wrongGameIdCancel[0].payload.embeds[0].toJSON().description, /tidak cocok/i);
+
+      await runGame({ action: 'cancel', game_id: guessSession.sessionId });
+    }
+    assert.equal(sessionManager.getPlayerSession('u-test-1'), undefined);
+
+    // 5. Connect4 solo -> missing column -> valid drop -> cancel
+    await runGame({ action: 'solo', game: 'connect4', difficulty: 'easy' });
+    const missingCol = await runGame({ action: 'drop', game: 'connect4' });
+    assert.equal(missingCol[0].payload.flags, MessageFlags.Ephemeral);
+    const validDrop = await runGame({ action: 'drop', game: 'connect4', column: 4 });
+    assert.equal(validDrop[0].payload.flags, MessageFlags.Ephemeral);
+    await runGame({ action: 'cancel' });
+
+    // 6. RPS solo + Trivia solo + CoinFlip/Dice solo + in-game choose/answer validation
+    const rpsSolo = await runGame({ action: 'solo', game: 'rps', choice: 'rock' });
+    assert.equal(rpsSolo.length, 1);
+
+    await runGame({ action: 'solo', game: 'trivia', category: 'science', difficulty: 'easy' });
+    const invalidTriviaAns = await runGame({ action: 'answer', game: 'trivia', answer: 'Z' });
+    assert.equal(invalidTriviaAns[0].payload.flags, MessageFlags.Ephemeral);
+    await runGame({ action: 'cancel' });
+
+    // Status when idle
+    const idleStatus = await runGame({ action: 'status' });
+    assert.equal(idleStatus[0].payload.flags, MessageFlags.Ephemeral);
+
+    app.shutdown();
+  });
+
+  it('dispatches all 4 /media actions (qc, brat, lyrics, download) and validates action-specific optional params', async () => {
+    const channel = createFakeChannel('ch-media');
+    const client = createFakeClient(channel);
+    const app = await createBotApp({
+      client,
+      cooldowns: new CooldownManager(0),
+    });
+
+    app.interactionHandler.context.searchLyrics = async ({ query }) => ({
+      title: query,
+      artist: 'Midwave',
+      album: 'Test',
+      thumbnailUrl: null,
+      lyrics: 'Sample lyrics line 1',
+      sourceName: 'LRCLIB',
+      sourceUrl: 'https://lrclib.net/api/get/1',
+      cached: false,
+    });
+
+    const runMedia = async (options) => {
+      const interaction = createMockCommandInteraction({
+        commandName: 'media',
+        userId: 'u-media-1',
+        channel,
+        options,
+      });
+      await app.interactionHandler.handle(interaction);
+      return interaction.getReplies();
+    };
+
+    // 1. qc
+    const qcEvents = await runMedia({ action: 'qc', text: 'Halo media qc!' });
+    assert.equal(qcEvents[0].type, 'deferReply');
+    assert.equal(qcEvents[1].type, 'editReply');
+    assert.equal(qcEvents[1].payload.files[0].name, 'midwave-qc.png');
+
+    // 2. brat
+    const bratEvents = await runMedia({ action: 'brat', text: 'midwave consolidated' });
+    assert.equal(bratEvents[0].type, 'deferReply');
+    assert.equal(bratEvents[1].type, 'editReply');
+    assert.equal(bratEvents[1].payload.files[0].name, 'midwave-brat.png');
+
+    // 3. lyrics (missing query -> ephemeral; valid query -> paginated embed)
+    const lyricsMissing = await runMedia({ action: 'lyrics' });
+    assert.equal(lyricsMissing[0].type, 'reply');
+    assert.equal(lyricsMissing[0].payload.flags, MessageFlags.Ephemeral);
+
+    const lyricsOk = await runMedia({ action: 'lyrics', query: 'Ocean' });
+    assert.equal(lyricsOk[0].type, 'deferReply');
+    assert.equal(lyricsOk[1].type, 'editReply');
+
+    // 4. download (missing url -> ephemeral without failing other actions)
+    const downloadMissing = await runMedia({ action: 'download' });
+    assert.equal(downloadMissing[0].type, 'reply');
+    assert.equal(downloadMissing[0].payload.flags, MessageFlags.Ephemeral);
+
+    // 5. invalid action
+    const invalidMedia = await runMedia({ action: 'unknown' });
+    assert.equal(invalidMedia[0].type, 'reply');
+    assert.equal(invalidMedia[0].payload.flags, MessageFlags.Ephemeral);
+
     app.shutdown();
   });
 });

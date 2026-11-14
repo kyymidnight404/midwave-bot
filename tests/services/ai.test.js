@@ -5,6 +5,7 @@ import {
   AI_COOLDOWN_MS,
   AI_MAX_QUESTION_LENGTH,
   DEFAULT_GEMINI_MODEL,
+  DEFAULT_GEMINI_TEMPERATURE,
   MIDWAVE_AI_SYSTEM_INSTRUCTION,
   askGemini,
   countUnicodeChars,
@@ -156,6 +157,7 @@ describe('Midwave AI (Gemini) service, formatter, /ai, and !ai', () => {
     assert.equal(capturedCalls[0].params.contents, 'Apa itu JavaScript?');
     assert.equal(capturedCalls[1].params.contents, 'Apa itu Python?');
     assert.equal(capturedCalls[0].params.config.systemInstruction, MIDWAVE_AI_SYSTEM_INSTRUCTION);
+    assert.equal(capturedCalls[0].params.config.temperature, DEFAULT_GEMINI_TEMPERATURE);
     assert.ok(capturedCalls[0].params.config.abortSignal instanceof AbortSignal);
     assert.equal(second.model, process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL);
   });

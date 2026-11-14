@@ -56,6 +56,7 @@ export class MessageCommandAdapter {
    *   resolvedUsers?: Map<string, import('discord.js').User>,
    *   isSecretChoice?: boolean,
    *   canManageMessages?: boolean,
+   *   canEmbedLinks?: boolean,
    * }} params
    */
   constructor({
@@ -64,18 +65,20 @@ export class MessageCommandAdapter {
     resolvedUsers = new Map(),
     isSecretChoice = false,
     canManageMessages = false,
+    canEmbedLinks = true,
   }) {
     this.message = message;
     this.parsed = parsed;
     this.resolvedUsers = resolvedUsers;
     this.isSecretChoice = isSecretChoice;
     this.canManageMessages = canManageMessages;
+    this.canEmbedLinks = canEmbedLinks;
 
     this.id = message.id ?? null;
     this.commandName = parsed.commandName;
     this.user = message.author;
-    this.guildId = message.guildId ?? null;
-    this.channelId = message.channelId;
+    this.guildId = message.guildId ?? message.guild?.id ?? null;
+    this.channelId = message.channelId ?? message.channel?.id ?? null;
     this.deferred = false;
     this.replied = false;
     this._ephemeral = false;

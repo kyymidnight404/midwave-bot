@@ -164,7 +164,7 @@ export const RPSGame = {
       status: 'Menunggu Pilihan Rahasia',
       currentTurn: null,
       boardOrInfo: lines.join('\n'),
-      instructions: 'Gunakan `/rps choose choice:<rock|paper|scissors>` untuk memilih secara rahasia.',
+      instructions: 'Gunakan `/game action:choose game:rps choice:<rock|paper|scissors>` untuk memilih secara rahasia.',
     };
   },
 

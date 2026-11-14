@@ -1,4 +1,4 @@
-import { AttachmentBuilder, MessageFlags, SlashCommandBuilder } from 'discord.js';
+import { AttachmentBuilder, MessageFlags } from 'discord.js';
 import {
   DownloaderError,
   PLATFORM_LABELS,
@@ -12,16 +12,6 @@ import {
   buildDownloadSuccessEmbed,
   buildErrorEmbed,
 } from '../utils/embeds.js';
-
-export const data = new SlashCommandBuilder()
-  .setName('download')
-  .setDescription('Unduh media publik dari Instagram atau TikTok langsung ke Discord')
-  .addStringOption((option) =>
-    option
-      .setName('url')
-      .setDescription('Tautan publik Instagram atau TikTok (https://...)')
-      .setRequired(true),
-  );
 
 /**
  * Formats upload failures from Discord REST API into safe user-facing messages.
@@ -46,7 +36,7 @@ function resolveUploadErrorMessage(error) {
 }
 
 /**
- * Executes the `/download` slash command using the unified RapidAPI downloader service.
+ * Executes media download for `/media action:download` using the unified RapidAPI downloader service.
  *
  * @param {import('discord.js').ChatInputCommandInteraction} interaction
  * @param {{
@@ -57,7 +47,20 @@ function resolveUploadErrorMessage(error) {
  * }} [context]
  */
 export async function execute(interaction, context = {}) {
-  const rawUrl = interaction.options.getString('url', true);
+  const rawUrl = interaction.options?.getString?.('url', false);
+
+  if (typeof rawUrl !== 'string' || !rawUrl.trim()) {
+    await interaction.reply({
+      embeds: [
+        buildErrorEmbed(
+          'Tautan `url` wajib diisi untuk mengunduh media. Contoh: `/media action:download url:https://www.instagram.com/reel/...`.',
+          'Tautan Tidak Valid',
+        ),
+      ],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
 
   let validated;
   try {
@@ -79,7 +82,7 @@ export async function execute(interaction, context = {}) {
     await interaction.reply({
       embeds: [
         buildErrorEmbed(
-          'Fitur `/download` belum aktif karena `RAPIDAPI_KEY` belum dikonfigurasi oleh administrator.',
+          'Fitur download media belum aktif karena `RAPIDAPI_KEY` belum dikonfigurasi oleh administrator.',
           'Downloader Belum Dikonfigurasi',
         ),
       ],
@@ -142,4 +145,4 @@ export async function execute(interaction, context = {}) {
   }
 }
 
-export default { data, execute };
+export default { name: 'download', execute };

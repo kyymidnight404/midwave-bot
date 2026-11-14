@@ -282,7 +282,7 @@ export function buildResultEmbed({
 }
 
 /**
- * Builds `/game status` embed for an active session.
+ * Builds `/game action:status` embed for an active session.
  * @param {{
  *   sessionId: string,
  *   gameType: string,
@@ -330,13 +330,13 @@ export function buildGamesListEmbed() {
   const embed = createBaseEmbed({
     title: 'Daftar Permainan Midwave',
     description:
-      'Semua game mendukung mode **Solo** dan **Multiplayer (2 pemain)** melalui Slash Commands.\nUntuk fitur utility seperti `/brat`, lihat `/help`.',
+      'Semua game mendukung mode **Solo** dan **Multiplayer (2 pemain)** melalui `/game`.\nUntuk fitur media, AI, & interaksi sosial seperti `/media` atau `/social`, lihat `/help`.',
     color: COLORS.SECONDARY,
   });
 
   for (const game of Object.values(GAME_METADATA)) {
     embed.addFields({
-      name: `${game.name} (\`${game.command}\`)`,
+      name: game.name,
       value: `${game.description}\n• Solo: ${game.soloCommands}\n• Multiplayer: ${game.multiplayerCommands}`,
       inline: false,
     });
@@ -354,31 +354,33 @@ export function buildHelpEmbed(prefix = '!') {
   const safePrefix = typeof prefix === 'string' && prefix.trim() ? prefix.trim() : '!';
   const embed = createBaseEmbed({
     title: 'Panduan Midwave',
-    description: `Bot game Discord ringan dengan arsitektur berbasis sesi sementara di RAM. Mendukung **Slash Commands (\`/\`)** dan **Prefix Commands (\`${safePrefix}\`)**.`,
+    description: `Bot game Discord ringan dengan arsitektur berbasis sesi sementara di RAM. Mendukung **Slash Commands (\`/\`)** terpadu dan **Prefix Commands (\`${safePrefix}\`)**.`,
     color: COLORS.PRIMARY,
   });
 
   embed.addFields(
     {
-      name: 'Command Umum',
+      name: 'Slash Commands Utama',
       value: [
-        `\`/games\` atau \`${safePrefix}games\` — Daftar lengkap 7 permainan dan cara mainnya`,
-        `\`/help\` atau \`${safePrefix}help\` — Panduan ini`,
-        `\`/game status\` atau \`${safePrefix}game status\` — Lihat pertandingan yang sedang berlangsung`,
-        `\`/game cancel\` atau \`${safePrefix}game cancel\` — Batalkan pertandingan aktif atau undangan pending`,
+        `\`/games\` atau \`${safePrefix}games\` - Daftar lengkap 7 permainan dan cara mainnya`,
+        `\`/help\` atau \`${safePrefix}help\` - Panduan ini`,
+        `\`/game action:status\` atau \`${safePrefix}game status\` - Lihat pertandingan yang sedang berlangsung`,
+        `\`/game action:cancel\` atau \`${safePrefix}game cancel\` - Batalkan pertandingan aktif atau undangan pending`,
+        `\`/game action:<solo|challenge|choose|drop|move|answer> game:<nama>\` - Mainkan mini-game via slash command`,
       ].join('\n'),
       inline: false,
     },
     {
-      name: 'Fitur Utility',
+      name: 'Fitur AI, Media & Sosial',
       value: [
-        `\`/ai question:<pertanyaan>\` atau \`${safePrefix}ai <pertanyaan>\` — Tanya Midwave AI (stateless Gemini)`,
-        `\`/brat text:<teks>\` atau \`${safePrefix}brat <teks>\` — Buat gambar teks bergaya Brat (1024×1024 PNG, maks. 100 karakter)`,
-        `\`/qc text:<teks>\` atau \`${safePrefix}qc [teks / reply pesan]\` — Buat screenshot chat bergaya WhatsApp`,
-        `\`/lyrics query:<judul> [artist:<artis>]\` atau \`${safePrefix}lyrics <judul> [| <artis>]\` — Cari lirik lagu dengan cover album dan pagination`,
-        `\`/math expression:<ekspresi>\` atau \`${safePrefix}math <ekspresi>\` — Kalkulator matematika interaktif`,
-        `\`/hug\`, \`/pat\`, \`/slap\`, \`/bonk\`, \`/poke\`, \`/yeet\`, \`/highfive\`, \`/wave\`, \`/laugh\`, \`/cry\` (juga via \`${safePrefix}\`) — Interaksi sosial dengan GIF anime`,
-        `\`/download url:<tautan>\` — Unduh media publik dari Instagram atau TikTok`,
+        `\`/ai question:<pertanyaan>\` atau \`${safePrefix}ai <pertanyaan>\` - Tanya Midwave AI — ringkas, natural, dan kontekstual`,
+        `\`/math expression:<ekspresi>\` atau \`${safePrefix}math <ekspresi>\` - Kalkulator matematika interaktif`,
+        `\`/media action:brat text:<teks>\` atau \`${safePrefix}brat <teks>\` - Buat gambar teks bergaya Brat (1024x1024 PNG)`,
+        `\`/media action:qc text:<teks>\` atau \`${safePrefix}qc [teks / reply pesan]\` (plus klik kanan *Generate QC*) - Screenshot chat WhatsApp`,
+        `\`/media action:lyrics query:<judul> [artist:<artis>]\` atau \`${safePrefix}lyrics <judul> [| <artis>]\` - Cari lirik lagu`,
+        `\`/media action:download url:<tautan>\` - Unduh media publik dari Instagram atau TikTok`,
+        `\`${safePrefix}say <pesan>\` - Ulangi teks pesan langsung tanpa embed dan tanpa ping mention`,
+        `\`/social action:<aksi> [user]\` atau \`${safePrefix}hug\`, \`${safePrefix}pat\`, \`${safePrefix}slap\`, \`${safePrefix}bonk\`, \`${safePrefix}poke\`, \`${safePrefix}yeet\`, \`${safePrefix}highfive\`, \`${safePrefix}wave\`, \`${safePrefix}laugh\`, \`${safePrefix}cry\` - Interaksi sosial dengan GIF anime`,
       ].join('\n'),
       inline: false,
     },
@@ -398,9 +400,9 @@ export function buildHelpEmbed(prefix = '!') {
     {
       name: 'Alur Multiplayer',
       value: [
-        `1. Tantang pemain lain dengan \`/game challenge\` atau \`${safePrefix}<game> challenge @user\` (contoh: \`${safePrefix}tictactoe @user\`)`,
+        `1. Tantang pemain lain dengan \`/game action:challenge game:<nama> opponent:@user\` atau \`${safePrefix}<game> challenge @user\` (contoh: \`${safePrefix}tictactoe @user\`)`,
         `2. Lawan menerima dengan \`/invite accept\` / \`${safePrefix}invite accept\` atau menolak dengan \`/invite decline\` / \`${safePrefix}invite decline\` (berlaku 60 detik)`,
-        '3. Mainkan giliran menggunakan Slash Command atau Prefix Command game masing-masing',
+        '3. Mainkan giliran menggunakan `/game` atau Prefix Command game masing-masing',
       ].join('\n'),
       inline: false,
     },
@@ -441,7 +443,7 @@ export function buildDownloadProcessingEmbed({ platformLabel }) {
 }
 
 /**
- * Builds the dark Midwave-styled completion embed for `/download`.
+ * Builds the dark Midwave-styled completion embed for `/media action:download`.
  *
  * @param {{
  *   platformLabel: string,

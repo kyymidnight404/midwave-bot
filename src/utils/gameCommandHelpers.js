@@ -23,7 +23,14 @@ export async function handleChallengeCommand(interaction, context, { gameType, c
     return;
   }
 
-  const opponent = interaction.options.getUser('opponent', true);
+  const opponent = interaction.options.getUser('opponent', false);
+  if (!opponent) {
+    await interaction.reply({
+      embeds: [buildErrorEmbed('Pilih pemain lawan pada parameter `opponent` untuk mengirim tantangan.')],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
   const check = validateOpponent(interaction.user.id, opponent);
   if (!check.valid) {
     await interaction.reply({

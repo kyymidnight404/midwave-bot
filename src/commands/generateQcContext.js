@@ -1,6 +1,6 @@
 import { ApplicationCommandType, ContextMenuCommandBuilder, MessageFlags } from 'discord.js';
+import { extractQcSourceFromMessage, renderAndReplyQc } from '../prefixCommands/qc.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
-import { extractQcSourceFromMessage, renderAndReplyQc } from './qc.js';
 
 export const data = new ContextMenuCommandBuilder()
   .setName('Generate QC')

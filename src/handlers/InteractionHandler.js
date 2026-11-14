@@ -2,6 +2,7 @@ import { MessageFlags } from 'discord.js';
 import { DOWNLOAD_COOLDOWN_MS } from '../services/downloader.js';
 import { AI_COOLDOWN_MS } from '../services/gemini.js';
 import { LYRICS_COOLDOWN_MS } from '../services/lyricsService.js';
+import { SOCIAL_COOLDOWN_MS } from '../services/otakuGifsService.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
 
 const IGNORED_DISCORD_ERROR_CODES = new Set([10062, 40060]);
@@ -9,7 +10,10 @@ const COMMAND_COOLDOWNS = Object.freeze({
   ai: AI_COOLDOWN_MS,
   download: DOWNLOAD_COOLDOWN_MS,
   lyrics: LYRICS_COOLDOWN_MS,
+  social: SOCIAL_COOLDOWN_MS,
 });
+
+const ACTION_COOLDOWN_COMMANDS = new Set(['game', 'media', 'social']);
 
 /**
  * Safely sends an ephemeral error reply regardless of interaction acknowledgement state.
@@ -84,10 +88,20 @@ export class InteractionHandler {
     }
 
     const subcommand = interaction.options?.getSubcommand?.(false) ?? '';
-    const cooldownKey = subcommand
-      ? `${interaction.user.id}:${interaction.commandName}:${subcommand}`
+    const actionOption =
+      !subcommand && ACTION_COOLDOWN_COMMANDS.has(interaction.commandName)
+        ? (interaction.options?.getString?.('action', false)?.trim().toLowerCase() ?? '')
+        : '';
+    const actionPart = subcommand || actionOption;
+    const cooldownKey = actionPart
+      ? `${interaction.user.id}:${interaction.commandName}:${actionPart}`
       : `${interaction.user.id}:${interaction.commandName}`;
-    const specialCooldown = COMMAND_COOLDOWNS[interaction.commandName];
+
+    const cooldownTarget =
+      interaction.commandName === 'media' && actionOption
+        ? actionOption
+        : interaction.commandName;
+    const specialCooldown = COMMAND_COOLDOWNS[cooldownTarget];
     const cooldownTtl =
       specialCooldown && this.cooldowns.defaultTtlMs > 0
         ? Math.max(this.cooldowns.defaultTtlMs, specialCooldown)

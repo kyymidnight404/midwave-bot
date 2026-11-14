@@ -21,7 +21,8 @@ import {
   toTwemojiCodePoints,
   tokenizeBratUnits,
 } from '../../src/utils/bratEmoji.js';
-import bratCommand, { data as bratData, execute as executeBrat } from '../../src/commands/brat.js';
+import bratCommand, { execute as executeBrat } from '../../src/prefixCommands/brat.js';
+import mediaCommand, { data as mediaData } from '../../src/commands/media.js';
 import { createBotApp } from '../../src/index.js';
 import { CooldownManager } from '../../src/utils/cooldown.js';
 import { InteractionHandler } from '../../src/handlers/InteractionHandler.js';
@@ -83,10 +84,10 @@ function decodePngRgbaPixels(pngBuffer) {
   return { width, height, rgba };
 }
 
-function createMockInteraction({ text = '', userId = 'u1' } = {}) {
+function createMockInteraction({ text = '', action = 'brat', userId = 'u1' } = {}) {
   const events = [];
   return {
-    commandName: 'brat',
+    commandName: 'media',
     user: { id: userId },
     guildId: 'guild-1',
     channelId: 'ch-1',
@@ -95,7 +96,11 @@ function createMockInteraction({ text = '', userId = 'u1' } = {}) {
     isChatInputCommand: () => true,
     options: {
       getSubcommand: () => null,
-      getString: (name) => (name === 'text' ? text : null),
+      getString: (name) => {
+        if (name === 'action') return action;
+        if (name === 'text') return text;
+        return null;
+      },
     },
     async deferReply(opts = {}) {
       this.deferred = true;
@@ -240,16 +245,21 @@ describe('Brat Generator utility & /brat command', () => {
     );
   });
 
-  it('registers /brat command with required text option (max 1000)', async () => {
+  it('registers /media command with brat action and optional text option (max 2000, brat enforces 1000)', async () => {
     const app = await createBotApp();
     const json = app.commandHandler.toJSON();
-    const bratCmd = json.find((cmd) => cmd.name === 'brat');
-    assert.ok(bratCmd, '/brat must be registered');
-    assert.equal(bratCmd.options.length, 1);
-    assert.equal(bratCmd.options[0].name, 'text');
-    assert.equal(bratCmd.options[0].required, true);
-    assert.equal(bratCmd.options[0].max_length, BRAT_MAX_LENGTH);
-    assert.equal(bratData.name, 'brat');
+    assert.equal(json.find((cmd) => cmd.name === 'brat'), undefined);
+    const mediaCmd = json.find((cmd) => cmd.name === 'media');
+    assert.ok(mediaCmd, '/media must be registered');
+    assert.equal(mediaCmd.options[0].name, 'action');
+    assert.equal(mediaCmd.options[0].required, true);
+    assert.ok(mediaCmd.options[0].choices.some((choice) => choice.value === 'brat'));
+    const textOption = mediaCmd.options.find((opt) => opt.name === 'text');
+    assert.ok(textOption, '/media must expose optional text option');
+    assert.equal(textOption.required, false);
+    assert.equal(textOption.max_length, 2000);
+    assert.equal(bratCommand.name, 'brat');
+    assert.equal(mediaData.name, 'media');
     app.shutdown();
   });
 
@@ -294,9 +304,9 @@ describe('Brat Generator utility & /brat command', () => {
     assert.ok(!serialized.includes('SECRET_ENV_SHOULD_NOT_LEAK'));
   });
 
-  it('enforces cooldown on /brat through InteractionHandler', async () => {
+  it('enforces cooldown on /media action:brat through InteractionHandler', async () => {
     const commandHandler = new CommandHandler();
-    commandHandler.commands.set('brat', bratCommand);
+    commandHandler.commands.set('media', mediaCommand);
     const cooldowns = new CooldownManager(5000);
     const handler = new InteractionHandler({
       commandHandler,

@@ -64,7 +64,7 @@ export function validateLyricsInput(rawQuery, rawArtist = '') {
   if (typeof rawQuery !== 'string') {
     throw new LyricsServiceError(
       'INVALID_QUERY',
-      'Judul lagu atau kata kunci wajib diisi. Contoh: `/lyrics query: Love artist: wave to earth`.',
+      'Judul lagu atau kata kunci wajib diisi. Contoh: `/media action:lyrics query: Love artist: wave to earth`.',
     );
   }
 
@@ -72,7 +72,7 @@ export function validateLyricsInput(rawQuery, rawArtist = '') {
   if (!query) {
     throw new LyricsServiceError(
       'INVALID_QUERY',
-      'Kata kunci pencarian lirik tidak boleh kosong. Contoh: `/lyrics query: APT`.',
+      'Kata kunci pencarian lirik tidak boleh kosong. Contoh: `/media action:lyrics query: APT`.',
     );
   }
 

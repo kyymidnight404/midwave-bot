@@ -20,7 +20,8 @@ import {
 import qcCommand, {
   execute as executeQc,
   extractQcSourceFromMessage,
-} from '../../src/commands/qc.js';
+} from '../../src/prefixCommands/qc.js';
+import mediaCommand from '../../src/commands/media.js';
 import generateQcContextCommand from '../../src/commands/generateQcContext.js';
 import { CommandHandler } from '../../src/handlers/CommandHandler.js';
 import { InteractionHandler } from '../../src/handlers/InteractionHandler.js';
@@ -30,15 +31,19 @@ import { parsePrefixInvocation } from '../../src/utils/prefixParser.js';
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
-function createMockSlashInteraction(text) {
+function createMockSlashInteraction(text, action = 'qc') {
   const events = [];
   return {
-    commandName: 'qc',
+    commandName: 'media',
     user: { id: 'u1' },
     isChatInputCommand: () => true,
     isMessageContextMenuCommand: () => false,
     options: {
-      getString: (name) => (name === 'text' ? text : null),
+      getString: (name) => {
+        if (name === 'action') return action;
+        if (name === 'text') return text;
+        return null;
+      },
     },
     async deferReply(opts = {}) {
       events.push({ type: 'deferReply', payload: opts });
@@ -147,13 +152,31 @@ describe('QC (WhatsApp Chat Screenshot) Generator & Commands', () => {
     assert.equal(validateQcText('a'.repeat(QC_MAX_LENGTH)).length, QC_MAX_LENGTH);
   });
 
-  it('formats dynamic 24-hour HH:mm timestamps defaulting to Asia/Jakarta', () => {
+  it('formats dynamic 24-hour HH:mm timestamps defaulting to Asia/Jakarta even when host TZ is UTC', () => {
     assert.equal(resolveQcTimeZone('Invalid/Zone'), QC_DEFAULT_TIMEZONE);
     // 13:04 UTC == 20:04 Asia/Jakarta (UTC+7)
     const sampleDate = new Date('2026-11-14T13:04:00Z');
     assert.equal(formatQcTimestamp(sampleDate, 'Asia/Jakarta'), '20:04');
     // 17:00 UTC == 00:00 Asia/Jakarta
     assert.equal(formatQcTimestamp(new Date('2026-11-14T17:00:00Z'), 'Asia/Jakarta'), '00:00');
+
+    const prevTz = process.env.TZ;
+    const prevBotTz = process.env.BOT_TIMEZONE;
+    try {
+      process.env.TZ = 'UTC';
+      delete process.env.BOT_TIMEZONE;
+      assert.equal(resolveQcTimeZone(), 'Asia/Jakarta');
+      assert.equal(formatQcTimestamp(new Date('2026-11-14T11:42:00Z')), '18:42');
+
+      process.env.BOT_TIMEZONE = 'Asia/Makassar';
+      assert.equal(resolveQcTimeZone(), 'Asia/Makassar');
+      assert.equal(formatQcTimestamp(new Date('2026-11-14T11:42:00Z')), '19:42');
+    } finally {
+      if (prevTz === undefined) delete process.env.TZ;
+      else process.env.TZ = prevTz;
+      if (prevBotTz === undefined) delete process.env.BOT_TIMEZONE;
+      else process.env.BOT_TIMEZONE = prevBotTz;
+    }
   });
 
   it('renders 1080x1080 PNG for short/medium text and dynamically expands canvas height for long text', () => {
@@ -200,10 +223,13 @@ describe('QC (WhatsApp Chat Screenshot) Generator & Commands', () => {
     assert.throws(() => extractQcSourceFromMessage({ content: '', cleanContent: '' }), /tidak memiliki teks/i);
   });
 
-  it('handles /qc slash command and Generate QC context menu via InteractionHandler', async () => {
+  it('handles /media action:qc slash command and Generate QC context menu via InteractionHandler', async () => {
     const commandHandler = new CommandHandler();
     await commandHandler.loadCommands();
-    assert.equal(qcCommand.data.name, 'qc');
+    assert.equal(qcCommand.name, 'qc');
+    assert.equal(mediaCommand.data.name, 'media');
+    assert.equal(commandHandler.get('qc'), undefined);
+    assert.ok(commandHandler.get('media'));
     assert.equal(generateQcContextCommand.data.name, 'Generate QC');
     assert.equal(generateQcContextCommand.data.type, ApplicationCommandType.Message);
 
@@ -219,7 +245,7 @@ describe('QC (WhatsApp Chat Screenshot) Generator & Commands', () => {
       },
     });
 
-    // Slash /qc
+    // Slash /media action:qc
     const slashInteraction = createMockSlashInteraction('Halo dunia!');
     await handler.handle(slashInteraction);
     const slashEvents = slashInteraction.getEvents();
@@ -249,11 +275,16 @@ describe('QC (WhatsApp Chat Screenshot) Generator & Commands', () => {
     );
     assert.equal(ctxInteraction.getEvents()[1].payload.files[0].name, QC_ATTACHMENT_NAME);
 
-    // Invalid empty slash input replies ephemerally
+    // Invalid empty slash input and omitted optional text reply ephemerally
     const emptySlash = createMockSlashInteraction('   ');
     await executeQc(emptySlash);
     assert.equal(emptySlash.getEvents()[0].type, 'reply');
     assert.equal(emptySlash.getEvents()[0].payload.flags, MessageFlags.Ephemeral);
+
+    const missingTextSlash = createMockSlashInteraction(null);
+    await handler.handle(missingTextSlash);
+    assert.equal(missingTextSlash.getEvents()[0].type, 'reply');
+    assert.equal(missingTextSlash.getEvents()[0].payload.flags, MessageFlags.Ephemeral);
   });
 
   it('handles !qc manual text, !qc reply mode, and missing reply error via PrefixCommandHandler', async () => {

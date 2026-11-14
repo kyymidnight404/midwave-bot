@@ -215,7 +215,7 @@ export const ConnectFourGame = {
       instructions:
         state.status === MATCH_STATUS.FINISHED
           ? undefined
-          : 'Gunakan `/connect4 drop column:<1-7>` untuk menjatuhkan keping.',
+          : 'Gunakan `/game action:drop game:connect4 column:<1-7>` untuk menjatuhkan keping.',
     };
   },
 

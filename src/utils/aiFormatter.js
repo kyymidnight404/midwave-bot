@@ -117,6 +117,52 @@ function findSafeSplitIndex(remaining, limit) {
 }
 
 /**
+ * Collapses consecutive blank lines (3+ newlines) outside fenced code blocks into a single blank line
+ * so multi-paragraph Discord responses stay compact without altering code formatting.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function collapseExcessiveNewlines(text) {
+  const input = String(text ?? '');
+  if (!input) {
+    return '';
+  }
+
+  const lines = input.replace(/\r\n/g, '\n').split('\n');
+  const out = [];
+  let inFence = false;
+  let blankRun = 0;
+
+  for (const line of lines) {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
+      blankRun = 0;
+      out.push(line);
+      continue;
+    }
+
+    if (inFence) {
+      out.push(line);
+      continue;
+    }
+
+    if (line.trim() === '') {
+      blankRun += 1;
+      if (blankRun <= 1) {
+        out.push('');
+      }
+      continue;
+    }
+
+    blankRun = 0;
+    out.push(line);
+  }
+
+  return out.join('\n');
+}
+
+/**
  * Sanitizes AI output and splits it safely into Discord messages (max 2000 chars each)
  * while preserving fenced code blocks across chunks.
  *
@@ -125,7 +171,9 @@ function findSafeSplitIndex(remaining, limit) {
  * @returns {string[]}
  */
 export function formatDiscordAiChunks(rawText, maxLength = DISCORD_MAX_MESSAGE_LENGTH) {
-  const sanitized = formatDiscordMaskedLinks(sanitizeAiMentions(rawText)).trim();
+  const sanitized = collapseExcessiveNewlines(
+    formatDiscordMaskedLinks(sanitizeAiMentions(rawText))
+  ).trim();
   if (!sanitized) {
     return [];
   }
@@ -243,7 +291,9 @@ export function buildWebSearchEmbed({
   fallbackNotice = '',
 }) {
   const isFallback = mode === 'fallback';
-  const safeDescription = formatDiscordMaskedLinks(sanitizeAiMentions(description || ''))
+  const safeDescription = collapseExcessiveNewlines(
+    formatDiscordMaskedLinks(sanitizeAiMentions(description || ''))
+  )
     .trim()
     .slice(0, 4096);
 

@@ -106,6 +106,7 @@ export function loadQcAssets() {
 
 /**
  * Resolves the configured bot timezone, defaulting to Asia/Jakarta.
+ * Ignores OS/host `TZ` so overseas hosting servers still render WIB by default.
  * @param {string} [preferredTimeZone]
  * @returns {string}
  */
@@ -113,7 +114,6 @@ export function resolveQcTimeZone(preferredTimeZone) {
   const candidate =
     (typeof preferredTimeZone === 'string' && preferredTimeZone.trim()) ||
     process.env.BOT_TIMEZONE?.trim() ||
-    process.env.TZ?.trim() ||
     QC_DEFAULT_TIMEZONE;
 
   try {
@@ -135,15 +135,23 @@ export function formatQcTimestamp(timestamp = new Date(), timeZone) {
   const validDate = Number.isNaN(date.getTime()) ? new Date() : date;
   const tz = resolveQcTimeZone(timeZone);
 
-  const formatted = new Intl.DateTimeFormat('en-GB', {
-    timeZone: tz,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(validDate);
+  try {
+    const formatted = new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(validDate);
 
-  // Guard against engines that format midnight as 24:xx.
-  return formatted.startsWith('24:') ? `00:${formatted.slice(3)}` : formatted;
+    // Guard against engines that format midnight as 24:xx.
+    return formatted.startsWith('24:') ? `00:${formatted.slice(3)}` : formatted;
+  } catch {
+    // Explicit UTC+7 fallback for Asia/Jakarta (WIB) if host ICU tzdata is unavailable.
+    const wib = new Date(validDate.getTime() + 7 * 60 * 60 * 1000);
+    const hh = String(wib.getUTCHours()).padStart(2, '0');
+    const mm = String(wib.getUTCMinutes()).padStart(2, '0');
+    return `${hh}:${mm}`;
+  }
 }
 
 /**

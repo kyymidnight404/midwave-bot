@@ -1,22 +1,10 @@
-import { AttachmentBuilder, MessageFlags, SlashCommandBuilder } from 'discord.js';
+import { AttachmentBuilder, MessageFlags } from 'discord.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
 import {
   QC_ATTACHMENT_NAME,
-  QC_MAX_LENGTH,
   renderQcPng,
   validateQcText,
 } from '../utils/qcGenerator.js';
-
-export const data = new SlashCommandBuilder()
-  .setName('qc')
-  .setDescription('Buat gambar chat screenshot bergaya WhatsApp dari teks atau reply pesan')
-  .addStringOption((option) =>
-    option
-      .setName('text')
-      .setDescription(`Teks pesan yang ingin ditampilkan (maksimal ${QC_MAX_LENGTH} karakter)`)
-      .setRequired(true)
-      .setMaxLength(QC_MAX_LENGTH),
-  );
 
 /**
  * Extracts text from a Discord message (reply or context menu).
@@ -76,7 +64,7 @@ async function resolveRepliedMessage(message, prefix = '!') {
 }
 
 /**
- * Shared validation, rendering, and response sender for `/qc`, `!qc`, and `Generate QC`.
+ * Shared validation, rendering, and response sender for `/media action:qc`, `!qc`, and `Generate QC`.
  * @param {import('discord.js').Interaction} interaction
  * @param {{ rawText: string, timestamp?: Date | number, context?: { renderQcPng?: typeof renderQcPng, timeZone?: string } }} params
  */
@@ -111,7 +99,7 @@ export async function renderAndReplyQc(interaction, { rawText, timestamp, contex
 }
 
 /**
- * Executes `/qc` and `!qc`.
+ * Executes QC generation for both `/media action:qc` and `!qc`.
  * @param {import('discord.js').ChatInputCommandInteraction} interaction
  * @param {{ prefix?: string, renderQcPng?: typeof renderQcPng, timeZone?: string }} [context]
  */
@@ -140,4 +128,4 @@ export async function execute(interaction, context = {}) {
   await renderAndReplyQc(interaction, { rawText, timestamp: new Date(), context });
 }
 
-export default { data, execute };
+export default { name: 'qc', execute };

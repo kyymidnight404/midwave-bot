@@ -44,13 +44,13 @@ export class InviteManager {
     onExpire = null,
   }) {
     if (this.sessionManager.hasActiveSession(hostId)) {
-      throw new Error('Kamu masih memiliki pertandingan aktif. Selesaikan atau batalkan dengan `/game cancel`.');
+      throw new Error('Kamu masih memiliki pertandingan aktif. Selesaikan atau batalkan dengan `/game action:cancel`.');
     }
     if (this.sessionManager.hasActiveSession(opponentId)) {
       throw new Error('Lawan yang ditantang sedang berada di pertandingan lain.');
     }
     if (this.getOutgoingInvite(hostId)) {
-      throw new Error('Kamu masih memiliki undangan yang menunggu respons. Batalkan dulu dengan `/game cancel`.');
+      throw new Error('Kamu masih memiliki undangan yang menunggu respons. Batalkan dulu dengan `/game action:cancel`.');
     }
     if (this.getIncomingInvite(opponentId)) {
       throw new Error('Pemain tersebut sudah memiliki undangan lain yang menunggu konfirmasi.');

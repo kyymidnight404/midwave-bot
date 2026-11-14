@@ -8,6 +8,7 @@ import { PrefixCommandHandler } from './handlers/PrefixCommandHandler.js';
 import { SessionManager } from './managers/SessionManager.js';
 import { InviteManager } from './managers/InviteManager.js';
 import { GameManager } from './managers/GameManager.js';
+import { AiConversationManager } from './managers/AiConversationManager.js';
 import { CooldownManager } from './utils/cooldown.js';
 import { GAME_TYPES } from './utils/constants.js';
 import { resolvePrefix } from './utils/prefixParser.js';
@@ -60,6 +61,7 @@ export async function createBotApp(options = {}) {
   const sessionManager = options.sessionManager ?? new SessionManager();
   const inviteManager = options.inviteManager ?? new InviteManager({ sessionManager });
   const gameManager = options.gameManager ?? new GameManager({ sessionManager, inviteManager });
+  const aiConversationManager = options.aiConversationManager ?? new AiConversationManager();
 
   if (!options.gameManager) {
     registerDefaultGames(gameManager);
@@ -73,6 +75,7 @@ export async function createBotApp(options = {}) {
     sessionManager,
     inviteManager,
     gameManager,
+    aiConversationManager,
   };
 
   const interactionHandler = new InteractionHandler({
@@ -122,10 +125,12 @@ export async function createBotApp(options = {}) {
     sessionManager,
     inviteManager,
     gameManager,
+    aiConversationManager,
     context,
     shutdown: () => {
       sessionManager.clearAll();
       inviteManager.clearAll();
+      aiConversationManager.clear();
       cooldowns.clear();
       client.destroy();
     },

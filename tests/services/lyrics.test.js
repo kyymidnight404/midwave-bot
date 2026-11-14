@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { MessageFlags, PermissionFlagsBits } from 'discord.js';
-import lyricsCommand, { data as lyricsData, execute as executeLyrics } from '../../src/commands/lyrics.js';
+import mediaCommand, { data as mediaData } from '../../src/commands/media.js';
+import lyricsCommand, { execute as executeLyrics } from '../../src/prefixCommands/lyrics.js';
 import { createBotApp } from '../../src/index.js';
 import {
   LYRICS_COOLDOWN_MS,
@@ -38,6 +39,7 @@ function createFakeReplyMessage() {
 function createMockLyricsInteraction({
   query = '',
   artist = null,
+  action = 'lyrics',
   userId = 'u-lyrics-1',
   username = 'kyy',
   bot = false,
@@ -47,7 +49,7 @@ function createMockLyricsInteraction({
 
   return {
     id: 'int-lyrics-1',
-    commandName: 'lyrics',
+    commandName: 'media',
     user: {
       id: userId,
       username,
@@ -61,6 +63,7 @@ function createMockLyricsInteraction({
     options: {
       getSubcommand: () => null,
       getString: (name) => {
+        if (name === 'action') return action;
         if (name === 'query') return query;
         if (name === 'artist') return artist;
         return null;
@@ -429,22 +432,27 @@ describe('Lyrics Finder service, formatter, and /lyrics command', () => {
     assert.equal(disabledRow.components[2].disabled, true);
   });
 
-  it('registers /lyrics command with query & optional artist and enforces dedicated cooldown', async () => {
-    const json = lyricsData.toJSON();
-    assert.equal(json.name, 'lyrics');
-    assert.equal(json.options[0].name, 'query');
+  it('registers /media command with lyrics action, optional query/artist, and enforces dedicated cooldown', async () => {
+    const json = mediaData.toJSON();
+    assert.equal(json.name, 'media');
+    assert.equal(json.options[0].name, 'action');
     assert.equal(json.options[0].required, true);
-    assert.equal(json.options[1].name, 'artist');
-    assert.equal(json.options[1].required, false);
-    assert.equal(typeof lyricsCommand.execute, 'function');
+    assert.ok(json.options[0].choices.some((c) => c.value === 'lyrics'));
+    const queryOpt = json.options.find((o) => o.name === 'query');
+    const artistOpt = json.options.find((o) => o.name === 'artist');
+    assert.equal(queryOpt.required, false);
+    assert.equal(artistOpt.required, false);
+    assert.equal(lyricsCommand.name, 'lyrics');
+    assert.equal(typeof mediaCommand.execute, 'function');
 
     let now = 10_000;
     const cooldowns = new CooldownManager(2_000, () => now);
     const app = await createBotApp({ cooldowns });
-    assert.ok(app.commandHandler.get('lyrics'));
+    assert.equal(app.commandHandler.get('lyrics'), undefined);
+    assert.ok(app.commandHandler.get('media'));
 
-    app.commandHandler.commands.set('lyrics', {
-      data: lyricsData,
+    app.commandHandler.commands.set('media', {
+      data: mediaData,
       execute: async (int) => executeLyrics(int, {
         searchLyrics: async () => ({
           title: 'Blue',
@@ -507,20 +515,15 @@ describe('Lyrics Finder service, formatter, and /lyrics command', () => {
     let now = 50_000;
     const cooldowns = new CooldownManager(2_000, () => now);
     const app = await createBotApp({ cooldowns });
-    app.commandHandler.commands.set('lyrics', {
-      data: lyricsData,
-      execute: async (int) => executeLyrics(int, {
-        searchLyrics: async ({ query, artist }) => ({
-          title: query,
-          artist: artist || 'wave to earth',
-          album: '0.1 flaws and all.',
-          thumbnailUrl: 'https://example.com/cover.jpg',
-          lyrics: 'Between people and people\nBetween wind and wind',
-          sourceName: 'LRCLIB (Info: Apple Music)',
-          sourceUrl: 'https://music.apple.com/us/album/love/123',
-          cached: false,
-        }),
-      }),
+    app.prefixCommandHandler.context.searchLyrics = async ({ query, artist }) => ({
+      title: query,
+      artist: artist || 'wave to earth',
+      album: '0.1 flaws and all.',
+      thumbnailUrl: 'https://example.com/cover.jpg',
+      lyrics: 'Between people and people\nBetween wind and wind',
+      sourceName: 'LRCLIB (Info: Apple Music)',
+      sourceUrl: 'https://music.apple.com/us/album/love/123',
+      cached: false,
     });
 
     const sentReplies = [];
@@ -564,7 +567,7 @@ describe('Lyrics Finder service, formatter, and /lyrics command', () => {
     assert.equal(embedJson.title, '🎵 Lyrics Finder');
     assert.ok(embedJson.description.includes('**Love — wave to earth**'));
 
-    // Within 5s cooldown -> shared with /lyrics & !lyrics
+    // Within 5s cooldown -> enforced for !lyrics prefix command
     now += 2_500;
     await app.prefixCommandHandler.handle(fakeMessage);
     assert.equal(sentReplies.length, 2);

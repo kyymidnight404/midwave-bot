@@ -578,14 +578,14 @@ describe('Prefix Command System', () => {
     assert.match(u1.dms[0].content, /dikunci secara privat/i);
     assert.equal(u1ChoiceMsg.getReplies().length, 0);
 
-    // u2 sends secret choice via slash command (/rps choose paper)
+    // u2 sends secret choice via consolidated slash command (/game action:choose game:rps choice:paper)
     await harness.interactionHandler.handle(
       createMockSlashInteraction({
-        commandName: 'rps',
-        subcommand: 'choose',
+        commandName: 'game',
+        subcommand: null,
         userId: U2_ID,
         channel: harness.channel,
-        options: { choice: 'paper' },
+        options: { action: 'choose', game: 'rps', choice: 'paper' },
       }),
     );
 

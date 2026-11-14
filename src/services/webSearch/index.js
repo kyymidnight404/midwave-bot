@@ -106,6 +106,22 @@ async function runSearchFallback(question, notice, askGeminiFn, geminiOptions, i
 }
 
 /**
+ * Merges shared conversation history/context options into Gemini options without mutating caller objects.
+ * @param {object} options
+ * @returns {object}
+ */
+function buildMergedGeminiOptions(options = {}) {
+  const base = options.geminiOptions ? { ...options.geminiOptions } : {};
+  if (options.history !== undefined && base.history === undefined) {
+    base.history = options.history;
+  }
+  if (options.contextText !== undefined && base.contextText === undefined) {
+    base.contextText = options.contextText;
+  }
+  return base;
+}
+
+/**
  * Orchestrates Midwave AI requests:
  * - Normal queries bypass Tavily and go directly to Gemini.
  * - Real-time queries check cache + per-user/global rate limits, run at most 1 Tavily search,
@@ -138,9 +154,13 @@ export async function askAiWithWebSearch(rawQuestion, options = {}) {
   const searchTavilyFn = options.searchTavilyFn ?? searchTavily;
   const logger = options.logger ?? console;
   const intent = detectSearchIntent(question);
+  const mergedGeminiOptions = buildMergedGeminiOptions(options);
 
   if (!intent.shouldSearch) {
-    const direct = await askGeminiFn(question, options.geminiOptions);
+    const direct = await askGeminiFn(
+      question,
+      Object.keys(mergedGeminiOptions).length > 0 ? mergedGeminiOptions : options.geminiOptions,
+    );
     return {
       mode: 'direct',
       text: direct.text,
@@ -158,7 +178,7 @@ export async function askAiWithWebSearch(rawQuestion, options = {}) {
       question,
       'Pencarian web real-time sedang dinonaktifkan. Jawaban berikut berasal dari pengetahuan model dan belum diverifikasi secara real-time.',
       askGeminiFn,
-      options.geminiOptions,
+      mergedGeminiOptions,
       intent,
     );
   }
@@ -168,7 +188,7 @@ export async function askAiWithWebSearch(rawQuestion, options = {}) {
       question,
       'Pencarian web real-time belum dikonfigurasi (`TAVILY_API_KEY` kosong). Jawaban berikut berasal dari pengetahuan model dan belum diverifikasi secara real-time.',
       askGeminiFn,
-      options.geminiOptions,
+      mergedGeminiOptions,
       intent,
     );
   }
@@ -191,7 +211,7 @@ export async function askAiWithWebSearch(rawQuestion, options = {}) {
           question,
           `Pencarian web sedang dalam masa cooldown (${waitSec} detik). Jawaban berikut berasal dari pengetahuan model dan belum diverifikasi secara real-time.`,
           askGeminiFn,
-          options.geminiOptions,
+          mergedGeminiOptions,
           intent,
         );
       }
@@ -203,7 +223,7 @@ export async function askAiWithWebSearch(rawQuestion, options = {}) {
         question,
         'Batas pencarian web global sementara tercapai. Jawaban berikut berasal dari pengetahuan model dan belum diverifikasi secara real-time.',
         askGeminiFn,
-        options.geminiOptions,
+        mergedGeminiOptions,
         intent,
       );
     }
@@ -228,13 +248,13 @@ export async function askAiWithWebSearch(rawQuestion, options = {}) {
           ? 'Pencarian web tidak menemukan hasil yang relevan. Jawaban berikut berasal dari pengetahuan model dan belum diverifikasi secara real-time.'
           : 'Pencarian web real-time sedang tidak tersedia saat ini. Jawaban berikut berasal dari pengetahuan model dan belum diverifikasi secara real-time.';
 
-      return runSearchFallback(question, notice, askGeminiFn, options.geminiOptions, intent);
+      return runSearchFallback(question, notice, askGeminiFn, mergedGeminiOptions, intent);
     }
   }
 
   const groundedPrompt = buildGroundedSearchPrompt(question, searchPayload.results);
   const geminiResult = await askGeminiFn(groundedPrompt, {
-    ...(options.geminiOptions || {}),
+    ...mergedGeminiOptions,
     userQuestion: question,
     skipQuestionLengthValidation: true,
     systemInstruction: MIDWAVE_WEB_SEARCH_SYSTEM_INSTRUCTION,

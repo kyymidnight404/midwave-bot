@@ -164,7 +164,7 @@ export const CoinFlipGame = {
       status: 'Menunggu Pilihan Rahasia',
       currentTurn: null,
       boardOrInfo: statusLines.join('\n'),
-      instructions: 'Gunakan `/coinflip choose choice:<heads|tails>` untuk menentukan prediksimu secara rahasia.',
+      instructions: 'Gunakan `/game action:choose game:coinflip choice:<heads|tails>` untuk menentukan prediksimu secara rahasia.',
     };
   },
 

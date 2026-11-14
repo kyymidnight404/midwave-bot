@@ -1,7 +1,5 @@
-import { ComponentType, MessageFlags, SlashCommandBuilder } from 'discord.js';
+import { ComponentType, MessageFlags } from 'discord.js';
 import {
-  LYRICS_MAX_ARTIST_LENGTH,
-  LYRICS_MAX_QUERY_LENGTH,
   LyricsServiceError,
   searchLyrics,
   validateLyricsInput,
@@ -15,24 +13,6 @@ import {
 } from '../utils/lyricsFormatter.js';
 
 const IGNORED_DISCORD_ERROR_CODES = new Set([10003, 10008, 10062, 40060]);
-
-export const data = new SlashCommandBuilder()
-  .setName('lyrics')
-  .setDescription('Cari lirik lagu berdasarkan judul dan nama artis')
-  .addStringOption((option) =>
-    option
-      .setName('query')
-      .setDescription(`Judul lagu atau kata kunci (maksimal ${LYRICS_MAX_QUERY_LENGTH} karakter)`)
-      .setRequired(true)
-      .setMaxLength(LYRICS_MAX_QUERY_LENGTH),
-  )
-  .addStringOption((option) =>
-    option
-      .setName('artist')
-      .setDescription(`Nama penyanyi atau artis untuk mempersempit pencarian (maksimal ${LYRICS_MAX_ARTIST_LENGTH} karakter)`)
-      .setRequired(false)
-      .setMaxLength(LYRICS_MAX_ARTIST_LENGTH),
-  );
 
 /**
  * Safely maps any thrown error from lyrics lookup into a user-facing `LyricsServiceError`.
@@ -70,7 +50,8 @@ async function sendSafeLyricsError(interaction, message) {
 }
 
 /**
- * Executes the `/lyrics` slash command with deferred loading and interactive pagination.
+ * Executes Lyrics search with deferred loading and interactive pagination
+ * for both `/media action:lyrics` and `!lyrics` / `!lirik`.
  * @param {import('discord.js').ChatInputCommandInteraction} interaction
  * @param {{
  *   searchLyrics?: typeof searchLyrics,
@@ -84,8 +65,8 @@ export async function execute(interaction, context = {}) {
     return;
   }
 
-  const rawQuery = interaction.options.getString('query', false) ?? '';
-  const rawArtist = interaction.options.getString('artist', false);
+  const rawQuery = interaction.options?.getString?.('query', false) ?? '';
+  const rawArtist = interaction.options?.getString?.('artist', false) ?? null;
 
   let validated;
   try {
@@ -179,7 +160,7 @@ export async function execute(interaction, context = {}) {
       if (btnInteraction.user?.id !== interaction.user.id) {
         await btnInteraction.reply({
           embeds: [
-            buildErrorEmbed('Hanya pengguna yang menjalankan `/lyrics` yang dapat mengontrol tombol halaman ini.'),
+            buildErrorEmbed('Hanya pengguna yang menjalankan perintah lirik ini yang dapat mengontrol tombol halaman ini.'),
           ],
           flags: MessageFlags.Ephemeral,
         });
@@ -211,4 +192,4 @@ export async function execute(interaction, context = {}) {
   });
 }
 
-export default { data, execute };
+export default { name: 'lyrics', execute };

@@ -83,10 +83,10 @@ export class GameManager {
   startSoloSession({ gameType, channelId, playerId, config = {}, onTimeout = null }) {
     const engine = this.getEngine(gameType);
     if (this.sessionManager.hasActiveSession(playerId)) {
-      throw new Error('Kamu masih memiliki pertandingan aktif. Selesaikan atau batalkan dengan `/game cancel`.');
+      throw new Error('Kamu masih memiliki pertandingan aktif. Selesaikan atau batalkan dengan `/game action:cancel`.');
     }
     if (this.inviteManager.getOutgoingInvite(playerId)) {
-      throw new Error('Kamu masih memiliki undangan multiplayer pending. Batalkan dulu dengan `/game cancel`.');
+      throw new Error('Kamu masih memiliki undangan multiplayer pending. Batalkan dulu dengan `/game action:cancel`.');
     }
 
     const players = [playerId, BOT_PLAYER_ID];
@@ -184,7 +184,7 @@ export class GameManager {
     }
     if (expectedGameType && session.gameType !== expectedGameType) {
       return {
-        error: `Kamu sedang memainkan **${session.gameType}**, bukan **${expectedGameType}**. Gunakan \`/game cancel\` jika ingin membatalkan.`,
+        error: `Kamu sedang memainkan **${session.gameType}**, bukan **${expectedGameType}**. Gunakan \`/game action:cancel\` jika ingin membatalkan.`,
       };
     }
 

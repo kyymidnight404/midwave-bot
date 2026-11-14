@@ -340,7 +340,7 @@ export const TriviaGame = {
       status: `Ronde ${state.currentRoundIndex + 1}/${state.questions.length}`,
       currentTurn: null,
       boardOrInfo: lines.join('\n'),
-      instructions: 'Jawab secara privat dengan `/trivia answer option:<A|B|C|D>`.',
+      instructions: 'Jawab secara privat dengan `/game action:answer game:trivia answer:<A|B|C|D>`.',
     };
   },
 

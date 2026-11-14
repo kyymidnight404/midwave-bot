@@ -194,7 +194,7 @@ export const TicTacToeGame = {
       instructions:
         state.status === MATCH_STATUS.FINISHED
           ? undefined
-          : 'Gunakan `/tictactoe move position:<A1-C3>` untuk menaruh simbol.',
+          : 'Gunakan `/game action:move game:tictactoe position:<A1-C3>` untuk menaruh simbol.',
     };
   },
 
