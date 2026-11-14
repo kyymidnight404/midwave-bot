@@ -32,6 +32,7 @@
     "discord.js": "^14.28.1"
   },
   "allowScripts": {
+    "@google/genai@2.32.0": true,
     "protobufjs@7.6.6": true
   }
 }
