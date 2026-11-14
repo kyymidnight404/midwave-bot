@@ -265,4 +265,78 @@ describe('Midwave Global Bot Knowledge Memory System', () => {
       tmp.cleanup();
     }
   });
+
+  it('10. Konsistensi identitas resmi, single personal creator Hengky T (KyyMidnight), tautan bersih, dan /knowledge search', async () => {
+    const store = new KnowledgeStore();
+    const data = store.reload();
+
+    // Standardized schema fields & clean URLs across all entries
+    for (const entry of data.entries) {
+      assert.ok(entry.key, `Entry ${entry.id} missing key`);
+      assert.ok(entry.source, `Entry ${entry.id} missing source`);
+      assert.ok(entry.verificationStatus, `Entry ${entry.id} missing verificationStatus`);
+      assert.equal(/\[https?:\/\/[^\]]+\]\(https?:\/\//.test(entry.content), false, `Broken Markdown link in ${entry.id}`);
+    }
+
+    // Single personal creator (Hengky T) with KyyMidnight as brand/alias, not a team
+    const creatorEntries = data.entries.filter((e) => e.category === 'creator_developer');
+    assert.equal(creatorEntries.length, 1);
+    assert.match(creatorEntries[0].content, /Hengky T/);
+    assert.match(creatorEntries[0].content, /KyyMidnight/);
+    assert.match(creatorEntries[0].content, /kyymidnight/);
+    assert.match(creatorEntries[0].content, /kyymidnight404/);
+    assert.match(creatorEntries[0].content, /bukan tim/i);
+
+    // Unverified official ToS / Privacy Policy docs remain pending_verification
+    const tosEntry = data.entries.find((e) => e.id === 'policy-tos-official');
+    assert.equal(tosEntry.verificationStatus, 'pending_verification');
+
+    // /knowledge search finds identity, creator, links, and features
+    for (const q of ['Midwave', 'Hengky T', 'midwave.ai.id', 'download']) {
+      const interaction = createMockKnowledgeInteraction({
+        subcommand: 'search',
+        options: { query: q },
+      });
+      await executeKnowledge(interaction, { knowledgeStore: store });
+      const reply = interaction.getReplies()[0];
+      assert.equal(reply.flags, MessageFlags.Ephemeral);
+      assert.ok(reply.embeds[0].toJSON().fields?.length > 0, `Expected search fields for "${q}"`);
+    }
+
+    // Gemini receives consistent creator/website/repo context for all 5 identity consistency questions
+    const consistencyQuestions = [
+      'Siapa penciptamu?',
+      'Siapa yang membuat Midwave?',
+      'Apakah penciptamu sebuah tim?',
+      'Di mana website resmi Midwave?',
+      'Di mana repository Midwave?',
+    ];
+
+    for (const question of consistencyQuestions) {
+      let capturedContents = '';
+      await askGemini(question, {
+        apiKey: 'fake-key',
+        knowledgeStore: store,
+        createClient: () => ({
+          models: {
+            generateContent: async (params) => {
+              capturedContents = params.contents;
+              return { text: 'OK' };
+            },
+          },
+        }),
+      });
+      assert.match(capturedContents, /<global_bot_knowledge>/, `Missing knowledge context for "${question}"`);
+      if (/pencipta|membuat|tim/i.test(question)) {
+        assert.match(capturedContents, /Hengky T/);
+        assert.match(capturedContents, /KyyMidnight/);
+      }
+      if (/website/i.test(question)) {
+        assert.match(capturedContents, /https:\/\/midwave\.ai\.id\//);
+      }
+      if (/repository/i.test(question)) {
+        assert.match(capturedContents, /https:\/\/github\.com\/kyymidnight404\/midwave-bot/);
+      }
+    }
+  });
 });

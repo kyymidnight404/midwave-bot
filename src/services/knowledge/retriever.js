@@ -5,7 +5,7 @@ const CATEGORY_INTENT_PATTERNS = {
     /\b(midwave|siapa\s+kamu|tentang\s+bot|bot\s+apa|identitas|kepribadian|kemampuan\s+bot|apa\s+itu\s+midwave)\b/i,
   ],
   creator_developer: [
-    /\b(creator|developer|pembuat|pemilik|owner|siapa\s+yang\s+(buat|bikin|membuat|kembangkan)|kyymidnight|kyymidnight404)\b/i,
+    /\b(creator|developer|pembuat|pencipta(mu|nya)?|pemilik|owner|siapa\s+yang\s+(buat|bikin|membuat|kembangkan)|hengky|kyymidnight|kyymidnight404)\b/i,
   ],
   official_links: [
     /\b(website|situs|tautan\s+resmi|link\s+resmi|github|repo(sitory)?|dokumentasi|midwave\.ai\.id)\b/i,
