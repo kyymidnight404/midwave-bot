@@ -210,6 +210,25 @@ function isLoginWallUrl(platform, pathname) {
   return false;
 }
 
+const INSTAGRAM_SHORTCODE_RE = /^\/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/i;
+
+/**
+ * Extracts Instagram post/reel/IGTV shortcode from a URL or pathname.
+ *
+ * @param {string | URL} input
+ * @returns {string | null}
+ */
+export function extractInstagramShortcode(input) {
+  if (!input) return null;
+  try {
+    const parsed = input instanceof URL ? input : new URL(String(input).trim());
+    const match = parsed.pathname.match(INSTAGRAM_SHORTCODE_RE);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Parses, normalizes, and strictly validates a user-submitted media URL.
  * Enforces HTTPS, disallows credentials/custom ports/IPs, and checks the platform allowlist.
@@ -318,6 +337,7 @@ export function validateMediaUrl(rawUrl) {
     platform,
     hostname,
     isShortLink: SHORT_LINK_HOSTS.has(hostname),
+    shortcode: platform === PLATFORMS.INSTAGRAM ? extractInstagramShortcode(parsed) : null,
   };
 }
 

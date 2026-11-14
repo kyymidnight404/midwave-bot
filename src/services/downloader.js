@@ -1,8 +1,11 @@
 import axios from 'axios';
 import {
   DEFAULT_CHAT_AUTODOWNLOAD_MAX_SIZE_MB,
+  DEFAULT_INSTAGRAM_RAPIDAPI_PATH,
+  DEFAULT_INSTAGRAM_RENDERABLE_FORMATS,
   DEFAULT_RAPIDAPI_HOST,
   DEFAULT_RAPIDAPI_PATH,
+  DEFAULT_TIKTOK_RAPIDAPI_PATH,
   DISCORD_MAX_ATTACHMENTS,
   DOWNLOAD_COOLDOWN_MS,
   getDiscordUploadLimitBytes,
@@ -18,14 +21,18 @@ import {
 import {
   PLATFORMS,
   PLATFORM_LABELS,
+  extractInstagramShortcode,
   resolveAndValidateRedirects,
   validateMediaUrl,
 } from './downloader/urlValidator.js';
 
 export {
   DEFAULT_CHAT_AUTODOWNLOAD_MAX_SIZE_MB,
+  DEFAULT_INSTAGRAM_RAPIDAPI_PATH,
+  DEFAULT_INSTAGRAM_RENDERABLE_FORMATS,
   DEFAULT_RAPIDAPI_HOST,
   DEFAULT_RAPIDAPI_PATH,
+  DEFAULT_TIKTOK_RAPIDAPI_PATH,
   DISCORD_MAX_ATTACHMENTS,
   DOWNLOAD_COOLDOWN_MS,
   getDiscordUploadLimitBytes,
@@ -33,7 +40,7 @@ export {
 };
 export { DOWNLOADER_ERROR_CODES, DownloaderError };
 export { cleanupTempDir, formatBytes };
-export { PLATFORMS, PLATFORM_LABELS, validateMediaUrl };
+export { PLATFORMS, PLATFORM_LABELS, extractInstagramShortcode, validateMediaUrl };
 
 export const STANDARD_DISCORD_UPLOAD_LIMIT_BYTES =
   DEFAULT_CHAT_AUTODOWNLOAD_MAX_SIZE_MB * 1024 * 1024;
@@ -148,6 +155,7 @@ function inferCandidateKind(entry, url) {
 function sanitizeLogText(value, maxLen = 160) {
   return String(value ?? '')
     .replace(/(x-rapidapi-key|api[_-]?key|token|authorization)\s*[:=]\s*\S+/gi, '$1=[REDACTED]')
+    .replace(/(https?:\/\/[^\s?]+)\?[^\s]*/gi, '$1?[REDACTED]')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, maxLen);
@@ -183,9 +191,305 @@ function isMissingEndpointMessage(lowerMsg) {
     lowerMsg.includes('route not found');
 }
 
+function classifyRapidApiMessageError(rawMsg) {
+  const apiMsg = String(rawMsg || '').toLowerCase();
+
+  if (
+    apiMsg.includes('invalid api key') ||
+    apiMsg.includes('not subscribed') ||
+    apiMsg.includes('unauthorized') ||
+    apiMsg.includes('forbidden') ||
+    apiMsg.includes('subscription')
+  ) {
+    return new DownloaderError(
+      DOWNLOADER_ERROR_CODES.PRIVATE_OR_RESTRICTED,
+      'Autentikasi RapidAPI gagal atau belum berlangganan API (`RAPIDAPI_KEY`).',
+      { details: sanitizeLogText(rawMsg) },
+    );
+  }
+  if (apiMsg.includes('quota') || apiMsg.includes('exceeded') || apiMsg.includes('limit')) {
+    return new DownloaderError(
+      DOWNLOADER_ERROR_CODES.RATE_LIMITED,
+      'Kuota atau batas permintaan RapidAPI telah habis. Coba lagi nanti.',
+      { details: sanitizeLogText(rawMsg) },
+    );
+  }
+  if (
+    apiMsg.includes('private') ||
+    apiMsg.includes('login') ||
+    apiMsg.includes('restricted') ||
+    apiMsg.includes('age')
+  ) {
+    return new DownloaderError(
+      DOWNLOADER_ERROR_CODES.PRIVATE_OR_RESTRICTED,
+      'Konten bersifat privat atau dibatasi oleh platform sumber.',
+      { details: sanitizeLogText(rawMsg) },
+    );
+  }
+  if (apiMsg.includes('unsupported') || apiMsg.includes('not supported') || apiMsg.includes('invalid url')) {
+    return new DownloaderError(
+      DOWNLOADER_ERROR_CODES.UNSUPPORTED_PLATFORM,
+      'Format URL atau jenis postingan ini belum didukung oleh RapidAPI.',
+      { details: sanitizeLogText(rawMsg) },
+    );
+  }
+  if (apiMsg.includes('not found') || apiMsg.includes('unavailable') || apiMsg.includes('deleted')) {
+    return new DownloaderError(
+      DOWNLOADER_ERROR_CODES.NOT_FOUND,
+      'Media tidak ditemukan atau postingan telah dihapus.',
+      { details: sanitizeLogText(rawMsg) },
+    );
+  }
+  return new DownloaderError(
+    DOWNLOADER_ERROR_CODES.EXTRACTION_FAILED,
+    'RapidAPI gagal mengekstrak media dari tautan tersebut.',
+    { details: sanitizeLogText(rawMsg) },
+  );
+}
+
+function getResolutionScore(item) {
+  const width = Number(item?.metadata?.width ?? item?.width ?? 0);
+  const height = Number(item?.metadata?.height ?? item?.height ?? 0);
+  if (width > 0 && height > 0) {
+    return width * height;
+  }
+  const labelMatch = String(item?.label || item?.quality || '').match(/(\d{2,5})\s*x\s*(\d{2,5})/i);
+  if (labelMatch) {
+    return Number(labelMatch[1]) * Number(labelMatch[2]);
+  }
+  const heightMatch = String(item?.label || item?.quality || '').match(/(\d{3,4})p/i);
+  return heightMatch ? Number(heightMatch[1]) * Number(heightMatch[1]) : 0;
+}
+
+function scorePostDetailsVideo(v) {
+  if (!v || typeof v !== 'object') {
+    return 100;
+  }
+
+  const codec = String(v?.metadata?.CodecType || v?.metadata?.codec || v?.codec || '').toLowerCase();
+  const format = String(v?.metadata?.Format || v?.metadata?.format || '').toLowerCase();
+  const mime = String(v?.metadata?.mime_type || '').toLowerCase();
+  const label = String(v?.label || v?.quality || '').toLowerCase();
+  const isMp4 = format === 'mp4' || mime.includes('mp4') || label.includes('mp4');
+  const isH264 = codec.includes('h264') || codec.includes('avc') || label.includes('h264') || label.includes('avc');
+  const isHevc = codec.includes('h265') || codec.includes('hevc') || label.includes('h265') || label.includes('hevc');
+
+  let score = 0;
+  if (isMp4) score += 10_000_000;
+  if (isH264) score += 100_000_000;
+  else if (isHevc) score -= 20_000_000;
+  if (v?.metadata?.has_audio !== false) score += 5_000_000;
+
+  return score + getResolutionScore(v) + scoreVideoCandidate(v);
+}
+
+function parseInstagramPostDetailsResponse(root, payload, options = {}) {
+  const rawError = payload.error ?? root.error;
+  if (rawError !== null && rawError !== undefined && rawError !== false && rawError !== '') {
+    const errText = typeof rawError === 'string' ? rawError : extractApiErrorMessage(rawError);
+    throw classifyRapidApiMessageError(errText || extractApiErrorMessage(payload) || extractApiErrorMessage(root));
+  }
+
+  const meta =
+    (payload.metadata && typeof payload.metadata === 'object' ? payload.metadata : null) ||
+    (root.metadata && typeof root.metadata === 'object' ? root.metadata : null) ||
+    {};
+
+  const title = String(meta.title || payload.title || root.title || '').trim();
+  const author = String(
+    meta.author?.user?.uniqueId ||
+      meta.author?.user?.nickname ||
+      meta.author?.username ||
+      meta.author?.nickname ||
+      (typeof meta.author === 'string' ? meta.author : '') ||
+      payload.author?.username ||
+      '',
+  ).trim();
+
+  const contents = Array.isArray(payload.contents)
+    ? payload.contents
+    : Array.isArray(root.contents)
+      ? root.contents
+      : [];
+
+  const slideCandidates = [];
+  const singleSlideVideoVariants = [];
+
+  for (const slide of contents) {
+    if (!slide || typeof slide !== 'object') continue;
+
+    // Abaikan renderableAudios[] — jangan pernah kirim audio terpisah
+    const slideVideos = [];
+    for (const vKey of ['videos', 'renderableVideos']) {
+      if (Array.isArray(slide[vKey])) {
+        for (const v of slide[vKey]) {
+          const clean = sanitizeCdnUrl(typeof v === 'string' ? v : v?.url || v?.link);
+          if (clean) {
+            slideVideos.push({
+              url: clean,
+              quality: String(v?.label || v?.quality || 'hd'),
+              kind: 'video',
+              score: scorePostDetailsVideo(v),
+            });
+          }
+        }
+      }
+    }
+    if (slide.video) {
+      const clean = sanitizeCdnUrl(typeof slide.video === 'string' ? slide.video : slide.video?.url);
+      if (clean) {
+        slideVideos.push({ url: clean, quality: 'hd', kind: 'video', score: 100 });
+      }
+    }
+
+    if (slideVideos.length > 0) {
+      slideVideos.sort((a, b) => b.score - a.score);
+      if (contents.length === 1) {
+        singleSlideVideoVariants.push(...slideVideos);
+      }
+      slideCandidates.push(slideVideos[0]);
+      continue;
+    }
+
+    const slideImages = [];
+    if (Array.isArray(slide.images)) {
+      for (const img of slide.images) {
+        const clean = sanitizeCdnUrl(typeof img === 'string' ? img : img?.url || img?.link);
+        if (clean) {
+          slideImages.push({
+            url: clean,
+            quality: String(img?.label || 'image'),
+            kind: 'image',
+            mimeType: img?.metadata?.mime_type || 'image/jpeg',
+            score: getResolutionScore(img),
+          });
+        }
+      }
+    }
+
+    if (slideImages.length > 0) {
+      slideImages.sort((a, b) => b.score - a.score);
+      slideCandidates.push(slideImages[0]);
+    }
+  }
+
+  // Abaikan additionalData.polaris_ordered_timeline_connection.edges (feed terkait, bukan media postingan!)
+  const additionalData =
+    (payload.additionalData && typeof payload.additionalData === 'object' ? payload.additionalData : null) ||
+    (root.additionalData && typeof root.additionalData === 'object' ? root.additionalData : null) ||
+    null;
+
+  const fallbackVideos = [];
+  if (Array.isArray(additionalData?.video_versions)) {
+    for (const v of additionalData.video_versions) {
+      const clean = sanitizeCdnUrl(v?.url);
+      if (clean) {
+        fallbackVideos.push({
+          url: clean,
+          quality: `${v.width || ''}x${v.height || ''}`.replace(/^x$/, 'hd'),
+          kind: 'video',
+          score: getResolutionScore(v),
+        });
+      }
+    }
+    fallbackVideos.sort((a, b) => b.score - a.score);
+  }
+
+  // TikTok Get-TikTok-Post-Details fallback: gunakan hanya playAddr (jangan duplikasi downloadAddr/videos[])
+  const playAddrUrl = sanitizeCdnUrl(additionalData?.video?.playAddr);
+  if (playAddrUrl) {
+    fallbackVideos.push({
+      url: playAddrUrl,
+      quality: 'playAddr',
+      kind: 'video',
+      score: 1,
+    });
+  }
+
+  const fallbackImages = [];
+  if (Array.isArray(additionalData?.image_versions2?.candidates)) {
+    for (const img of additionalData.image_versions2.candidates) {
+      const clean = sanitizeCdnUrl(img?.url);
+      if (clean) {
+        fallbackImages.push({
+          url: clean,
+          quality: `${img.width || ''}x${img.height || ''}`.replace(/^x$/, 'image'),
+          kind: 'image',
+          mimeType: 'image/jpeg',
+          score: getResolutionScore(img),
+        });
+      }
+    }
+    fallbackImages.sort((a, b) => b.score - a.score);
+  }
+
+  const uniqueByUrl = (list) => {
+    const map = new Map();
+    for (const item of list) {
+      if (!map.has(item.url)) map.set(item.url, item);
+    }
+    return [...map.values()];
+  };
+
+  if (contents.length > 1 && slideCandidates.length > 1) {
+    return {
+      title,
+      author,
+      mode: 'carousel',
+      candidates: uniqueByUrl(slideCandidates).slice(0, DISCORD_MAX_ATTACHMENTS),
+    };
+  }
+
+  if (slideCandidates.length === 1) {
+    const primary = slideCandidates[0];
+    if (primary.kind === 'video') {
+      return {
+        title,
+        author,
+        mode: 'video',
+        candidates: uniqueByUrl([...singleSlideVideoVariants, ...fallbackVideos]),
+      };
+    }
+    return {
+      title,
+      author,
+      mode: 'image',
+      candidates: uniqueByUrl([primary, ...fallbackImages]),
+    };
+  }
+
+  if (fallbackVideos.length > 0) {
+    return {
+      title,
+      author,
+      mode: 'video',
+      candidates: uniqueByUrl(fallbackVideos),
+    };
+  }
+
+  if (fallbackImages.length > 0) {
+    return {
+      title,
+      author,
+      mode: 'image',
+      candidates: uniqueByUrl(fallbackImages),
+    };
+  }
+
+  const responseKeys = Object.keys(payload).slice(0, 15).join(', ');
+  options.logger?.warn?.(
+    `[Downloader] RapidAPI Post Details response contained 0 usable media URLs (keys: ${responseKeys || 'none'})`,
+  );
+  throw new DownloaderError(
+    DOWNLOADER_ERROR_CODES.NOT_FOUND,
+    'Tidak ada URL media yang valid ditemukan pada respons RapidAPI.',
+    { details: `keys=${responseKeys}` },
+  );
+}
+
 /**
- * Normalizes flexible RapidAPI JSON responses (`links`, `medias`, `images`, `items`, or single `url`)
- * into prioritized download candidates.
+ * Normalizes flexible RapidAPI JSON responses (`contents` for Instagram Post Details,
+ * or `links`, `medias`, `images`, `items`, single `url` for TikTok) into prioritized download candidates.
  *
  * @param {unknown} rawData
  * @param {{ logger?: Console }} [options]
@@ -215,65 +519,22 @@ export function parseRapidApiResponse(rawData, options = {}) {
     root;
 
   if (
+    Array.isArray(payload.contents) ||
+    Array.isArray(root.contents) ||
+    (payload.additionalData && typeof payload.additionalData === 'object') ||
+    (root.additionalData && typeof root.additionalData === 'object')
+  ) {
+    return parseInstagramPostDetailsResponse(root, payload, options);
+  }
+
+  if (
     root.success === false ||
     payload.success === false ||
     root.error === true ||
     payload.error === true
   ) {
     const rawMsg = extractApiErrorMessage(payload) || extractApiErrorMessage(root);
-    const apiMsg = rawMsg.toLowerCase();
-
-    if (
-      apiMsg.includes('invalid api key') ||
-      apiMsg.includes('not subscribed') ||
-      apiMsg.includes('unauthorized') ||
-      apiMsg.includes('forbidden') ||
-      apiMsg.includes('subscription')
-    ) {
-      throw new DownloaderError(
-        DOWNLOADER_ERROR_CODES.PRIVATE_OR_RESTRICTED,
-        'Autentikasi RapidAPI gagal atau belum berlangganan API (`RAPIDAPI_KEY`).',
-        { details: sanitizeLogText(rawMsg) },
-      );
-    }
-    if (apiMsg.includes('quota') || apiMsg.includes('exceeded') || apiMsg.includes('limit')) {
-      throw new DownloaderError(
-        DOWNLOADER_ERROR_CODES.RATE_LIMITED,
-        'Kuota atau batas permintaan RapidAPI telah habis. Coba lagi nanti.',
-        { details: sanitizeLogText(rawMsg) },
-      );
-    }
-    if (
-      apiMsg.includes('private') ||
-      apiMsg.includes('login') ||
-      apiMsg.includes('restricted') ||
-      apiMsg.includes('age')
-    ) {
-      throw new DownloaderError(
-        DOWNLOADER_ERROR_CODES.PRIVATE_OR_RESTRICTED,
-        'Konten bersifat privat atau dibatasi oleh platform sumber.',
-        { details: sanitizeLogText(rawMsg) },
-      );
-    }
-    if (apiMsg.includes('unsupported') || apiMsg.includes('not supported') || apiMsg.includes('invalid url')) {
-      throw new DownloaderError(
-        DOWNLOADER_ERROR_CODES.UNSUPPORTED_PLATFORM,
-        'Format URL atau jenis postingan ini belum didukung oleh RapidAPI.',
-        { details: sanitizeLogText(rawMsg) },
-      );
-    }
-    if (apiMsg.includes('not found') || apiMsg.includes('unavailable') || apiMsg.includes('deleted')) {
-      throw new DownloaderError(
-        DOWNLOADER_ERROR_CODES.NOT_FOUND,
-        'Media tidak ditemukan atau postingan telah dihapus.',
-        { details: sanitizeLogText(rawMsg) },
-      );
-    }
-    throw new DownloaderError(
-      DOWNLOADER_ERROR_CODES.EXTRACTION_FAILED,
-      'RapidAPI gagal mengekstrak media dari tautan tersebut.',
-      { details: sanitizeLogText(rawMsg) },
-    );
+    throw classifyRapidApiMessageError(rawMsg);
   }
 
   const title = String(payload.title || payload.caption || payload.description || root.title || '').trim();
@@ -575,27 +836,31 @@ function summarizeDownloadedMedia(items) {
  * @param {typeof axios} axiosClient
  */
 async function requestRapidApiMetadata(targetUrl, config, axiosClient, options = {}) {
-  const { platform = null, logger = console } = options;
-  const defaultUniversalEndpoint = `https://${DEFAULT_RAPIDAPI_HOST}${DEFAULT_RAPIDAPI_PATH}`;
-  const endpoints = [config.rapidApiEndpoint];
+  const { platform = null, shortcode = null, logger = console } = options;
 
-  if (
-    config.rapidApiHost === DEFAULT_RAPIDAPI_HOST &&
-    config.rapidApiEndpoint === defaultUniversalEndpoint &&
-    (platform === PLATFORMS.INSTAGRAM || platform === PLATFORMS.TIKTOK)
-  ) {
-    endpoints.push(`https://${config.rapidApiHost}/smvd/get/${platform}`);
-  }
+  if (platform === PLATFORMS.INSTAGRAM) {
+    const resolvedShortcode = shortcode || extractInstagramShortcode(targetUrl);
+    if (!resolvedShortcode) {
+      throw new DownloaderError(
+        DOWNLOADER_ERROR_CODES.UNSUPPORTED_PLATFORM,
+        'Tautan Instagram harus berupa postingan `/p/{shortcode}/`, `/reel/{shortcode}/`, atau `/tv/{shortcode}/`.',
+      );
+    }
 
-  let lastError = null;
-  for (let epIdx = 0; epIdx < endpoints.length; epIdx += 1) {
-    const endpoint = endpoints[epIdx];
-    const endpointLabel = getSafeEndpointLabel(endpoint);
+    const instagramEndpoint =
+      config.instagramRapidApiEndpoint ||
+      `https://${config.rapidApiHost || DEFAULT_RAPIDAPI_HOST}${DEFAULT_INSTAGRAM_RAPIDAPI_PATH}`;
+    const endpointLabel = getSafeEndpointLabel(instagramEndpoint);
+    const params = { shortcode: resolvedShortcode };
+    if (config.instagramRenderableFormats) {
+      params.renderableFormats = config.instagramRenderableFormats;
+    }
 
+    let lastError = null;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        const response = await axiosClient.get(endpoint, {
-          params: { url: targetUrl },
+        const response = await axiosClient.get(instagramEndpoint, {
+          params,
           headers: {
             'x-rapidapi-key': config.rapidApiKey,
             'x-rapidapi-host': config.rapidApiHost,
@@ -609,23 +874,49 @@ async function requestRapidApiMetadata(targetUrl, config, axiosClient, options =
         lastError = mapped;
 
         logger?.warn?.(
-          `[Downloader] RapidAPI request failed (${endpointLabel}, platform=${platform || 'unknown'}, status=${status ?? error?.code ?? 'ERR'}, code=${mapped.code}): ${sanitizeLogText(mapped.details || mapped.userMessage)}`,
+          `[Downloader] RapidAPI Instagram request failed (${endpointLabel}, shortcode=${resolvedShortcode}, status=${status ?? error?.code ?? 'ERR'}, code=${mapped.code}): ${sanitizeLogText(mapped.details || mapped.userMessage)}`,
         );
 
         if (attempt === 0 && mapped.retryable) {
           continue;
         }
-
-        const canTryPlatformEndpoint =
-          epIdx === 0 &&
-          endpoints.length > 1 &&
-          (status === 404 || mapped.code === DOWNLOADER_ERROR_CODES.NOT_FOUND);
-
-        if (canTryPlatformEndpoint) {
-          break;
-        }
         throw mapped;
       }
+    }
+    throw lastError;
+  }
+
+  const tiktokEndpoint =
+    config.tiktokRapidApiEndpoint ||
+    config.rapidApiEndpoint ||
+    `https://${config.rapidApiHost || DEFAULT_RAPIDAPI_HOST}${DEFAULT_TIKTOK_RAPIDAPI_PATH}`;
+  const endpointLabel = getSafeEndpointLabel(tiktokEndpoint);
+
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await axiosClient.get(tiktokEndpoint, {
+        params: { url: targetUrl },
+        headers: {
+          'x-rapidapi-key': config.rapidApiKey,
+          'x-rapidapi-host': config.rapidApiHost,
+        },
+        timeout: config.timeoutMs,
+      });
+      return parseRapidApiResponse(response.data, { logger });
+    } catch (error) {
+      const status = error?.response?.status;
+      const mapped = mapRapidApiError(error);
+      lastError = mapped;
+
+      logger?.warn?.(
+        `[Downloader] RapidAPI TikTok request failed (${endpointLabel}, status=${status ?? error?.code ?? 'ERR'}, code=${mapped.code}): ${sanitizeLogText(mapped.details || mapped.userMessage)}`,
+      );
+
+      if (attempt === 0 && mapped.retryable) {
+        continue;
+      }
+      throw mapped;
     }
   }
   throw lastError;
@@ -693,6 +984,7 @@ export async function downloadMediaFromUrl(params) {
 
     const parsed = await requestRapidApiMetadata(resolved.normalizedUrl, config, axiosClient, {
       platform: resolved.platform,
+      shortcode: resolved.shortcode,
       logger: deps.logger || console,
     });
     jobDir = await createJobTempDir(config.tempBaseDir);
@@ -710,18 +1002,27 @@ export async function downloadMediaFromUrl(params) {
     let remainingBytes = maxBytes;
 
     if (parsed.mode === 'carousel' || parsed.mode === 'image') {
-      const selected = parsed.candidates.slice(0, DISCORD_MAX_ATTACHMENTS);
+      const selected =
+        parsed.mode === 'image'
+          ? parsed.candidates
+          : parsed.candidates.slice(0, DISCORD_MAX_ATTACHMENTS);
       for (let i = 0; i < selected.length; i += 1) {
         if (remainingBytes < 1024) break;
         try {
           const file = await downloadMediaToTempFile({
             ...downloadOpts,
             url: selected[i].url,
-            fileBaseName: `${resolved.platform}_slide_${i + 1}`,
+            fileBaseName:
+              parsed.mode === 'image'
+                ? `${resolved.platform}_image`
+                : `${resolved.platform}_slide_${i + 1}`,
             maxBytes: remainingBytes,
           });
           items.push(file);
           remainingBytes -= file.sizeBytes;
+          if (parsed.mode === 'image') {
+            break;
+          }
         } catch (err) {
           lastDownloadError = err;
           if (items.length === 0 && !allowCdnFallback && selected.length === 1) {
@@ -745,7 +1046,8 @@ export async function downloadMediaFromUrl(params) {
           attachments: items,
           primaryCdnUrl: selected[0].url,
           cdnLinks: selected.map((c) => c.url),
-          truncatedCount: Math.max(0, parsed.candidates.length - items.length),
+          truncatedCount:
+            parsed.mode === 'image' ? 0 : Math.max(0, parsed.candidates.length - items.length),
           ...summary,
         };
       }

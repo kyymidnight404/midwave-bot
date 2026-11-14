@@ -284,17 +284,19 @@ Midwave supports configurable prefix commands (`PREFIX=!` in `.env`) using the s
   - **Slash Command**: `/download url:https://www.instagram.com/reel/...` or `/download url:https://www.tiktok.com/@user/video/...`
   - **Chat Auto-Downloader (`messageCreate`)**: Paste any valid public Instagram or TikTok link directly in chat; Midwave triggers `sendTyping()`, uploads attachments (up to 10 files / 10 MB standard limit, or sends a direct CDN link button embed if larger), and runs `suppressEmbeds(true)` once delivered.
 - **Supported Platforms**:
-  - **Instagram**: `instagram.com` (`reel/`, `p/`, `stories/`), `instagr.am` (Reels, videos, photos, carousels when returned by RapidAPI)
-  - **TikTok**: `tiktok.com`, `vm.tiktok.com`, `vt.tiktok.com` (public videos, HD watermark-free when provided by RapidAPI, photo slideshows)
+  - **Instagram**: `instagram.com` (`/p/{shortcode}/`, `/reel/{shortcode}/`, `/reels/{shortcode}/`, `/tv/{shortcode}/`) dan `instagr.am` via endpoint resmi `GET /instagram/v3/media/post/details` (`Get-Instagram-Media-Post-Details` dengan parameter `shortcode` dan `renderableFormats`). Mendukung foto tunggal (`.jpg`), video/reel (`.mp4`), dan carousel multi-item (hingga 10 lampiran). Tautan `/stories/` belum didukung.
+  - **TikTok**: `tiktok.com`, `vm.tiktok.com`, `vt.tiktok.com` via endpoint resmi `GET /tiktok/v3/post/details` (`Get-TikTok-Post-Details` dengan parameter `url`), memprioritaskan MP4 H.264 dari `contents[0].videos[]` dengan fallback `additionalData.video.playAddr`.
   - **Threads**: Currently **disabled / not supported** (`UNSUPPORTED_PLATFORM`) until an endpoint & schema are verified.
 - **Getting & Configuring RapidAPI**:
-  1. Sign up on [RapidAPI](https://rapidapi.com/) and subscribe to **Social Media Video Downloader** (`social-media-video-downloader.p.rapidapi.com`).
+  1. Sign up on [RapidAPI](https://rapidapi.com/) and subscribe to **Social Media Video Downloader** (`emmanueldavidyou` — `social-media-video-downloader.p.rapidapi.com`).
   2. Copy your `X-RapidAPI-Key` from the RapidAPI Playground.
   3. Set in `.env` or Wispbyte Environment Variables:
      - `RAPIDAPI_KEY=your_rapidapi_key_here`
      - `RAPIDAPI_HOST=social-media-video-downloader.p.rapidapi.com`
-     - *(Optional)* `RAPIDAPI_ENDPOINT=https://social-media-video-downloader.p.rapidapi.com/smvd/get/all` — override if your RapidAPI Playground Test Endpoint uses a different path (for example `/smvd/get/tiktok` or `/smvd/get/`).
-     - *(Optional tuning)* `DOWNLOAD_MAX_SIZE_MB=25`, `DOWNLOAD_TIMEOUT_MS=25000`, `DOWNLOAD_MAX_CONCURRENT=3`, `DOWNLOAD_COOLDOWN_SECONDS=10`
+     - *(Optional Instagram override)* `RAPIDAPI_INSTAGRAM_ENDPOINT=https://social-media-video-downloader.p.rapidapi.com/instagram/v3/media/post/details`
+     - *(Optional Instagram video format)* `RAPIDAPI_RENDERABLE_FORMATS=720p`
+     - *(Optional TikTok override)* `RAPIDAPI_TIKTOK_ENDPOINT=https://social-media-video-downloader.p.rapidapi.com/tiktok/v3/post/details` (atau `RAPIDAPI_ENDPOINT`)
+     - *(Optional tuning)* `DOWNLOAD_MAX_SIZE_MB=25`, `DOWNLOAD_TIMEOUT_MS=25000`, `DOWNLOAD_MAX_CONCURRENT=3`, `DOWNLOAD_COOLDOWN_SECONDS=10`, `DOWNLOAD_TEMP_DIR`
 - **Security, Quotas & Limits**:
   - Enforces strict `https://` + domain allowlist validation, DNS private/loopback IP blocking (anti-SSRF), and manual redirect checks on both user URLs and extracted CDN URLs.
   - Streams media via `axios` into isolated `fs.mkdtemp` job folders, checks actual binary magic bytes (`MP4`, `MOV`, `WEBM`, `JPG`, `PNG`, `GIF`, `WEBP`), rejects HTML/text payloads masquerading as video/images, and cleans up temp folders inside `finally`.

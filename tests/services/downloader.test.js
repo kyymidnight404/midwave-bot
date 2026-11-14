@@ -11,10 +11,13 @@ import {
 } from '../../src/commands/download.js';
 import { createBotApp } from '../../src/index.js';
 import {
+  DEFAULT_INSTAGRAM_RAPIDAPI_PATH,
+  DEFAULT_TIKTOK_RAPIDAPI_PATH,
   DOWNLOADER_ERROR_CODES,
   PLATFORMS,
   cleanupTempDir,
   downloadMediaFromUrl,
+  extractInstagramShortcode,
   getActiveDownloadCount,
   getDiscordUploadLimitBytes,
   getDownloaderConfig,
@@ -559,8 +562,8 @@ describe('Downloader — Unified RapidAPI + Axios Pipeline', () => {
     );
   });
 
-  it('falls back from /smvd/get/all (404) to platform endpoint and avoids masking missing endpoint 404 as NOT_FOUND while logging safely', async () => {
-    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'midwave-test-fallback-'));
+  it('maps missing-route 404 to EXTRACTION_FAILED and never leaks API key or signed CDN tokens in logs', async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'midwave-test-logging-'));
     const secretKey = 'SUPER_SECRET_RAPIDAPI_KEY_12345';
     const warnLogs = [];
     const safeLogger = {
@@ -568,53 +571,6 @@ describe('Downloader — Unified RapidAPI + Axios Pipeline', () => {
     };
 
     try {
-      const config = {
-        ...getDownloaderConfig({ RAPIDAPI_KEY: secretKey }),
-        tempBaseDir: tempRoot,
-      };
-
-      const requestedUrls = [];
-      const fallbackResult = await downloadMediaFromUrl({
-        url: 'https://www.instagram.com/reel/NewPost2026/?igsh=xyz',
-        config,
-        deps: {
-          lookupFn: publicLookupStub,
-          logger: safeLogger,
-          axiosClient: {
-            async get(targetUrl) {
-              requestedUrls.push(targetUrl);
-              if (targetUrl.endsWith('/smvd/get/all')) {
-                const err = new Error('Not Found');
-                err.response = {
-                  status: 404,
-                  data: { message: "Endpoint '/smvd/get/all' does not exist" },
-                };
-                throw err;
-              }
-              if (targetUrl.endsWith('/smvd/get/instagram')) {
-                return {
-                  data: {
-                    success: true,
-                    links: [{ quality: 'hd', link: 'https://scontent.cdninstagram.com/reel.mp4' }],
-                  },
-                };
-              }
-              return {
-                status: 200,
-                headers: { 'content-type': 'video/mp4' },
-                data: Readable.from(FAKE_MP4_HEADER),
-              };
-            },
-          },
-        },
-      });
-
-      assert.equal(fallbackResult.items.length, 1);
-      assert.ok(requestedUrls.some((u) => u.endsWith('/smvd/get/all')));
-      assert.ok(requestedUrls.some((u) => u.endsWith('/smvd/get/instagram')));
-      await cleanupTempDir(fallbackResult.jobDir);
-
-      // Custom endpoint returning missing-route 404 must map to EXTRACTION_FAILED (not NOT_FOUND) and never log API key
       const customConfig = {
         ...getDownloaderConfig({
           RAPIDAPI_KEY: secretKey,
@@ -632,7 +588,7 @@ describe('Downloader — Unified RapidAPI + Axios Pipeline', () => {
             logger: safeLogger,
             axiosClient: {
               async get() {
-                const err = new Error('Not Found');
+                const err = new Error('Not Found https://cdn.tiktokcdn.com/video.mp4?token=SIGNED_SECRET_999');
                 err.response = {
                   status: 404,
                   data: { message: "Endpoint '/custom/wrong' does not exist" },
@@ -645,10 +601,443 @@ describe('Downloader — Unified RapidAPI + Axios Pipeline', () => {
         (err) => err.code === DOWNLOADER_ERROR_CODES.EXTRACTION_FAILED,
       );
 
-      assert.ok(warnLogs.length >= 2);
-      for (const line of warnLogs) {
-        assert.equal(line.includes(secretKey), false);
-      }
+      assert.equal(warnLogs.length, 1);
+      assert.equal(warnLogs[0].includes(secretKey), false);
+      assert.equal(warnLogs[0].includes('SIGNED_SECRET_999'), false);
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('uses GET /tiktok/v3/post/details for TikTok (4 variants, H.264 priority, non-H.264 fallback, playAddr fallback, metadata, and error/HTML/size/cleanup checks)', async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'midwave-test-ttv3-'));
+
+    const fourVariantResponse = {
+      error: null,
+      contents: [
+        {
+          videos: [
+            {
+              label: '1080p_hevc',
+              url: 'https://v16.tiktokcdn.com/1080_h265.mp4?x-expires=999',
+              repId: 'rep-hevc-1080',
+              metadata: {
+                mime_type: 'video/mp4',
+                content_length: 4_000_000,
+                width: 1080,
+                height: 1920,
+                has_audio: true,
+                CodecType: 'h265',
+                Format: 'mp4',
+              },
+            },
+            {
+              label: '720p_h264',
+              url: 'https://v16.tiktokcdn.com/720_h264.mp4?x-expires=999',
+              repId: 'rep-h264-720',
+              metadata: {
+                mime_type: 'video/mp4',
+                content_length: 2_500_000,
+                width: 720,
+                height: 1280,
+                has_audio: true,
+                CodecType: 'h264',
+                Format: 'mp4',
+              },
+            },
+            {
+              label: '540p_h264',
+              url: 'https://v16.tiktokcdn.com/540_h264.mp4?x-expires=999',
+              repId: 'rep-h264-540',
+              metadata: {
+                mime_type: 'video/mp4',
+                content_length: 1_500_000,
+                width: 540,
+                height: 960,
+                has_audio: true,
+                CodecType: 'h264',
+                Format: 'mp4',
+              },
+            },
+            {
+              label: '720p_hevc',
+              url: 'https://v16.tiktokcdn.com/720_h265.mp4?x-expires=999',
+              repId: 'rep-hevc-720',
+              metadata: {
+                mime_type: 'video/mp4',
+                content_length: 2_000_000,
+                width: 720,
+                height: 1280,
+                has_audio: true,
+                CodecType: 'hevc',
+                Format: 'mp4',
+              },
+            },
+          ],
+          renderableAudios: [{ url: 'https://v16.tiktokcdn.com/audio_only.mp3' }],
+        },
+      ],
+      metadata: {
+        title: 'TikTok V3 Demo Caption',
+        author: { user: { uniqueId: 'midwave_tt', nickname: 'Midwave TT' } },
+        thumbnailUrl: 'https://p16.tiktokcdn.com/thumb.jpg',
+      },
+      additionalData: {
+        video: {
+          playAddr: 'https://v16.tiktokcdn.com/play_addr_fallback.mp4',
+          downloadAddr: 'https://v16.tiktokcdn.com/download_addr_ignored_dup.mp4',
+          cover: 'https://p16.tiktokcdn.com/cover.jpg',
+          duration: 15,
+        },
+        stats: { playCount: 1000 },
+      },
+    };
+
+    try {
+      // 1 & 2. 4 variants -> H.264 720p selected first, only 1 attachment sent, no audio/downloadAddr duplication
+      const parsed4 = parseRapidApiResponse(fourVariantResponse);
+      assert.equal(parsed4.mode, 'video');
+      assert.equal(parsed4.title, 'TikTok V3 Demo Caption');
+      assert.equal(parsed4.author, 'midwave_tt');
+      assert.match(parsed4.candidates[0].url, /720_h264\.mp4/);
+      assert.equal(parsed4.candidates.some((c) => c.url.includes('audio_only')), false);
+      assert.equal(parsed4.candidates.some((c) => c.url.includes('download_addr_ignored_dup')), false);
+
+      const config = {
+        ...getDownloaderConfig({ RAPIDAPI_KEY: 'tt-live-key', DOWNLOAD_MAX_SIZE_MB: '1' }),
+        tempBaseDir: tempRoot,
+      };
+
+      let capturedRequest = null;
+      const ttResult = await downloadMediaFromUrl({
+        url: 'https://www.tiktok.com/@midwave_tt/video/7400000000000000000',
+        config,
+        deps: {
+          lookupFn: publicLookupStub,
+          axiosClient: {
+            async get(targetUrl, opts) {
+              if (targetUrl.includes('rapidapi.com')) {
+                capturedRequest = { url: targetUrl, params: opts.params, headers: opts.headers };
+                return { data: fourVariantResponse };
+              }
+              return {
+                status: 200,
+                headers: { 'content-type': 'video/mp4' },
+                data: Readable.from(FAKE_MP4_HEADER),
+              };
+            },
+          },
+        },
+      });
+
+      assert.ok(capturedRequest.url.endsWith(DEFAULT_TIKTOK_RAPIDAPI_PATH));
+      assert.equal(
+        capturedRequest.params.url,
+        'https://www.tiktok.com/@midwave_tt/video/7400000000000000000',
+      );
+      assert.equal(ttResult.items.length, 1);
+      assert.equal(ttResult.author, 'midwave_tt');
+      assert.equal(ttResult.title, 'TikTok V3 Demo Caption');
+      assert.equal(ttResult.items[0].mime, 'video/mp4');
+      await cleanupTempDir(ttResult.jobDir);
+
+      // 3. Fallback when H.264 is unavailable -> selects valid non-H.264 MP4
+      const nonH264 = parseRapidApiResponse({
+        error: null,
+        contents: [
+          {
+            videos: [
+              {
+                label: '1080p_hevc',
+                url: 'https://v16.tiktokcdn.com/only_hevc.mp4',
+                metadata: { mime_type: 'video/mp4', width: 1080, height: 1920, CodecType: 'h265', Format: 'mp4' },
+              },
+            ],
+          },
+        ],
+      });
+      assert.equal(nonH264.candidates[0].url, 'https://v16.tiktokcdn.com/only_hevc.mp4');
+
+      // 4. Fallback to additionalData.video.playAddr when contents[0].videos is empty
+      const playAddrOnly = parseRapidApiResponse({
+        error: null,
+        contents: [{ videos: [] }],
+        additionalData: {
+          video: {
+            playAddr: 'https://v16.tiktokcdn.com/play_addr_only.mp4',
+            downloadAddr: 'https://v16.tiktokcdn.com/download_addr_dup.mp4',
+          },
+        },
+      });
+      assert.equal(playAddrOnly.candidates.length, 1);
+      assert.equal(playAddrOnly.candidates[0].url, 'https://v16.tiktokcdn.com/play_addr_only.mp4');
+
+      // 5. Error NOT_FOUND when no valid video is present
+      assert.throws(
+        () =>
+          parseRapidApiResponse({
+            error: null,
+            contents: [{ videos: [] }],
+            additionalData: { video: {} },
+          }),
+        (err) => err.code === DOWNLOADER_ERROR_CODES.NOT_FOUND,
+      );
+
+      // 6. Reject HTML masquerading as video
+      await assert.rejects(
+        downloadMediaFromUrl({
+          url: 'https://www.tiktok.com/@midwave_tt/video/7400000000000000001',
+          config,
+          deps: {
+            lookupFn: publicLookupStub,
+            axiosClient: {
+              async get(targetUrl) {
+                if (targetUrl.includes('rapidapi.com')) return { data: fourVariantResponse };
+                return {
+                  status: 200,
+                  headers: { 'content-type': 'text/html' },
+                  data: Readable.from(Buffer.from('<html>blocked</html>')),
+                };
+              },
+            },
+          },
+        }),
+        (err) => err.code === DOWNLOADER_ERROR_CODES.UNSUPPORTED_MEDIA,
+      );
+
+      // 7. Reject actual streamed file exceeding limit even if metadata.content_length lied
+      const oversizedPayload = Buffer.concat([FAKE_MP4_HEADER, Buffer.alloc(1.2 * 1024 * 1024)]);
+      await assert.rejects(
+        downloadMediaFromUrl({
+          url: 'https://www.tiktok.com/@midwave_tt/video/7400000000000000002',
+          config,
+          deps: {
+            lookupFn: publicLookupStub,
+            axiosClient: {
+              async get(targetUrl) {
+                if (targetUrl.includes('rapidapi.com')) return { data: fourVariantResponse };
+                return {
+                  status: 200,
+                  headers: { 'content-type': 'video/mp4' },
+                  data: Readable.from(oversizedPayload),
+                };
+              },
+            },
+          },
+        }),
+        (err) => err.code === DOWNLOADER_ERROR_CODES.FILE_TOO_LARGE,
+      );
+
+      // 8. Verify temp dir cleanup
+      assert.deepEqual(await fs.readdir(tempRoot), []);
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('extracts Instagram shortcodes (/p/, /reel/, /tv/) and uses /instagram/v3/media/post/details for single image DfrczbZiueP, carousel, and video while ignoring polaris timeline edges', async () => {
+    assert.equal(extractInstagramShortcode('https://www.instagram.com/p/DfrczbZiueP/?igsh=abc'), 'DfrczbZiueP');
+    assert.equal(extractInstagramShortcode('https://www.instagram.com/reel/DfrczbZiueP/'), 'DfrczbZiueP');
+    assert.equal(extractInstagramShortcode('https://www.instagram.com/tv/C9tv123/'), 'C9tv123');
+    assert.equal(extractInstagramShortcode('https://www.instagram.com/stories/user/123'), null);
+
+    // 1. Single image response matching live Get-Instagram-Media-Post-Details payload (including polaris timeline edges distraction)
+    const singleParsed = parseRapidApiResponse({
+      error: null,
+      contents: [
+        {
+          images: [
+            {
+              label: '640x761',
+              url: 'https://scontent.cdninstagram.com/thumb_640.jpg',
+              metadata: { width: 640, height: 761, mime_type: 'image/jpeg' },
+            },
+            {
+              label: '1184x1408',
+              url: 'https://scontent.cdninstagram.com/full_1184.jpg',
+              metadata: { width: 1184, height: 1408, mime_type: 'image/jpeg' },
+            },
+          ],
+        },
+      ],
+      metadata: {
+        title: 'Live Shot DfrczbZiueP',
+        author: { username: 'midwave_official' },
+      },
+      additionalData: {
+        media_type: 1,
+        image_versions2: {
+          candidates: [
+            { url: 'https://scontent.cdninstagram.com/alt_highres.jpg', width: 1184, height: 1408 },
+          ],
+        },
+        polaris_ordered_timeline_connection: {
+          edges: [
+            {
+              node: {
+                url: 'https://scontent.cdninstagram.com/unrelated_feed_post.jpg',
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    assert.equal(singleParsed.mode, 'image');
+    assert.equal(singleParsed.title, 'Live Shot DfrczbZiueP');
+    assert.equal(singleParsed.author, 'midwave_official');
+    assert.equal(singleParsed.candidates[0].url, 'https://scontent.cdninstagram.com/full_1184.jpg');
+    assert.equal(
+      singleParsed.candidates.some((c) => c.url.includes('unrelated_feed_post')),
+      false,
+    );
+
+    // 2. End-to-end single image download with shortcode DfrczbZiueP -> 1 .jpg attachment (no duplicate fallback attachment)
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'midwave-test-igv3-'));
+    try {
+      const config = {
+        ...getDownloaderConfig({ RAPIDAPI_KEY: 'ig-live-key' }),
+        tempBaseDir: tempRoot,
+      };
+      let capturedRequest = null;
+
+      const igSingleResult = await downloadMediaFromUrl({
+        url: 'https://www.instagram.com/p/DfrczbZiueP/?igsh=xyz',
+        config,
+        deps: {
+          lookupFn: publicLookupStub,
+          axiosClient: {
+            async get(targetUrl, opts) {
+              if (targetUrl.includes('rapidapi.com')) {
+                capturedRequest = { url: targetUrl, params: opts.params, headers: opts.headers };
+                return {
+                  data: {
+                    error: null,
+                    contents: [
+                      {
+                        images: [
+                          {
+                            label: '1184x1408',
+                            url: 'https://scontent.cdninstagram.com/full_1184.jpg',
+                            metadata: { width: 1184, height: 1408, mime_type: 'image/jpeg' },
+                          },
+                        ],
+                      },
+                    ],
+                    metadata: { title: 'Post DfrczbZiueP', author: { username: 'creator_ig' } },
+                    additionalData: {
+                      media_type: 1,
+                      image_versions2: {
+                        candidates: [{ url: 'https://scontent.cdninstagram.com/alt_highres.jpg' }],
+                      },
+                    },
+                  },
+                };
+              }
+              return {
+                status: 200,
+                headers: { 'content-type': 'image/jpeg' },
+                data: Readable.from(FAKE_JPEG_HEADER),
+              };
+            },
+          },
+        },
+      });
+
+      assert.ok(capturedRequest.url.endsWith(DEFAULT_INSTAGRAM_RAPIDAPI_PATH));
+      assert.equal(capturedRequest.url.includes('/smvd/get/'), false);
+      assert.equal(capturedRequest.params.shortcode, 'DfrczbZiueP');
+      assert.equal(capturedRequest.params.renderableFormats, '720p');
+      assert.equal(igSingleResult.items.length, 1);
+      assert.equal(igSingleResult.items[0].format, 'JPG');
+      assert.equal(igSingleResult.items[0].mime, 'image/jpeg');
+      assert.equal(igSingleResult.items[0].fileName.endsWith('.jpg'), true);
+      await cleanupTempDir(igSingleResult.jobDir);
+
+      // 3. Instagram Carousel (multiple items in contents) -> multiple .jpg attachments
+      const igCarouselResult = await downloadMediaFromUrl({
+        url: 'https://www.instagram.com/p/CarouselPost99/',
+        config,
+        deps: {
+          lookupFn: publicLookupStub,
+          axiosClient: {
+            async get(targetUrl) {
+              if (targetUrl.includes('rapidapi.com')) {
+                return {
+                  data: {
+                    error: null,
+                    contents: [
+                      {
+                        images: [
+                          { label: '1080x1080', url: 'https://scontent.cdninstagram.com/slide1.jpg', metadata: { width: 1080, height: 1080 } },
+                        ],
+                      },
+                      {
+                        images: [
+                          { label: '1080x1080', url: 'https://scontent.cdninstagram.com/slide2.jpg', metadata: { width: 1080, height: 1080 } },
+                        ],
+                      },
+                    ],
+                    metadata: { title: 'Carousel IG', author: { username: 'carousel_user' } },
+                  },
+                };
+              }
+              return {
+                status: 200,
+                headers: { 'content-type': 'image/jpeg' },
+                data: Readable.from(FAKE_JPEG_HEADER),
+              };
+            },
+          },
+        },
+      });
+
+      assert.equal(igCarouselResult.items.length, 2);
+      assert.equal(igCarouselResult.items[0].fileName, 'instagram_slide_1.jpg');
+      assert.equal(igCarouselResult.items[1].fileName, 'instagram_slide_2.jpg');
+      await cleanupTempDir(igCarouselResult.jobDir);
+
+      // 4. Instagram Video (contents[].videos[] / renderableVideos[]) -> .mp4 attachment
+      const igVideoResult = await downloadMediaFromUrl({
+        url: 'https://www.instagram.com/reel/ReelVideo99/',
+        config,
+        deps: {
+          lookupFn: publicLookupStub,
+          axiosClient: {
+            async get(targetUrl) {
+              if (targetUrl.includes('rapidapi.com')) {
+                return {
+                  data: {
+                    error: null,
+                    contents: [
+                      {
+                        videos: [
+                          { label: '720p', url: 'https://scontent.cdninstagram.com/reel_720.mp4', metadata: { width: 720, height: 1280, mime_type: 'video/mp4' } },
+                        ],
+                        images: [
+                          { label: '720x1280', url: 'https://scontent.cdninstagram.com/reel_cover.jpg' },
+                        ],
+                      },
+                    ],
+                    metadata: { title: 'Reel Video', author: { username: 'reel_creator' } },
+                  },
+                };
+              }
+              return {
+                status: 200,
+                headers: { 'content-type': 'video/mp4' },
+                data: Readable.from(FAKE_MP4_HEADER),
+              };
+            },
+          },
+        },
+      });
+
+      assert.equal(igVideoResult.items.length, 1);
+      assert.equal(igVideoResult.items[0].format, 'MP4');
+      assert.equal(igVideoResult.items[0].mime, 'video/mp4');
+      assert.equal(igVideoResult.items[0].fileName.endsWith('.mp4'), true);
+      await cleanupTempDir(igVideoResult.jobDir);
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }

@@ -7,8 +7,10 @@ export const DEFAULT_DOWNLOAD_TIMEOUT_MS = 25_000;
 export const DEFAULT_DOWNLOAD_MAX_CONCURRENT = 3;
 export const DEFAULT_DOWNLOAD_COOLDOWN_SECONDS = 10;
 export const DEFAULT_RAPIDAPI_HOST = 'social-media-video-downloader.p.rapidapi.com';
-// Sesuaikan RAPIDAPI_ENDPOINT via .env (atau ubah default path di bawah) jika Test Endpoint di RapidAPI Playground memakai path berbeda.
-export const DEFAULT_RAPIDAPI_PATH = '/smvd/get/all';
+export const DEFAULT_TIKTOK_RAPIDAPI_PATH = '/tiktok/v3/post/details';
+export const DEFAULT_RAPIDAPI_PATH = DEFAULT_TIKTOK_RAPIDAPI_PATH;
+export const DEFAULT_INSTAGRAM_RAPIDAPI_PATH = '/instagram/v3/media/post/details';
+export const DEFAULT_INSTAGRAM_RENDERABLE_FORMATS = '720p';
 
 /**
  * Parses an integer environment variable with clamping.
@@ -72,8 +74,16 @@ export function getDownloaderConfig(env = process.env) {
 
   const rapidApiKey = (env.RAPIDAPI_KEY || '').trim();
   const rapidApiHost = (env.RAPIDAPI_HOST || DEFAULT_RAPIDAPI_HOST).trim();
-  const customEndpoint = (env.RAPIDAPI_ENDPOINT || '').trim();
-  const rapidApiEndpoint = customEndpoint || `https://${rapidApiHost}${DEFAULT_RAPIDAPI_PATH}`;
+  const customTikTokEndpoint = (env.RAPIDAPI_TIKTOK_ENDPOINT || env.RAPIDAPI_ENDPOINT || '').trim();
+  const tiktokRapidApiEndpoint =
+    customTikTokEndpoint || `https://${rapidApiHost}${DEFAULT_TIKTOK_RAPIDAPI_PATH}`;
+  const rapidApiEndpoint = tiktokRapidApiEndpoint;
+  const customInstagramEndpoint = (env.RAPIDAPI_INSTAGRAM_ENDPOINT || '').trim();
+  const instagramRapidApiEndpoint =
+    customInstagramEndpoint || `https://${rapidApiHost}${DEFAULT_INSTAGRAM_RAPIDAPI_PATH}`;
+  const instagramRenderableFormats = (
+    env.RAPIDAPI_RENDERABLE_FORMATS ?? DEFAULT_INSTAGRAM_RENDERABLE_FORMATS
+  ).trim();
   const tempBaseDir = (env.DOWNLOAD_TEMP_DIR || '').trim() || os.tmpdir();
 
   return {
@@ -85,6 +95,9 @@ export function getDownloaderConfig(env = process.env) {
     rapidApiKey,
     rapidApiHost,
     rapidApiEndpoint,
+    tiktokRapidApiEndpoint,
+    instagramRapidApiEndpoint,
+    instagramRenderableFormats,
     rapidApiConfigured: Boolean(rapidApiKey && rapidApiHost),
   };
 }
