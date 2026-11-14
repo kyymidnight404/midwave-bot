@@ -36,6 +36,7 @@ export function createDefaultHandlerRegistry() {
     'media.brat': executeBrat,
     'media.lyrics': executeLyrics,
     'media.download': executeDownload,
+    download: executeDownload,
     media: async (interaction, context, meta = {}) => {
       const action = meta.actionValue || interaction.options?.getString?.('action', false)?.trim().toLowerCase() || '';
       const subHandlers = {

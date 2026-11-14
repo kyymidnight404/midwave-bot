@@ -17,6 +17,8 @@ const COMMAND_ALIASES = Object.freeze({
   game: 'game',
   invite: 'invite',
   brat: 'brat',
+  download: 'download',
+  dl: 'download',
   igf: 'igf',
   qc: 'qc',
   say: 'say',
@@ -345,6 +347,18 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
       };
     }
     return { commandName, subcommand: null, options: { text: rawRest } };
+  }
+
+  if (commandName === 'download') {
+    if (!rawRest) {
+      return {
+        commandName,
+        subcommand: null,
+        options: {},
+        error: `Tautan \`url\` wajib diisi. Contoh: \`${prefix}download https://www.instagram.com/reel/...\`.`,
+      };
+    }
+    return { commandName, subcommand: null, options: { url: rawRest } };
   }
 
   if (commandName === 'math') {

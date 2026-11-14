@@ -472,6 +472,7 @@ export const commandStructure = {
           },
           download: {
             usage: 'media action:download url:<link>',
+            prefixUsage: '{prefix}download <link>',
             description: 'Unduh media Instagram atau TikTok',
           },
         },
@@ -515,6 +516,27 @@ export const commandStructure = {
           type: 'string',
           required: false,
           maxLength: LYRICS_MAX_ARTIST_LENGTH,
+        },
+      ],
+    },
+    {
+      name: 'download',
+      description: 'Unduh media (foto/video) dari tautan publik Instagram atau TikTok',
+      enabled: true,
+      type: 'standalone',
+      handler: 'download',
+      help: {
+        category: 'media_utilities',
+        usage: 'download url:<link>',
+        prefixUsage: '{prefix}download <link>',
+        description: 'Unduh media Instagram atau TikTok',
+      },
+      options: [
+        {
+          name: 'url',
+          description: 'Tautan publik Instagram atau TikTok',
+          type: 'string',
+          required: true,
         },
       ],
     },

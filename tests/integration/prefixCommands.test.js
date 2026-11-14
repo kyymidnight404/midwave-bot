@@ -296,6 +296,18 @@ describe('Prefix Command System', () => {
     });
     assert.ok(parsePrefixInvocation('!brat')?.error);
 
+    assert.deepEqual(parsePrefixInvocation('!download https://vt.tiktok.com/ZSp4TETHK/'), {
+      commandName: 'download',
+      subcommand: null,
+      options: { url: 'https://vt.tiktok.com/ZSp4TETHK/' },
+    });
+    assert.deepEqual(parsePrefixInvocation('!dl https://www.instagram.com/reel/abc/'), {
+      commandName: 'download',
+      subcommand: null,
+      options: { url: 'https://www.instagram.com/reel/abc/' },
+    });
+    assert.ok(parsePrefixInvocation('!download')?.error);
+
     assert.deepEqual(parsePrefixInvocation('!guess'), {
       commandName: 'guess',
       subcommand: 'solo',

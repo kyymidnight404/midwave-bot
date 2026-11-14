@@ -87,7 +87,7 @@ describe('CommandHandler & InteractionHandler', () => {
     assert.equal(replies[0].payload.flags, MessageFlags.Ephemeral);
   });
 
-  it('deploys all 10 consolidated application commands including /game, /social, /media and Generate QC for guild and global routes', async () => {
+  it('deploys all 11 application commands including /download, /game, /social, /media and Generate QC for guild and global routes', async () => {
     const calls = [];
     const mockRest = {
       async put(route, opts) {
@@ -106,7 +106,11 @@ describe('CommandHandler & InteractionHandler', () => {
 
     assert.equal(calls.length, 1);
     assert.equal(calls[0].route, '/applications/123/guilds/456/commands');
-    assert.equal(guildResult.length, 10);
+    assert.equal(guildResult.length, 11);
+    const downloadCmd = guildResult.find((c) => c.name === 'download');
+    assert.ok(downloadCmd);
+    assert.equal(downloadCmd.options[0].name, 'url');
+    assert.equal(downloadCmd.options[0].required, true);
     const mediaCmd = guildResult.find((c) => c.name === 'media');
     assert.ok(mediaCmd);
     assert.equal(mediaCmd.options[0].name, 'action');
@@ -129,6 +133,6 @@ describe('CommandHandler & InteractionHandler', () => {
 
     assert.equal(calls.length, 2);
     assert.equal(calls[1].route, '/applications/123/commands');
-    assert.equal(calls[1].body.length, 10);
+    assert.equal(calls[1].body.length, 11);
   });
 });

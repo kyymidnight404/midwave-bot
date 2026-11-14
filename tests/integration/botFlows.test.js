@@ -146,13 +146,14 @@ function createMockCommandInteraction({
 }
 
 describe('Integration: Slash Commands & End-to-End Flows', () => {
-  it('registers all 10 consolidated Discord commands within API limits (no duplicates or option ordering violations)', async () => {
+  it('registers all 11 Discord commands within API limits (no duplicates or option ordering violations)', async () => {
     const app = await createBotApp();
     const payloads = app.commandHandler.toJSON();
     const names = payloads.map((c) => c.name).sort();
     assert.deepEqual(names, [
       'Generate QC',
       'ai',
+      'download',
       'game',
       'games',
       'help',
@@ -162,7 +163,7 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
       'media',
       'social',
     ]);
-    assert.equal(new Set(payloads.map((c) => c.name)).size, 10);
+    assert.equal(new Set(payloads.map((c) => c.name)).size, 11);
 
     for (const cmd of payloads) {
       if (cmd.type === 3) {
@@ -606,6 +607,66 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     const invalidMedia = await runMedia({ action: 'unknown' });
     assert.equal(invalidMedia[0].type, 'reply');
     assert.equal(invalidMedia[0].payload.flags, MessageFlags.Ephemeral);
+
+    app.shutdown();
+  });
+
+  it('dispatches standalone /download and prefix !download cleanly', async () => {
+    const channel = createFakeChannel('ch-download');
+    const client = createFakeClient(channel);
+    const app = await createBotApp({
+      client,
+      cooldowns: new CooldownManager(0),
+    });
+    const mockDownload = async ({ url }) => ({
+      platformLabel: 'TikTok',
+      mediaType: 'Video',
+      fileFormat: 'MP4',
+      formattedSize: '1.2 MB',
+      truncatedCount: 0,
+      items: [{ filePath: 'package.json', fileName: 'video.mp4' }],
+      jobDir: null,
+      sourceUrl: url,
+    });
+    app.interactionHandler.context.config = { rapidApiConfigured: true };
+    app.interactionHandler.context.downloadMedia = mockDownload;
+    app.prefixCommandHandler.context.config = { rapidApiConfigured: true };
+    app.prefixCommandHandler.context.downloadMedia = mockDownload;
+
+    const slashInteraction = createMockCommandInteraction({
+      commandName: 'download',
+      userId: 'dl-slash-user',
+      username: 'SlashDL',
+      channel,
+      options: { url: 'https://vt.tiktok.com/ZSp4TETHK/' },
+    });
+    await app.interactionHandler.handle(slashInteraction);
+    const slashLast = slashInteraction.getReplies().at(-1);
+    assert.equal(slashLast.type, 'editReply');
+    assert.equal(slashLast.payload.files.length, 1);
+
+    const replies = [];
+    const prefixMessage = {
+      id: 'dl-prefix-msg',
+      content: '!download https://vt.tiktok.com/ZSp4TETHK/',
+      author: { id: 'dl-prefix-user', username: 'PrefixDL', bot: false },
+      guildId: 'guild-1',
+      channelId: 'ch-1',
+      channel: {
+        sendTyping: async () => {},
+        send: async (payload) => {
+          replies.push(payload);
+          return { id: 'sent-1', edit: async (p) => replies.push(p) };
+        },
+      },
+      reply: async (payload) => {
+        replies.push(payload);
+        return { id: 'reply-1', edit: async (p) => replies.push(p) };
+      },
+    };
+    await app.prefixCommandHandler.handle(prefixMessage);
+    assert.ok(replies.length >= 1);
+    assert.equal(replies.at(-1).files.length, 1);
 
     app.shutdown();
   });

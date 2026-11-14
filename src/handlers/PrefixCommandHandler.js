@@ -1,10 +1,12 @@
 import { PermissionFlagsBits } from 'discord.js';
 import { DEFAULT_HANDLER_REGISTRY } from '../config/commandRegistry.js';
 import bratPrefixCommand from '../prefixCommands/brat.js';
+import downloadPrefixCommand from '../prefixCommands/download.js';
 import igfCommand from '../prefixCommands/igf.js';
 import lyricsPrefixCommand from '../prefixCommands/lyrics.js';
 import qcPrefixCommand from '../prefixCommands/qc.js';
 import sayPrefixCommand, { SAY_COOLDOWN_MS } from '../prefixCommands/say.js';
+import { DOWNLOAD_COOLDOWN_MS } from '../services/downloader.js';
 import { AI_COOLDOWN_MS } from '../services/gemini.js';
 import { LYRICS_COOLDOWN_MS } from '../services/lyricsService.js';
 import { SOCIAL_COOLDOWN_MS, SOCIAL_INTERACTIONS } from '../services/otakuGifsService.js';
@@ -18,6 +20,7 @@ import { MessageCommandAdapter, resolveUserFromMessage } from './MessageCommandA
 const PREFIX_EXECUTORS = new Map([
   [igfCommand.name, igfCommand],
   [bratPrefixCommand.name, bratPrefixCommand],
+  [downloadPrefixCommand.name, downloadPrefixCommand],
   [qcPrefixCommand.name, qcPrefixCommand],
   [sayPrefixCommand.name, sayPrefixCommand],
   ['ai', { execute: DEFAULT_HANDLER_REGISTRY.ai }],
@@ -62,6 +65,7 @@ registerPrefixCommandNames(PREFIX_EXECUTORS.keys());
 
 const COMMAND_COOLDOWNS = Object.freeze({
   ai: AI_COOLDOWN_MS,
+  download: DOWNLOAD_COOLDOWN_MS,
   lyrics: LYRICS_COOLDOWN_MS,
   say: SAY_COOLDOWN_MS,
   ...Object.fromEntries(Object.keys(SOCIAL_INTERACTIONS).map((cmd) => [cmd, SOCIAL_COOLDOWN_MS])),
@@ -69,6 +73,7 @@ const COMMAND_COOLDOWNS = Object.freeze({
 
 const COMMANDS_REQUIRING_ATTACH_FILES = new Set([
   'brat',
+  'download',
   'igf',
   'qc',
   'games',
@@ -84,7 +89,7 @@ const COMMANDS_REQUIRING_ATTACH_FILES = new Set([
 ]);
 
 function requiresAttachFiles(commandName, subcommand) {
-  if (commandName === 'brat' || commandName === 'igf' || commandName === 'qc' || commandName === 'games' || commandName === 'help') {
+  if (commandName === 'brat' || commandName === 'download' || commandName === 'igf' || commandName === 'qc' || commandName === 'games' || commandName === 'help') {
     return true;
   }
   if (commandName === 'invite' && subcommand === 'accept') {

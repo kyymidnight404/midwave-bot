@@ -49,15 +49,15 @@ test('Help Embed: single embed with Midnight Ocean visual identity & all 5 categ
   assert.ok(fieldNames.some((n) => n.includes('General')));
 });
 
-test('Help Embed: differentiates Prefix, Slash, and Both accurately without fake !download', () => {
+test('Help Embed: differentiates Prefix, Slash, and Both accurately including !download and /download', () => {
   const entries = discoverHelpEntries({ prefix: '?' });
   const json = buildDynamicHelpEmbed({ entries, prefix: '?' }).toJSON();
   const serialized = JSON.stringify(json);
 
   assert.ok(serialized.includes('?brat <teks>'));
   assert.ok(serialized.includes('/media action:download'));
-  assert.equal(serialized.includes('?download'), false);
-  assert.equal(serialized.includes('!download'), false);
+  assert.ok(serialized.includes('?download <link>'));
+  assert.ok(serialized.includes('/download url:<link>'));
   assert.ok(serialized.includes('?say <teks>'));
   assert.ok(serialized.includes('?igf <username>'));
 });
