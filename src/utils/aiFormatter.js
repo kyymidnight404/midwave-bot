@@ -1,4 +1,9 @@
+import { COLORS, EMBED_FOOTER } from './constants.js';
+import { createBaseEmbed } from './embeds.js';
+
 export const DISCORD_MAX_MESSAGE_LENGTH = 2000;
+export const DISCORD_EMBED_DESCRIPTION_LIMIT = 3800;
+export const DISCORD_EMBED_FIELD_LIMIT = 1024;
 const SAFE_CHUNK_BUDGET = 1980;
 
 /**
@@ -127,4 +132,107 @@ export function formatDiscordAiChunks(rawText, maxLength = DISCORD_MAX_MESSAGE_L
   }
 
   return chunks;
+}
+
+/**
+ * Formats up to 5 unique web search sources as numbered Markdown links
+ * guaranteed to fit inside Discord's 1024-character embed field limit.
+ *
+ * @param {Array<{ title?: string, url?: string }>} sources
+ * @param {number} [maxSources]
+ * @returns {string}
+ */
+export function formatSourcesList(sources, maxSources = 5) {
+  if (!Array.isArray(sources) || sources.length === 0) {
+    return '';
+  }
+
+  const lines = [];
+  let totalLength = 0;
+  const seen = new Set();
+
+  for (const source of sources) {
+    const url = typeof source?.url === 'string' ? source.url.trim() : '';
+    if (!url || (!url.startsWith('https://') && !url.startsWith('http://'))) continue;
+    if (seen.has(url)) continue;
+    seen.add(url);
+
+    const rawTitle = typeof source?.title === 'string' && source.title.trim() ? source.title.trim() : url;
+    const safeTitle = rawTitle.replace(/[\[\]()]/g, '').slice(0, 90).trim() || url;
+    const line = `${lines.length + 1}. [${safeTitle}](${url})`;
+    const nextLength = totalLength + (lines.length > 0 ? 1 : 0) + line.length;
+
+    if (nextLength > DISCORD_EMBED_FIELD_LIMIT) {
+      break;
+    }
+
+    lines.push(line);
+    totalLength = nextLength;
+    if (lines.length >= Math.min(5, Math.max(1, maxSources))) {
+      break;
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Builds a Midwave-branded Discord Embed for web-grounded or search-fallback AI responses.
+ *
+ * @param {{
+ *   description: string,
+ *   sources?: Array<{ title?: string, url?: string }>,
+ *   searchedAt?: string | null,
+ *   cached?: boolean,
+ *   mode?: 'web_search' | 'fallback',
+ *   fallbackNotice?: string,
+ * }} options
+ * @returns {import('discord.js').EmbedBuilder}
+ */
+export function buildWebSearchEmbed({
+  description,
+  sources = [],
+  searchedAt = null,
+  cached = false,
+  mode = 'web_search',
+  fallbackNotice = '',
+}) {
+  const isFallback = mode === 'fallback';
+  const safeDescription = sanitizeAiMentions(description || '').trim().slice(0, 4096);
+
+  const embed = createBaseEmbed({
+    title: isFallback ? 'Midwave AI • Mode Non-Real-Time' : 'Midwave AI • Web Search',
+    description: safeDescription || undefined,
+    color: isFallback ? COLORS.WARNING : COLORS.SECONDARY,
+    includeThumbnail: false,
+  });
+
+  if (fallbackNotice) {
+    embed.addFields({
+      name: 'Status Pencarian Web',
+      value: sanitizeAiMentions(fallbackNotice).slice(0, DISCORD_EMBED_FIELD_LIMIT),
+    });
+  }
+
+  const formattedSources = formatSourcesList(sources);
+  if (formattedSources) {
+    embed.addFields({
+      name: 'Sumber:',
+      value: formattedSources,
+    });
+  }
+
+  if (searchedAt) {
+    const parsedDate = new Date(searchedAt);
+    if (!Number.isNaN(parsedDate.getTime())) {
+      embed.setTimestamp(parsedDate);
+    }
+    embed.setFooter({
+      text: cached
+        ? `${EMBED_FOOTER} • Web Search (Cache)`
+        : `${EMBED_FOOTER} • Web Search`,
+    });
+  }
+
+  return embed;
 }

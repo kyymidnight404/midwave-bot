@@ -256,6 +256,17 @@ Midwave supports configurable prefix commands (`PREFIX=!` in `.env`) using the s
 - **Free Tier & Rate Limits**:
   - Gemini API free tier memiliki batas permintaan per menit (RPM), token per menit (TPM), dan permintaan harian (RPD) sesuai kebijakan Google AI Studio.
   - Midwave menerapkan cooldown khusus AI (8 detik per pengguna) dan batas pertanyaan 1.500 karakter untuk mencegah spam serta menghemat kuota free tier. Jika rate limit atau kuota habis, bot akan menampilkan pesan error informatif tanpa menghentikan fitur lain.
+- **Real-Time Web Search (Tavily + Gemini)**:
+  - Untuk pertanyaan yang membutuhkan informasi terkini (berita terbaru, harga terkini, jadwal/skor pertandingan, update software/game, atau permintaan sumber terbaru), Midwave secara otomatis menjalankan **Intent Detection → Tavily Search → Gemini Analysis → Discord Embed + Sumber**.
+  - Pertanyaan umum, penjelasan konsep, terjemahan, atau percakapan biasa langsung dijawab oleh Gemini **tanpa** memanggil Tavily sehingga kuota Search API tetap hemat.
+  - **Cara mendapatkan `TAVILY_API_KEY`**: Daftar atau masuk ke [Tavily App](https://app.tavily.com/), buat API key pada dashboard, lalu salin ke `TAVILY_API_KEY` di `.env` lokal atau panel **Environment Variables** Wispbyte.
+  - **Environment Variables Web Search**:
+    - `TAVILY_API_KEY`: API key Tavily (wajib agar pencarian web real-time aktif).
+    - `WEB_SEARCH_ENABLED=true`: Mengaktifkan/menonaktifkan pencarian web real-time.
+    - `WEB_SEARCH_MAX_RESULTS=5`: Maksimal jumlah hasil/sumber unik per pencarian (1–5).
+    - `WEB_SEARCH_CACHE_TTL=900`: Durasi cache query dinamis dalam detik (default 900s = 15 menit; topik versi/rilis memakai TTL lebih panjang).
+    - `WEB_SEARCH_COOLDOWN_SECONDS=10`: Cooldown pencarian web per pengguna (detik).
+    - `WEB_SEARCH_TIMEOUT_MS=15000`: Batas waktu request Tavily API (milidetik).
 
 ---
 
