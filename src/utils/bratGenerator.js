@@ -11,7 +11,7 @@ const require = createRequire(import.meta.url);
 export const BRAT_SIZE = 1024;
 export const BRAT_BG_COLOR = '#FFFFFF';
 export const BRAT_TEXT_COLOR = '#000000';
-export const BRAT_MAX_LENGTH = 100;
+export const BRAT_MAX_LENGTH = 1000;
 export const BRAT_PADDING = 48;
 export const BRAT_ATTACHMENT_NAME = 'midwave-brat.png';
 
@@ -22,7 +22,8 @@ const SOFT_RASTER_SIZE = 384;
 const MAX_CONTENT_WIDTH = BRAT_SIZE - BRAT_PADDING * 2;
 const MAX_CONTENT_HEIGHT = BRAT_SIZE - BRAT_PADDING * 2;
 const MAX_FONT_SIZE = 260;
-const MIN_FONT_SIZE = 24;
+const MIN_UNBROKEN_FONT_SIZE = 24;
+const MIN_FONT_SIZE = 10;
 const LINE_HEIGHT_RATIO = 1.08;
 const EMOJI_SIZE_RATIO = 0.88;
 const EMOJI_ADVANCE_RATIO = 0.94;
@@ -51,7 +52,12 @@ export function validateBratText(rawText) {
     throw new Error(`Teks maksimal ${BRAT_MAX_LENGTH} karakter.`);
   }
 
-  return trimmed.replace(/\s+/g, ' ').toLowerCase();
+  return trimmed
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line) => line.replace(/[^\S\n]+/g, ' ').trim())
+    .join('\n')
+    .toLowerCase();
 }
 
 /**
@@ -69,6 +75,28 @@ export function escapeSvgText(text) {
     .replace(/'/g, '&#39;');
 }
 
+const SPACE_BASE_WIDTH = 0.285 * 1.04;
+
+/**
+ * Returns the normalized unit width (per 1px font size) for a single Brat token.
+ * @param {{ type: string, raw: string }} unit
+ * @returns {number}
+ */
+function getUnitBaseWidth(unit) {
+  if (unit.type !== 'text') {
+    return EMOJI_ADVANCE_RATIO;
+  }
+
+  const ch = unit.raw[0];
+  if (ch === ' ') return SPACE_BASE_WIDTH;
+  if (NARROW_CHARS.has(ch)) return 0.28 * 1.04;
+  if (MEDIUM_NARROW_CHARS.has(ch)) return 0.36 * 1.04;
+  if (WIDE_CHARS.has(ch)) return 0.78 * 1.04;
+  const cp = ch.codePointAt(0) ?? 0;
+  if (cp >= 0x1100) return 1.0 * 1.04;
+  return 0.54 * 1.04;
+}
+
 /**
  * Estimates rendered width of a string (including emoji tokens) at a given font size.
  * @param {string} text
@@ -76,104 +104,132 @@ export function escapeSvgText(text) {
  * @returns {number}
  */
 function estimateTextWidth(text, fontSize) {
-  let textUnits = 0;
-  let emojiCount = 0;
-
+  let baseWidth = 0;
   for (const unit of tokenizeBratUnits(text)) {
-    if (unit.type !== 'text') {
-      emojiCount++;
-      continue;
-    }
-
-    const ch = unit.raw[0];
-    if (ch === ' ') {
-      textUnits += 0.285;
-    } else if (NARROW_CHARS.has(ch)) {
-      textUnits += 0.28;
-    } else if (MEDIUM_NARROW_CHARS.has(ch)) {
-      textUnits += 0.36;
-    } else if (WIDE_CHARS.has(ch)) {
-      textUnits += 0.78;
-    } else {
-      textUnits += 0.54;
-    }
+    baseWidth += getUnitBaseWidth(unit);
   }
-
-  // Conservative safety margin for text kerning/blur plus fixed advance per inline emoji.
-  return (textUnits * 1.04 + emojiCount * EMOJI_ADVANCE_RATIO) * fontSize;
+  return baseWidth * fontSize;
 }
 
 /**
- * Splits a single long token that exceeds maxLineWidth into fitted chunks without breaking emojis.
- * @param {string} word
+ * Pre-tokenizes normalized multiline text into paragraphs and measured words once
+ * so font-size search does not re-run Intl.Segmenter on every candidate size.
+ * @param {string} text
+ * @returns {Array<{ isBlank: boolean, words: Array<{ raw: string, baseWidth: number, units: Array<{ raw: string, baseWidth: number }> }> }>}
+ */
+function prepareParagraphs(text) {
+  return text.split('\n').map((paragraph) => {
+    if (!paragraph) {
+      return { isBlank: true, words: [] };
+    }
+    const words = paragraph.split(' ').map((word) => {
+      const units = tokenizeBratUnits(word).map((unit) => ({
+        raw: unit.raw,
+        baseWidth: getUnitBaseWidth(unit),
+      }));
+      const baseWidth = units.reduce((sum, u) => sum + u.baseWidth, 0);
+      return { raw: word, baseWidth, units };
+    });
+    return { isBlank: false, words };
+  });
+}
+
+/**
+ * Splits a pre-tokenized long word that exceeds maxLineWidth into fitted chunks without breaking emojis.
+ * @param {{ units: Array<{ raw: string, baseWidth: number }> }} word
  * @param {number} fontSize
  * @param {number} maxLineWidth
- * @returns {string[]}
+ * @returns {Array<{ text: string, width: number }>}
  */
 function splitLongWord(word, fontSize, maxLineWidth) {
   const chunks = [];
-  let current = '';
+  let currentText = '';
+  let currentWidth = 0;
 
-  for (const unit of tokenizeBratUnits(word)) {
-    const candidate = current + unit.raw;
-    if (current && estimateTextWidth(candidate, fontSize) > maxLineWidth) {
-      chunks.push(current);
-      current = unit.raw;
+  for (const unit of word.units) {
+    const unitWidth = unit.baseWidth * fontSize;
+    if (currentText && currentWidth + unitWidth > maxLineWidth) {
+      chunks.push({ text: currentText, width: currentWidth });
+      currentText = unit.raw;
+      currentWidth = unitWidth;
     } else {
-      current = candidate;
+      currentText += unit.raw;
+      currentWidth += unitWidth;
     }
   }
 
-  if (current) {
-    chunks.push(current);
+  if (currentText) {
+    chunks.push({ text: currentText, width: currentWidth });
   }
 
   return chunks;
 }
 
 /**
- * Wraps normalized text across lines within maxLineWidth at a specific font size.
+ * Wraps pre-tokenized paragraphs across lines within maxLineWidth at a specific font size.
  * Returns null when allowWordBreak is false and a single word exceeds maxLineWidth.
- * @param {string} text
+ * @param {ReturnType<typeof prepareParagraphs>} paragraphs
  * @param {number} fontSize
  * @param {number} maxLineWidth
  * @param {boolean} allowWordBreak
- * @returns {string[] | null}
+ * @returns {{ lines: string[], maxLineUsedWidth: number } | null}
  */
-function wrapLines(text, fontSize, maxLineWidth, allowWordBreak) {
-  const words = text.split(' ');
+function wrapParagraphs(paragraphs, fontSize, maxLineWidth, allowWordBreak) {
   const lines = [];
-  let currentLine = '';
+  const spaceWidth = SPACE_BASE_WIDTH * fontSize;
+  let maxLineUsedWidth = 0;
 
-  for (const word of words) {
-    const candidate = currentLine ? `${currentLine} ${word}` : word;
-    if (estimateTextWidth(candidate, fontSize) <= maxLineWidth) {
-      currentLine = candidate;
+  for (const paragraph of paragraphs) {
+    if (paragraph.isBlank) {
+      lines.push('');
       continue;
+    }
+
+    let currentLine = '';
+    let currentWidth = 0;
+
+    for (const word of paragraph.words) {
+      const wordWidth = word.baseWidth * fontSize;
+      const candidateWidth = currentLine ? currentWidth + spaceWidth + wordWidth : wordWidth;
+
+      if (candidateWidth <= maxLineWidth) {
+        currentLine = currentLine ? `${currentLine} ${word.raw}` : word.raw;
+        currentWidth = candidateWidth;
+        continue;
+      }
+
+      if (currentLine) {
+        lines.push(currentLine);
+        if (currentWidth > maxLineUsedWidth) maxLineUsedWidth = currentWidth;
+        currentLine = '';
+        currentWidth = 0;
+      }
+
+      if (wordWidth <= maxLineWidth) {
+        currentLine = word.raw;
+        currentWidth = wordWidth;
+      } else {
+        if (!allowWordBreak) {
+          return null;
+        }
+        const broken = splitLongWord(word, fontSize, maxLineWidth);
+        for (let i = 0; i < broken.length - 1; i++) {
+          lines.push(broken[i].text);
+          if (broken[i].width > maxLineUsedWidth) maxLineUsedWidth = broken[i].width;
+        }
+        const last = broken[broken.length - 1];
+        currentLine = last?.text ?? '';
+        currentWidth = last?.width ?? 0;
+      }
     }
 
     if (currentLine) {
       lines.push(currentLine);
-      currentLine = '';
-    }
-
-    if (estimateTextWidth(word, fontSize) <= maxLineWidth) {
-      currentLine = word;
-    } else {
-      if (!allowWordBreak) {
-        return null;
-      }
-      const broken = splitLongWord(word, fontSize, maxLineWidth);
-      lines.push(...broken.slice(0, -1));
-      currentLine = broken[broken.length - 1] ?? '';
+      if (currentWidth > maxLineUsedWidth) maxLineUsedWidth = currentWidth;
     }
   }
 
-  if (currentLine) {
-    lines.push(currentLine);
-  }
-
-  return lines;
+  return { lines, maxLineUsedWidth };
 }
 
 /**
@@ -182,29 +238,32 @@ function wrapLines(text, fontSize, maxLineWidth, allowWordBreak) {
  * @returns {{ fontSize: number, lineHeight: number, lines: string[] }}
  */
 export function layoutBratText(normalizedText) {
+  const paragraphs = prepareParagraphs(normalizedText);
+
   for (const allowWordBreak of [false, true]) {
-    for (let fontSize = MAX_FONT_SIZE; fontSize >= MIN_FONT_SIZE; fontSize -= 2) {
-      const lines = wrapLines(normalizedText, fontSize, MAX_CONTENT_WIDTH, allowWordBreak);
-      if (!lines) {
+    const minSize = allowWordBreak ? MIN_FONT_SIZE : MIN_UNBROKEN_FONT_SIZE;
+    for (let fontSize = MAX_FONT_SIZE; fontSize >= minSize; fontSize -= 2) {
+      const wrapped = wrapParagraphs(paragraphs, fontSize, MAX_CONTENT_WIDTH, allowWordBreak);
+      if (!wrapped) {
         continue;
       }
 
       const lineHeight = Math.round(fontSize * LINE_HEIGHT_RATIO);
-      const totalHeight = (lines.length - 1) * lineHeight + Math.round(fontSize * 1.06);
-      const fitsWidth = lines.every((line) => estimateTextWidth(line, fontSize) <= MAX_CONTENT_WIDTH);
+      const totalHeight = (wrapped.lines.length - 1) * lineHeight + Math.round(fontSize * 1.06);
 
-      if (fitsWidth && totalHeight <= MAX_CONTENT_HEIGHT) {
-        return { fontSize, lineHeight, lines };
+      if (wrapped.maxLineUsedWidth <= MAX_CONTENT_WIDTH && totalHeight <= MAX_CONTENT_HEIGHT) {
+        return { fontSize, lineHeight, lines: wrapped.lines };
       }
     }
   }
 
   const fallbackFontSize = MIN_FONT_SIZE;
   const lineHeight = Math.round(fallbackFontSize * LINE_HEIGHT_RATIO);
+  const fallbackWrapped = wrapParagraphs(paragraphs, fallbackFontSize, MAX_CONTENT_WIDTH, true);
   return {
     fontSize: fallbackFontSize,
     lineHeight,
-    lines: wrapLines(normalizedText, fallbackFontSize, MAX_CONTENT_WIDTH, true) ?? [normalizedText],
+    lines: fallbackWrapped?.lines ?? [normalizedText],
   };
 }
 
@@ -222,6 +281,7 @@ function createTextAdvanceMeasurer(fontSize, fontPath, ResvgImpl) {
     defaultFontFamily: FONT_FAMILY,
   };
   let pipesRightEdge = null;
+  const advanceCache = new Map();
 
   const measureRightEdge = (content) => {
     const svg = [
@@ -235,15 +295,21 @@ function createTextAdvanceMeasurer(fontSize, fontPath, ResvgImpl) {
 
   return (text) => {
     if (!text) return 0;
+    if (advanceCache.has(text)) {
+      return advanceCache.get(text);
+    }
+    let advance;
     try {
       if (pipesRightEdge === null) {
         pipesRightEdge = measureRightEdge('||');
       }
       const fullRightEdge = measureRightEdge(`|${escapeSvgText(text)}|`);
-      return Math.max(0, fullRightEdge - pipesRightEdge);
+      advance = Math.max(0, fullRightEdge - pipesRightEdge);
     } catch {
-      return estimateTextWidth(text, fontSize);
+      advance = estimateTextWidth(text, fontSize);
     }
+    advanceCache.set(text, advance);
+    return advance;
   };
 }
 
@@ -256,7 +322,8 @@ function createTextAdvanceMeasurer(fontSize, fontPath, ResvgImpl) {
 export function buildBratSvg(rawText, options = {}) {
   const normalized = validateBratText(rawText);
   const { fontSize, lineHeight, lines } = layoutBratText(normalized);
-  const blurDeviation = Math.min(2.6, Math.max(1.2, Number((fontSize * 0.012).toFixed(2))));
+  const minBlur = fontSize < 24 ? Math.max(0.6, Number((fontSize * 0.05).toFixed(2))) : 1.2;
+  const blurDeviation = Math.min(2.6, Math.max(minBlur, Number((fontSize * 0.012).toFixed(2))));
 
   const startX = BRAT_PADDING;
   const firstBaselineY = BRAT_PADDING + fontSize * 0.82;
@@ -268,8 +335,9 @@ export function buildBratSvg(rawText, options = {}) {
   if (!hasImages) {
     const tspans = lineSegments
       .map((segs, index) => {
-        const y = (firstBaselineY + index * lineHeight).toFixed(1);
         const lineText = segs.map((seg) => seg.value).join('');
+        if (!lineText) return '';
+        const y = (firstBaselineY + index * lineHeight).toFixed(1);
         return `<tspan x="${startX}" y="${y}">${escapeSvgText(lineText)}</tspan>`;
       })
       .join('');

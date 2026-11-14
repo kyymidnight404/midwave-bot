@@ -147,7 +147,7 @@
       "key": "features.utilities_brat_igf",
       "category": "features_commands",
       "title": "Utility Image Generators (/brat & !igf)",
-      "content": "1) /brat text:<teks> atau !brat <teks>: membuat PNG 1024x1024 bergaya Brat berlatar putih dengan teks lowercase (maksimal 100 karakter, mendukung emoji inline). 2) !igf [caption]: prefix-only command untuk membuat PNG transparan 1080x1080 bergaya kartu postingan Instagram dari gambar lampiran/reply dan avatar Discord pengguna.",
+      "content": "1) /brat text:<teks> atau !brat <teks>: membuat PNG 1024x1024 bergaya Brat berlatar putih dengan teks lowercase (maksimal 1.000 karakter, mendukung emoji inline). 2) !igf [caption]: prefix-only command untuk membuat PNG transparan 1080x1080 bergaya kartu postingan Instagram dari gambar lampiran/reply dan avatar Discord pengguna.",
       "tags": ["brat", "/brat", "!brat", "igf", "!igf", "gambar", "utility", "fitur"],
       "verificationStatus": "verified",
       "source": "src/commands/brat.js & src/prefixCommands/igf.js",

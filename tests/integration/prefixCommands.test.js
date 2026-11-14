@@ -469,6 +469,28 @@ describe('Prefix Command System', () => {
     assert.equal(attachment.attachment.readUInt32BE(16), BRAT_SIZE);
     assert.equal(attachment.attachment.readUInt32BE(20), BRAT_SIZE);
 
+    // ?brat with exact 1000 chars and multiline succeeds
+    const brat1000Msg = createFakeMessage({
+      content: `?brat ${'a'.repeat(499)}\n${'b'.repeat(500)}`,
+      author: u1,
+      channel: harness.channel,
+      userDirectory: harness.users,
+    });
+    await harness.prefixCommandHandler.handle(brat1000Msg);
+    const attachment1000 = brat1000Msg.getReplies()[0].payload.files[0];
+    assert.equal(attachment1000.name, BRAT_ATTACHMENT_NAME);
+
+    // ?brat exceeding 1000 chars (1001) returns informative error embed before rendering
+    const bratOverMsg = createFakeMessage({
+      content: `?brat ${'a'.repeat(1001)}`,
+      author: u1,
+      channel: harness.channel,
+      userDirectory: harness.users,
+    });
+    await harness.prefixCommandHandler.handle(bratOverMsg);
+    const overEmbed = JSON.stringify(bratOverMsg.getReplies()[0].payload.embeds[0].toJSON());
+    assert.match(overEmbed, /maksimal 1000 karakter/i);
+
     // Solo TicTacToe gameplay via prefix commands
     await harness.prefixCommandHandler.handle(
       createFakeMessage({ content: '?tictactoe', author: u1, channel: harness.channel, userDirectory: harness.users }),

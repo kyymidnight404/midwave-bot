@@ -125,14 +125,15 @@ describe('Brat Generator utility & /brat command', () => {
     assert.throws(() => validateBratText(null), /wajib diisi/i);
   });
 
-  it('enforces the 100 character maximum limit and lowercases valid text', () => {
-    const exact100 = 'A'.repeat(BRAT_MAX_LENGTH);
-    const normalized = validateBratText(exact100);
+  it('enforces the 1000 character maximum limit and lowercases valid text', () => {
+    assert.equal(BRAT_MAX_LENGTH, 1000);
+    const exact1000 = 'A'.repeat(BRAT_MAX_LENGTH);
+    const normalized = validateBratText(exact1000);
     assert.equal(normalized.length, BRAT_MAX_LENGTH);
     assert.equal(normalized, 'a'.repeat(BRAT_MAX_LENGTH));
 
     const overLimit = 'a'.repeat(BRAT_MAX_LENGTH + 1);
-    assert.throws(() => validateBratText(overLimit), /maksimal 100 karakter/i);
+    assert.throws(() => validateBratText(overLimit), /maksimal 1000 karakter/i);
   });
 
   it('escapes SVG special characters and strips control chars to prevent SVG injection', () => {
@@ -239,7 +240,7 @@ describe('Brat Generator utility & /brat command', () => {
     );
   });
 
-  it('registers /brat command with required text option (max 100)', async () => {
+  it('registers /brat command with required text option (max 1000)', async () => {
     const app = await createBotApp();
     const json = app.commandHandler.toJSON();
     const bratCmd = json.find((cmd) => cmd.name === 'brat');
@@ -471,5 +472,61 @@ describe('Brat Generator utility & /brat command', () => {
     assert.ok(svg.includes(`x="${BRAT_PADDING}"`));
     assert.ok(svg.includes('text-anchor="start"'));
     assert.ok(!svg.includes('text-anchor="middle"'));
+  });
+
+  it('supports short, medium, long, exact 1000-char, multiline, and Unicode+emoji inputs within canvas bounds', async () => {
+    const samples = [
+      'brat summer',
+      'midwave discord bot '.repeat(15).trim(), // ~300 chars (medium)
+      'aku suka coding di malam hari sambil minum kopi dan dengerin musik '.repeat(12).trim(), // ~790 chars (long)
+      'a'.repeat(1000), // exact 1000 chars unspaced
+      'baris satu\nbaris dua\n\nbaris empat dengan spasi   ekstra\r\nbaris lima',
+      Array.from({ length: 45 }, (_, i) => `baris ${i + 1}`).join('\n'), // extreme multiline
+    ];
+
+    for (const sample of samples) {
+      const normalized = validateBratText(sample);
+      const layout = layoutBratText(normalized);
+      const totalHeight =
+        (layout.lines.length - 1) * layout.lineHeight + Math.round(layout.fontSize * 1.06);
+      assert.ok(
+        totalHeight <= BRAT_SIZE - BRAT_PADDING * 2,
+        `Height ${totalHeight} exceeded canvas content height for sample length ${sample.length}`,
+      );
+    }
+
+    // Verify multiline preserves explicit newlines
+    const multiNorm = validateBratText('satu\ndua\ntiga');
+    assert.equal(multiNorm, 'satu\ndua\ntiga');
+    assert.deepEqual(layoutBratText(multiNorm).lines, ['satu', 'dua', 'tiga']);
+
+    // Verify 1000-char render produces valid 1024x1024 PNG without bottom/right clipping
+    const long1000Text = 'midnight ocean waves crashing softly '.repeat(27).slice(0, 1000);
+    const png1000 = renderBratPng(long1000Text);
+    assert.equal(png1000.readUInt32BE(16), BRAT_SIZE);
+    assert.equal(png1000.readUInt32BE(20), BRAT_SIZE);
+    const { rgba } = decodePngRgbaPixels(png1000);
+    // Top, bottom, left, right outer margins (within first 16px) must remain white
+    for (let x = 0; x < BRAT_SIZE; x += 8) {
+      const topIdx = (8 * BRAT_SIZE + x) * 4;
+      const botIdx = ((BRAT_SIZE - 8) * BRAT_SIZE + x) * 4;
+      assert.ok(rgba[topIdx] > 240 && rgba[botIdx] > 240, 'Outer top/bottom margin must stay clean');
+    }
+
+    // Verify Unicode + emoji text (with mocked fetch) renders cleanly within bounds
+    const emojiSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36"><circle cx="18" cy="18" r="16" fill="#FFCC4D"/></svg>';
+    const cache = new Map();
+    const mockFetch = async () => ({
+      ok: true,
+      headers: new Headers(),
+      arrayBuffer: async () => Buffer.from(emojiSvg, 'utf8'),
+    });
+    const unicodeEmoji =
+      'halo dunia \u{1F525} \u{1F972}\ncaf\u00e9 \u65e5\u672c\u8a9e \ud55c\uad6d\uc5b4 \u2764\uFE0F\n' +
+      'teks panjang unicode '.repeat(20);
+    const pngUnicode = await renderBratPngAsync(unicodeEmoji, { fetchFn: mockFetch, cache });
+    assert.equal(pngUnicode.readUInt32BE(16), BRAT_SIZE);
+    assert.equal(pngUnicode.readUInt32BE(20), BRAT_SIZE);
   });
 });
