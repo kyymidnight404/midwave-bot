@@ -7,8 +7,11 @@ import {
   DEFAULT_GEMINI_MODEL,
   MIDWAVE_AI_SYSTEM_INSTRUCTION,
   askGemini,
+  countUnicodeChars,
+  trimConversationHistory,
   validateAiQuestion,
 } from '../../src/services/gemini.js';
+import { askAiWithWebSearch } from '../../src/services/webSearch/index.js';
 import {
   DISCORD_MAX_MESSAGE_LENGTH,
   formatDiscordAiChunks,
@@ -409,5 +412,122 @@ describe('Midwave AI (Gemini) service, formatter, /ai, and !ai', () => {
     assert.equal(slashAllowed.getEvents()[1].payload.content, 'AI: sesudah cooldown');
 
     app.shutdown();
+  });
+
+  it('validates 100, 1499, 1500, 1501 chars and counts surrogate-pair emojis consistently', () => {
+    assert.equal(validateAiQuestion('a'.repeat(100)).length, 100);
+    assert.equal(validateAiQuestion('a'.repeat(1499)).length, 1499);
+    assert.equal(validateAiQuestion('a'.repeat(1500)).length, 1500);
+    assert.throws(
+      () => validateAiQuestion('a'.repeat(1501)),
+      (err) => err.code === 'QUESTION_TOO_LONG' && /maksimal 1500 karakter/i.test(err.message),
+    );
+
+    const emojis1500 = '😀'.repeat(1500);
+    assert.equal(countUnicodeChars(emojis1500), 1500);
+    assert.equal(validateAiQuestion(emojis1500), emojis1500);
+
+    const emojis1501 = '😀'.repeat(1501);
+    assert.throws(
+      () => validateAiQuestion(emojis1501),
+      (err) => err.code === 'QUESTION_TOO_LONG',
+    );
+  });
+
+  it('does not reject short user messages when system prompt, history, or search context are long', async () => {
+    const captured = [];
+    const mockCreateClient = () => ({
+      models: {
+        generateContent: async (params) => {
+          captured.push(params);
+          return { text: 'Ringkasan peristiwa 12/11/2026 di Indonesia.' };
+        },
+      },
+    });
+
+    const shortQuestion = 'apakah bisa mengetahui apa saja yang terjadi di indonesia pada tanggal 12/11/2026';
+    const longSystemPrompt = 'Instruksi sistem panjang. '.repeat(250);
+    const longHistory = Array.from({ length: 20 }, (_, idx) => ({
+      role: idx % 2 === 0 ? 'user' : 'model',
+      content: `Pesan history ke-${idx + 1}: ${'konteks '.repeat(120)}`,
+    }));
+
+    const trimmed = trimConversationHistory(longHistory, { maxMessages: 10, maxChars: 2000 });
+    assert.ok(trimmed.length <= 10);
+    assert.ok(trimmed.some((m) => m.content.includes('Pesan history ke-20')));
+
+    // Long system prompt + long conversation history + short latest user question
+    const historyRes = await askGemini(shortQuestion, {
+      apiKey: 'fake-key-123',
+      systemInstruction: longSystemPrompt,
+      history: longHistory,
+      createClient: mockCreateClient,
+    });
+    assert.equal(historyRes.text, 'Ringkasan peristiwa 12/11/2026 di Indonesia.');
+    assert.equal(captured[0].config.systemInstruction, longSystemPrompt);
+    assert.ok(captured[0].contents.includes(shortQuestion));
+    assert.ok(captured[0].contents.includes('Pesan history ke-20'));
+
+    // Long web search context passed through askAiWithWebSearch -> real askGemini
+    const searchRes = await askAiWithWebSearch(shortQuestion, {
+      userId: 'u-limit-fix',
+      apiKey: 'tvly-test-key',
+      searchTavilyFn: async () => ({
+        results: [
+          {
+            title: 'Berita Indonesia 12 November 2026',
+            url: 'https://news.example.com/id-12-11-2026',
+            content: 'Ringkasan berita panjang. '.repeat(90),
+            publishedDate: '2026-11-12',
+          },
+          {
+            title: 'Laporan Ekonomi 12 November 2026',
+            url: 'https://finance.example.com/id-12-11-2026',
+            content: 'Laporan ekonomi harian. '.repeat(90),
+            publishedDate: '2026-11-12',
+          },
+        ],
+        searchedAt: '2026-11-14T03:00:00.000Z',
+      }),
+      geminiOptions: {
+        apiKey: 'fake-key-123',
+        createClient: mockCreateClient,
+      },
+    });
+
+    assert.equal(searchRes.mode, 'web_search');
+    assert.equal(searchRes.text, 'Ringkasan peristiwa 12/11/2026 di Indonesia.');
+    assert.ok(captured[1].contents.length > 1500);
+    assert.ok(captured[1].contents.includes(shortQuestion));
+  });
+
+  it('distinguishes PAYLOAD_TOO_LARGE from QUESTION_TOO_LONG and other Gemini errors', async () => {
+    await assert.rejects(
+      () =>
+        askGemini('pertanyaan pendek', {
+          apiKey: 'fake-key-123',
+          contextText: 'x'.repeat(2000),
+          maxPayloadChars: 1000,
+          createClient: () => ({
+            models: { generateContent: async () => ({ text: 'ok' }) },
+          }),
+        }),
+      (err) => err.code === 'PAYLOAD_TOO_LARGE' && !/Pertanyaan terlalu panjang/i.test(err.message),
+    );
+
+    await assert.rejects(
+      () =>
+        askGemini('pertanyaan pendek', {
+          apiKey: 'fake-key-123',
+          createClient: () => ({
+            models: {
+              generateContent: async () => {
+                throw Object.assign(new Error('Request payload size exceeds limit'), { status: 413 });
+              },
+            },
+          }),
+        }),
+      (err) => err.code === 'PAYLOAD_TOO_LARGE' && !/Pertanyaan terlalu panjang/i.test(err.message),
+    );
   });
 });

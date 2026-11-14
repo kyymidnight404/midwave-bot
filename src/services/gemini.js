@@ -10,6 +10,9 @@ try {
 
 export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 export const AI_MAX_QUESTION_LENGTH = 1500;
+export const AI_MAX_PAYLOAD_CHARS = 30_000;
+export const AI_MAX_HISTORY_MESSAGES = 10;
+export const AI_MAX_HISTORY_CHARS = 12_000;
 export const AI_REQUEST_TIMEOUT_MS = 35_000;
 export const AI_COOLDOWN_MS = 8_000;
 
@@ -102,7 +105,66 @@ function buildSafeErrorDebugDetail(error, model = '') {
 }
 
 /**
+ * Counts Unicode code points consistently so surrogate-pair emojis count as 1 character.
+ * @param {string} text
+ * @returns {number}
+ */
+export function countUnicodeChars(text) {
+  return Array.from(String(text || '')).length;
+}
+
+/**
+ * Trims conversation history from oldest to newest so recent context is preserved
+ * within message count and character budgets without ever truncating the latest user question.
+ *
+ * @param {Array<{ role?: string, content?: string, text?: string }>} history
+ * @param {{ maxMessages?: number, maxChars?: number }} [limits]
+ * @returns {Array<{ role: string, content: string }>}
+ */
+export function trimConversationHistory(
+  history,
+  { maxMessages = AI_MAX_HISTORY_MESSAGES, maxChars = AI_MAX_HISTORY_CHARS } = {},
+) {
+  if (!Array.isArray(history) || history.length === 0) {
+    return [];
+  }
+
+  const normalized = [];
+  for (const item of history) {
+    if (!item || typeof item !== 'object') continue;
+    const rawText = typeof item.content === 'string' ? item.content : typeof item.text === 'string' ? item.text : '';
+    const content = rawText.trim();
+    if (!content) continue;
+    const role = typeof item.role === 'string' && item.role.trim() ? item.role.trim() : 'user';
+    normalized.push({ role, content });
+  }
+
+  const recent = normalized.slice(-Math.max(1, maxMessages));
+  const kept = [];
+  let usedChars = 0;
+
+  for (let i = recent.length - 1; i >= 0; i--) {
+    const entry = recent[i];
+    const len = countUnicodeChars(entry.content);
+    if (kept.length > 0 && usedChars + len > maxChars) {
+      break;
+    }
+    if (kept.length === 0 && len > maxChars) {
+      const truncated = Array.from(entry.content).slice(-maxChars).join('');
+      kept.unshift({ role: entry.role, content: truncated });
+      usedChars += maxChars;
+      break;
+    }
+    kept.unshift(entry);
+    usedChars += len;
+  }
+
+  return kept;
+}
+
+/**
  * Validates and normalizes an AI question before sending it to Gemini.
+ * Applies the 1500-character limit strictly to the user's question text.
  * @param {unknown} rawQuestion
  * @returns {string}
  */
@@ -122,7 +184,7 @@ export function validateAiQuestion(rawQuestion) {
     );
   }
 
-  if (trimmed.length > AI_MAX_QUESTION_LENGTH) {
+  if (countUnicodeChars(trimmed) > AI_MAX_QUESTION_LENGTH) {
     throw new GeminiServiceError(
       'QUESTION_TOO_LONG',
       `Pertanyaan terlalu panjang (maksimal ${AI_MAX_QUESTION_LENGTH} karakter). Persingkat pertanyaanmu agar tetap cepat diproses.`,
@@ -208,6 +270,17 @@ export function mapGeminiErrorToUserMessage(error, context = {}) {
   }
 
   if (
+    status === 413 ||
+    /payload.*(too large|limit|exceeded)|request entity too large|token count.*exceeded|context length/i.test(lower)
+  ) {
+    return new GeminiServiceError(
+      'PAYLOAD_TOO_LARGE',
+      'Konteks atau payload permintaan ke Gemini AI terlalu besar untuk diproses.',
+      debugDetail,
+    );
+  }
+
+  if (
     status === 404 ||
     /model.*(not found|not supported|deprecated)|is not found for api version/i.test(lower)
   ) {
@@ -256,11 +329,17 @@ function extractResponseText(response) {
 }
 
 /**
- * Sends a single stateless prompt to Google Gemini and returns the generated answer text.
- * Does not persist or reference any conversation history.
+ * Sends a prompt to Google Gemini and returns the generated answer text.
+ * Validates the 1500-character limit strictly against the user's question,
+ * never against system instructions, conversation history, or search context.
  *
  * @param {string} rawQuestion
  * @param {{
+ *   userQuestion?: string,
+ *   skipQuestionLengthValidation?: boolean,
+ *   history?: Array<{ role?: string, content?: string, text?: string }>,
+ *   contextText?: string,
+ *   maxPayloadChars?: number,
  *   apiKey?: string,
  *   model?: string,
  *   timeoutMs?: number,
@@ -270,7 +349,59 @@ function extractResponseText(response) {
  * @returns {Promise<{ text: string, model: string }>}
  */
 export async function askGemini(rawQuestion, options = {}) {
-  const question = validateAiQuestion(rawQuestion);
+  let userQuestion = '';
+  if (typeof options.userQuestion === 'string') {
+    userQuestion = validateAiQuestion(options.userQuestion);
+  } else if (!options.skipQuestionLengthValidation) {
+    userQuestion = validateAiQuestion(rawQuestion);
+  } else {
+    userQuestion = String(rawQuestion ?? '').trim();
+    if (!userQuestion) {
+      throw new GeminiServiceError(
+        'EMPTY_QUESTION',
+        'Pertanyaan tidak boleh kosong. Contoh: `/ai question: Apa itu JavaScript?` atau `!ai Apa itu JavaScript?`.',
+      );
+    }
+  }
+
+  let contents = typeof rawQuestion === 'string' && options.skipQuestionLengthValidation
+    ? rawQuestion.trim()
+    : userQuestion;
+
+  if (Array.isArray(options.history) || typeof options.contextText === 'string') {
+    const maxPayloadChars = options.maxPayloadChars ?? AI_MAX_PAYLOAD_CHARS;
+    const contextText = typeof options.contextText === 'string' ? options.contextText.trim() : '';
+    const historyBudget = Math.max(
+      0,
+      maxPayloadChars - countUnicodeChars(userQuestion) - countUnicodeChars(contextText) - 200,
+    );
+    const trimmedHistory = trimConversationHistory(options.history || [], {
+      maxMessages: AI_MAX_HISTORY_MESSAGES,
+      maxChars: Math.min(AI_MAX_HISTORY_CHARS, historyBudget),
+    });
+
+    const sections = [];
+    if (trimmedHistory.length > 0) {
+      const historyBlock = trimmedHistory
+        .map((m) => `${m.role === 'model' || m.role === 'assistant' ? 'Assistant' : 'User'}: ${m.content}`)
+        .join('\n');
+      sections.push(`Riwayat percakapan terakhir:\n${historyBlock}`);
+    }
+    if (contextText) {
+      sections.push(contextText);
+    }
+    sections.push(`Pertanyaan pengguna:\n${userQuestion}`);
+    contents = sections.join('\n\n');
+  }
+
+  const maxPayloadChars = options.maxPayloadChars ?? AI_MAX_PAYLOAD_CHARS;
+  if (countUnicodeChars(contents) > maxPayloadChars) {
+    throw new GeminiServiceError(
+      'PAYLOAD_TOO_LARGE',
+      'Konteks atau payload permintaan ke Gemini AI terlalu besar untuk diproses.',
+    );
+  }
+
   const apiKey = (options.apiKey ?? process.env.GEMINI_API_KEY ?? '').trim();
 
   if (!apiKey) {
@@ -302,7 +433,7 @@ export async function askGemini(rawQuestion, options = {}) {
   try {
     const response = await client.models.generateContent({
       model,
-      contents: question,
+      contents,
       config: {
         systemInstruction,
         abortSignal: AbortSignal.timeout(timeoutMs),

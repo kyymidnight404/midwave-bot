@@ -88,7 +88,11 @@ async function runSearchFallback(question, notice, askGeminiFn, geminiOptions, i
     '[Catatan sistem: Pencarian web real-time saat ini tidak tersedia. Jawab sebatas pengetahuan umum yang kamu miliki, dan ingatkan dengan singkat bahwa data terbaru belum dapat diverifikasi secara real-time.]',
   ].join('\n');
 
-  const geminiResult = await askGeminiFn(fallbackPrompt, geminiOptions);
+  const geminiResult = await askGeminiFn(fallbackPrompt, {
+    ...(geminiOptions || {}),
+    userQuestion: question,
+    skipQuestionLengthValidation: true,
+  });
   return {
     mode: 'fallback',
     text: geminiResult.text,
@@ -231,6 +235,8 @@ export async function askAiWithWebSearch(rawQuestion, options = {}) {
   const groundedPrompt = buildGroundedSearchPrompt(question, searchPayload.results);
   const geminiResult = await askGeminiFn(groundedPrompt, {
     ...(options.geminiOptions || {}),
+    userQuestion: question,
+    skipQuestionLengthValidation: true,
     systemInstruction: MIDWAVE_WEB_SEARCH_SYSTEM_INSTRUCTION,
   });
 
