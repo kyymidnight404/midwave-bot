@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
+import { buildDynamicHelpEmbed, discoverHelpEntries } from '../services/helpService.js';
 import {
   BOT_PLAYER_ID,
   COLORS,
@@ -346,79 +347,14 @@ export function buildGamesListEmbed() {
 }
 
 /**
- * Builds the `/help` guide embed.
+ * Builds the `/help` guide embed dynamically from registered commands.
  * @param {string} [prefix]
  * @returns {EmbedBuilder}
  */
 export function buildHelpEmbed(prefix = '!') {
   const safePrefix = typeof prefix === 'string' && prefix.trim() ? prefix.trim() : '!';
-  const embed = createBaseEmbed({
-    title: 'Panduan Midwave',
-    description: `Bot game Discord ringan dengan arsitektur berbasis sesi sementara di RAM. Mendukung **Slash Commands (\`/\`)** terpadu dan **Prefix Commands (\`${safePrefix}\`)**.`,
-    color: COLORS.PRIMARY,
-  });
-
-  embed.addFields(
-    {
-      name: 'Slash Commands Utama',
-      value: [
-        `\`/games\` atau \`${safePrefix}games\` - Daftar lengkap 7 permainan dan cara mainnya`,
-        `\`/help\` atau \`${safePrefix}help\` - Panduan ini`,
-        `\`/game action:status\` atau \`${safePrefix}game status\` - Lihat pertandingan yang sedang berlangsung`,
-        `\`/game action:cancel\` atau \`${safePrefix}game cancel\` - Batalkan pertandingan aktif atau undangan pending`,
-        `\`/game action:<solo|challenge|choose|drop|move|answer> game:<nama>\` - Mainkan mini-game via slash command`,
-      ].join('\n'),
-      inline: false,
-    },
-    {
-      name: 'Fitur AI, Media & Sosial',
-      value: [
-        `\`/ai question:<pertanyaan>\` atau \`${safePrefix}ai <pertanyaan>\` - Tanya Midwave AI — ringkas, natural, dan kontekstual`,
-        `\`/math expression:<ekspresi>\` atau \`${safePrefix}math <ekspresi>\` - Kalkulator matematika interaktif`,
-        `\`/media action:brat text:<teks>\` atau \`${safePrefix}brat <teks>\` - Buat gambar teks bergaya Brat (1024x1024 PNG)`,
-        `\`/media action:qc text:<teks>\` atau \`${safePrefix}qc [teks / reply pesan]\` (plus klik kanan *Generate QC*) - Screenshot chat WhatsApp`,
-        `\`/media action:lyrics query:<judul> [artist:<artis>]\` atau \`${safePrefix}lyrics <judul> [| <artis>]\` - Cari lirik lagu`,
-        `\`/media action:download url:<tautan>\` - Unduh media publik dari Instagram atau TikTok`,
-        `\`${safePrefix}say <pesan>\` - Ulangi teks pesan langsung tanpa embed dan tanpa ping mention`,
-        `\`/social action:<aksi> [user]\` atau \`${safePrefix}hug\`, \`${safePrefix}pat\`, \`${safePrefix}slap\`, \`${safePrefix}bonk\`, \`${safePrefix}poke\`, \`${safePrefix}yeet\`, \`${safePrefix}highfive\`, \`${safePrefix}wave\`, \`${safePrefix}laugh\`, \`${safePrefix}cry\` - Interaksi sosial dengan GIF anime`,
-      ].join('\n'),
-      inline: false,
-    },
-    {
-      name: 'Prefix Commands Game',
-      value: [
-        `\`${safePrefix}guess [easy|normal|hard]\` | \`${safePrefix}guess <angka>\` | \`${safePrefix}guess @user\``,
-        `\`${safePrefix}rps <rock|paper|scissors>\` | \`${safePrefix}rps challenge @user\` | \`${safePrefix}rps choose <pilihan>\``,
-        `\`${safePrefix}trivia [category] [difficulty]\` | \`${safePrefix}trivia <A|B|C|D>\` | \`${safePrefix}trivia @user\``,
-        `\`${safePrefix}coinflip <heads|tails>\` | \`${safePrefix}coinflip challenge @user\` | \`${safePrefix}coinflip choose <pilihan>\``,
-        `\`${safePrefix}dice [jumlah] [sisi]\` atau \`${safePrefix}dice 2d6\` | \`${safePrefix}dice @user 2d6\``,
-        `\`${safePrefix}tictactoe [difficulty]\` | \`${safePrefix}tictactoe <A1-C3>\` | \`${safePrefix}tictactoe @user\``,
-        `\`${safePrefix}connect4 [difficulty]\` | \`${safePrefix}connect4 <1-7>\` | \`${safePrefix}connect4 @user\``,
-      ].join('\n'),
-      inline: false,
-    },
-    {
-      name: 'Alur Multiplayer',
-      value: [
-        `1. Tantang pemain lain dengan \`/game action:challenge game:<nama> opponent:@user\` atau \`${safePrefix}<game> challenge @user\` (contoh: \`${safePrefix}tictactoe @user\`)`,
-        `2. Lawan menerima dengan \`/invite accept\` / \`${safePrefix}invite accept\` atau menolak dengan \`/invite decline\` / \`${safePrefix}invite decline\` (berlaku 60 detik)`,
-        '3. Mainkan giliran menggunakan `/game` atau Prefix Command game masing-masing',
-      ].join('\n'),
-      inline: false,
-    },
-    {
-      name: 'Aturan Penting',
-      value: [
-        '• Satu pemain hanya bisa mengikuti 1 pertandingan aktif pada satu waktu.',
-        '• Pilihan rahasia (RPS, Coin Flip, Trivia) disarankan lewat Slash Command (ephemeral); jika lewat prefix, bot akan mencoba hapus pesan & membalas lewat DM.',
-        '• Pertandingan otomatis berakhir jika tidak ada aktivitas selama 120 detik.',
-        '• Semua data bersifat sementara di RAM dan tidak disimpan permanen.',
-      ].join('\n'),
-      inline: false,
-    },
-  );
-
-  return embed;
+  const entries = discoverHelpEntries({ prefix: safePrefix });
+  return buildDynamicHelpEmbed({ entries, prefix: safePrefix });
 }
 
 const PLATFORM_BADGES = Object.freeze({

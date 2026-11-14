@@ -77,6 +77,8 @@ export class MessageCommandAdapter {
     this.id = message.id ?? null;
     this.commandName = parsed.commandName;
     this.user = message.author;
+    this.member = message.member ?? null;
+    this.memberPermissions = message.member?.permissions ?? null;
     this.guildId = message.guildId ?? message.guild?.id ?? null;
     this.channelId = message.channelId ?? message.channel?.id ?? null;
     this.deferred = false;

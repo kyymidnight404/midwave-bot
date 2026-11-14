@@ -12,6 +12,7 @@ import { execute as executeLyrics } from '../prefixCommands/lyrics.js';
 import { execute as executeQc } from '../prefixCommands/qc.js';
 import { execute as executeSay } from '../prefixCommands/say.js';
 import { SOCIAL_INTERACTIONS } from '../services/otakuGifsService.js';
+import { registerDefaultHandlerRegistry } from '../services/helpService.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
 import { executeGameCommand } from '../utils/gameDispatcher.js';
 import { executeSocialAction } from '../utils/socialCommand.js';
@@ -79,6 +80,7 @@ export function createDefaultHandlerRegistry() {
 }
 
 export const DEFAULT_HANDLER_REGISTRY = createDefaultHandlerRegistry();
+registerDefaultHandlerRegistry(DEFAULT_HANDLER_REGISTRY);
 
 /**
  * Wraps `interaction.options` when a command config maps fixed options,

@@ -54,6 +54,12 @@ export const commandStructure = {
       enabled: true,
       type: 'standalone',
       handler: 'ai',
+      help: {
+        category: 'ai_knowledge',
+        usage: 'ai <pertanyaan>',
+        prefixUsage: '{prefix}ai <pertanyaan>',
+        description: 'Tanya apa saja ke Midwave AI',
+      },
       options: [
         {
           name: 'question',
@@ -70,6 +76,12 @@ export const commandStructure = {
       enabled: true,
       type: 'choice',
       handler: 'game',
+      help: {
+        category: 'mini_games',
+        usage: 'game <action> [game]',
+        prefixUsage: '{prefix}<game> [aksi]',
+        description: 'Mainkan 7 mini-game (coinflip, connect4, dice, guess, rps, tictactoe, trivia)',
+      },
       options: [
         {
           name: 'action',
@@ -193,6 +205,12 @@ export const commandStructure = {
       enabled: true,
       type: 'standalone',
       handler: 'games',
+      help: {
+        category: 'mini_games',
+        usage: 'games',
+        prefixUsage: '{prefix}games',
+        description: 'Lihat daftar permainan & aturan main',
+      },
     },
     {
       name: 'help',
@@ -200,6 +218,12 @@ export const commandStructure = {
       enabled: true,
       type: 'standalone',
       handler: 'help',
+      help: {
+        category: 'general',
+        usage: 'help',
+        prefixUsage: '{prefix}help',
+        description: 'Tampilkan panduan command Midwave',
+      },
     },
     {
       name: 'invite',
@@ -207,6 +231,12 @@ export const commandStructure = {
       enabled: true,
       type: 'subcommand',
       handler: 'invite',
+      help: {
+        category: 'mini_games',
+        usage: 'invite <accept|decline>',
+        prefixUsage: '{prefix}invite <accept|decline>',
+        description: 'Terima atau tolak undangan permainan',
+      },
       subcommands: [
         {
           name: 'accept',
@@ -227,6 +257,12 @@ export const commandStructure = {
       type: 'subcommand',
       handler: 'knowledge',
       defaultMemberPermissions: PermissionFlagsBits.Administrator,
+      help: {
+        category: 'ai_knowledge',
+        visibility: 'admin',
+        usage: 'knowledge <categories|search|add|update|list|remove>',
+        description: 'Kelola knowledge base Midwave (Admin)',
+      },
       subcommands: [
         {
           name: 'categories',
@@ -388,6 +424,12 @@ export const commandStructure = {
       enabled: true,
       type: 'standalone',
       handler: 'math',
+      help: {
+        category: 'media_utilities',
+        usage: 'math <ekspresi>',
+        prefixUsage: '{prefix}math <ekspresi>',
+        description: 'Hitung ekspresi matematika',
+      },
       options: [
         {
           name: 'expression',
@@ -409,6 +451,30 @@ export const commandStructure = {
         brat: 'media.brat',
         lyrics: 'media.lyrics',
         download: 'media.download',
+      },
+      help: {
+        category: 'media_utilities',
+        actionHelp: {
+          qc: {
+            usage: 'media action:qc text:<teks>',
+            prefixUsage: '{prefix}qc <teks>',
+            description: 'Buat gambar chat screenshot WhatsApp',
+          },
+          brat: {
+            usage: 'media action:brat text:<teks>',
+            prefixUsage: '{prefix}brat <teks>',
+            description: 'Buat gambar teks gaya Brat',
+          },
+          lyrics: {
+            usage: 'media action:lyrics query:<judul>',
+            prefixUsage: '{prefix}lyrics <judul>',
+            description: 'Cari lirik lagu lengkap dengan cover',
+          },
+          download: {
+            usage: 'media action:download url:<link>',
+            description: 'Unduh media Instagram atau TikTok',
+          },
+        },
       },
       options: [
         {
@@ -458,6 +524,12 @@ export const commandStructure = {
       enabled: true,
       type: 'choice',
       handler: 'social',
+      help: {
+        category: 'social',
+        usage: 'social <action> [@user]',
+        prefixUsage: '{prefix}<aksi> [@user]',
+        description: 'Interaksi sosial & ekspresi GIF anime',
+      },
       options: [
         {
           name: 'action',
@@ -482,6 +554,11 @@ export const commandStructure = {
       enabled: true,
       type: 'context_message',
       handler: 'context.generate_qc',
+      help: {
+        category: 'media_utilities',
+        usage: 'Apps → Generate QC',
+        description: 'Buat QC dari pesan Discord (Context Menu)',
+      },
     },
   ],
 };

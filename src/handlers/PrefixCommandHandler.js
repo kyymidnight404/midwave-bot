@@ -43,6 +43,23 @@ const PREFIX_EXECUTORS = new Map([
   ]),
 ]);
 
+import {
+  PREFIX_ONLY_METADATA,
+  registerPrefixCommandNames,
+} from '../services/helpService.js';
+
+export { PREFIX_ONLY_METADATA };
+
+/**
+ * Returns the set of all registered prefix command names.
+ * @returns {Set<string>}
+ */
+export function getRegisteredPrefixCommandNames() {
+  return new Set(PREFIX_EXECUTORS.keys());
+}
+
+registerPrefixCommandNames(PREFIX_EXECUTORS.keys());
+
 const COMMAND_COOLDOWNS = Object.freeze({
   ai: AI_COOLDOWN_MS,
   lyrics: LYRICS_COOLDOWN_MS,
