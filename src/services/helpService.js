@@ -10,7 +10,6 @@ import defaultCommandStructure from '../config/commandStructure.js';
 import { SOCIAL_INTERACTIONS } from './otakuGifsService.js';
 import {
   COLORS,
-  EMBED_FOOTER,
   GAME_TYPES,
   LOGO_ATTACHMENT_URL,
   LOGO_PATH,
@@ -218,6 +217,7 @@ function buildMediaEntries(cmd, { prefix, handlerRegistry, registeredPrefixComma
     entries.push({
       id: `media:${actionKey}`,
       category,
+      items: [actionKey],
       line,
       source: hasPrefix ? 'both' : 'slash',
     });
@@ -259,6 +259,7 @@ function buildGameEntries(cmd, { prefix, registeredPrefixCommands }) {
     {
       id: 'command:game',
       category,
+      items: [cmd.name, ...games],
       line: lines.join('\n'),
       source: hasPrefixMain || hasPrefixGames ? 'both' : 'slash',
     },
@@ -269,6 +270,7 @@ function buildGameEntries(cmd, { prefix, registeredPrefixCommands }) {
     entries.push({
       id: 'command:games',
       category,
+      items: ['games'],
       line: hasPrefixGamesList
         ? `• \`${prefix}games\` | \`/game list\` — Lihat daftar permainan & aturan main`
         : `• \`/game list\` *(Slash)* — Lihat daftar permainan & aturan main`,
@@ -302,6 +304,7 @@ function buildSocialEntries(cmd, { prefix, registeredPrefixCommands }) {
     {
       id: 'command:social',
       category,
+      items: [cmd.name, ...interactions.map((item) => item.command)],
       line: lines.join('\n'),
       source: hasPrefix ? 'both' : 'slash',
     },
@@ -378,6 +381,7 @@ export function discoverHelpEntries({
     addEntry({
       id: `command:${cmd.name}`,
       category,
+      items: [cmd.name],
       line: buildGenericCommandLine(cmd, { prefix, registeredPrefixCommands }),
       source: hasPrefix ? 'both' : 'slash',
     });
@@ -405,6 +409,7 @@ export function discoverHelpEntries({
     addEntry({
       id: `prefix:${prefixName}`,
       category,
+      items: [prefixName],
       line: `• \`${prefix}${meta.usage || prefixName}\` *(Prefix)* — ${meta.description}`,
       source: 'prefix',
     });
@@ -440,8 +445,7 @@ export function buildDynamicHelpEmbed({
   const embed = new EmbedBuilder()
     .setColor(COLORS.PRIMARY)
     .setTitle('MIDWAVE — COMMAND GUIDE')
-    .setDescription(description)
-    .setFooter({ text: EMBED_FOOTER });
+    .setDescription(description);
 
   if (fs.existsSync(LOGO_PATH)) {
     embed.setThumbnail(LOGO_ATTACHMENT_URL);
@@ -451,16 +455,25 @@ export function buildDynamicHelpEmbed({
   let runningLength = embed.data.title.length + embed.data.description.length;
 
   for (const category of targetCategories) {
-    const categoryLines = resolvedEntries
-      .filter((entry) => entry.category === category.key)
-      .map((entry) => entry.line);
-
-    if (categoryLines.length === 0) {
+    const categoryEntries = resolvedEntries.filter((entry) => entry.category === category.key);
+    if (categoryEntries.length === 0) {
       continue;
     }
 
-    const fieldName = `${category.emoji} ${category.label}`;
-    const rawValue = categoryLines.join('\n');
+    const categoryItems = [];
+    const seenItems = new Set();
+    for (const entry of categoryEntries) {
+      const list = Array.isArray(entry.items) && entry.items.length > 0 ? entry.items : [entry.id];
+      for (const item of list) {
+        if (!seenItems.has(item)) {
+          seenItems.add(item);
+          categoryItems.push(item);
+        }
+      }
+    }
+
+    const fieldName = `${category.emoji} ${category.label} (${categoryItems.length})`;
+    const rawValue = categoryItems.map((name) => `\`${name}\``).join(', ');
     const remainingBudget = MAX_EMBED_TOTAL_LENGTH - runningLength - fieldName.length;
     if (remainingBudget <= 20) {
       break;

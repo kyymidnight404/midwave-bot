@@ -39,7 +39,7 @@ test('Help Embed: single embed with Midnight Ocean visual identity & all 5 categ
   assert.ok(json.description.includes("Discover Midwave's features and commands in one place."));
   assert.equal(json.color, COLORS.PRIMARY);
   assert.equal(json.thumbnail?.url, LOGO_ATTACHMENT_URL);
-  assert.equal(json.footer?.text, EMBED_FOOTER);
+  assert.equal(json.footer, undefined);
 
   const fieldNames = json.fields.map((f) => f.name);
   assert.ok(fieldNames.some((n) => n.includes('AI & Knowledge')));
@@ -49,17 +49,20 @@ test('Help Embed: single embed with Midnight Ocean visual identity & all 5 categ
   assert.ok(fieldNames.some((n) => n.includes('General')));
 });
 
-test('Help Embed: differentiates Prefix, Slash, and Both accurately including !download and /media download', () => {
+test('Help Embed: renders compact category counts and inline command pills for all active commands', () => {
   const entries = discoverHelpEntries({ prefix: '?' });
   const json = buildDynamicHelpEmbed({ entries, prefix: '?' }).toJSON();
   const serialized = JSON.stringify(json);
 
-  assert.ok(serialized.includes('?brat <teks>'));
-  assert.ok(serialized.includes('/media download url:<link>'));
-  assert.ok(serialized.includes('?download <link>'));
-  assert.ok(serialized.includes('/game list'));
-  assert.ok(serialized.includes('?say <teks>'));
-  assert.ok(serialized.includes('?igf <username>'));
+  assert.ok(json.fields.every((f) => /\(\d+\)$/.test(f.name)));
+  assert.ok(serialized.includes('`brat`'));
+  assert.ok(serialized.includes('`download`'));
+  assert.ok(serialized.includes('`qc`'));
+  assert.ok(serialized.includes('`lyrics`'));
+  assert.ok(serialized.includes('`games`'));
+  assert.ok(serialized.includes('`say`'));
+  assert.ok(serialized.includes('`igf`'));
+  assert.ok(serialized.includes('`Generate QC`'));
 });
 
 test('Help Discovery: excludes disabled commands and commands without valid handlers', () => {

@@ -1,4 +1,4 @@
-import { COLORS, EMBED_FOOTER } from './constants.js';
+import { COLORS } from './constants.js';
 import { createBaseEmbed } from './embeds.js';
 
 export const DISCORD_MAX_MESSAGE_LENGTH = 2000;
@@ -325,9 +325,7 @@ export function buildWebSearchEmbed({
       embed.setTimestamp(parsedDate);
     }
     embed.setFooter({
-      text: cached
-        ? `${EMBED_FOOTER} • Web Search (Cache)`
-        : `${EMBED_FOOTER} • Web Search`,
+      text: cached ? 'Web Search (Cache)' : 'Web Search',
     });
   }
 

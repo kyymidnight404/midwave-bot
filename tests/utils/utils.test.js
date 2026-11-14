@@ -111,7 +111,7 @@ describe('Embed Design System', () => {
     }).toJSON();
 
     assert.equal(lobby.color, COLORS.SECONDARY);
-    assert.equal(lobby.footer.text, EMBED_FOOTER);
+    assert.equal(lobby.footer, undefined);
     assert.equal(lobby.thumbnail.url, LOGO_ATTACHMENT_URL);
 
     const game = buildGameEmbed({
@@ -123,7 +123,7 @@ describe('Embed Design System', () => {
       boardOrInfo: 'board',
     }).toJSON();
     assert.equal(game.color, COLORS.ACCENT);
-    assert.equal(game.footer.text, EMBED_FOOTER);
+    assert.equal(game.footer, undefined);
 
     const result = buildResultEmbed({
       gameTitle: 'Connect Four',
@@ -135,7 +135,7 @@ describe('Embed Design System', () => {
       resultDescription: 'Menang!',
     }).toJSON();
     assert.equal(result.color, COLORS.SUCCESS);
-    assert.equal(result.footer.text, EMBED_FOOTER);
+    assert.equal(result.footer, undefined);
 
     const err = buildErrorEmbed('Ada kesalahan').toJSON();
     assert.equal(err.color, COLORS.DANGER);
@@ -144,6 +144,6 @@ describe('Embed Design System', () => {
     assert.equal(gamesList.fields.length, 7);
 
     const help = buildHelpEmbed().toJSON();
-    assert.equal(help.footer.text, EMBED_FOOTER);
+    assert.equal(help.footer, undefined);
   });
 });

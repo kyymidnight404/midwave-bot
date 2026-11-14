@@ -4,7 +4,6 @@ import { buildDynamicHelpEmbed, discoverHelpEntries } from '../services/helpServ
 import {
   BOT_PLAYER_ID,
   COLORS,
-  EMBED_FOOTER,
   GAME_METADATA,
   GAME_MODES,
   LOGO_ATTACHMENT_URL,
@@ -68,9 +67,7 @@ export function createBaseEmbed({
   color = COLORS.PRIMARY,
   includeThumbnail = true,
 } = {}) {
-  const embed = new EmbedBuilder()
-    .setColor(color)
-    .setFooter({ text: EMBED_FOOTER });
+  const embed = new EmbedBuilder().setColor(color);
 
   if (title) embed.setTitle(title);
   if (description) embed.setDescription(description);

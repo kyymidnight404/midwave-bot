@@ -467,7 +467,8 @@ describe('Prefix Command System', () => {
     });
     await harness.prefixCommandHandler.handle(helpMsg);
     const helpJson = JSON.stringify(helpMsg.getReplies()[0].payload.embeds[0].toJSON());
-    assert.ok(helpJson.includes('?brat <teks>'));
+    assert.ok(helpJson.includes('MIDWAVE — COMMAND GUIDE'));
+    assert.ok(helpJson.includes('`brat`'));
 
     const bratMsg = createFakeMessage({
       content: '?brat midnight ocean',

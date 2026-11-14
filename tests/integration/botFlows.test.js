@@ -248,7 +248,7 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     assert.ok(boardField);
     assert.equal(boardField.value.includes('Rock (Batu)'), false);
     assert.ok(boardField.value.includes('Sudah memilih (rahasia)'));
-    assert.equal(embedJson.footer.text, EMBED_FOOTER);
+    assert.equal(embedJson.footer, undefined);
 
     // 4. P2 submits secret choice -> finishes match and cleans up RAM
     const p2Choose = createMockCommandInteraction({
