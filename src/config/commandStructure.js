@@ -274,6 +274,18 @@ export const commandStructure = {
       },
     },
     {
+      name: 'donate',
+      description: 'Dukung pengembangan Midwave melalui Saweria atau Ko-fi',
+      enabled: true,
+      type: 'standalone',
+      handler: 'donate',
+      help: {
+        category: 'general',
+        usage: 'donate',
+        description: 'Dukung pengembangan Midwave',
+      },
+    },
+    {
       name: 'game',
       description: 'Mainkan mini-game Midwave dan kelola sesi pertandingan',
       enabled: true,

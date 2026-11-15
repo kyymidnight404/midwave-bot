@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { MessageFlags } from 'discord.js';
+import { ButtonStyle, MessageFlags } from 'discord.js';
+import { COLORS } from '../../src/config/colors.js';
 import { createBotApp } from '../../src/index.js';
 import { CooldownManager } from '../../src/utils/cooldown.js';
 import { GameManager } from '../../src/managers/GameManager.js';
@@ -146,13 +147,14 @@ function createMockCommandInteraction({
 }
 
 describe('Integration: Slash Commands & End-to-End Flows', () => {
-  it('registers all 9 Discord commands within API limits (no duplicates or option ordering violations)', async () => {
+  it('registers all 10 Discord commands within API limits (no duplicates or option ordering violations)', async () => {
     const app = await createBotApp();
     const payloads = app.commandHandler.toJSON();
     const names = payloads.map((c) => c.name).sort();
     assert.deepEqual(names, [
       'Generate QC',
       'ai',
+      'donate',
       'game',
       'help',
       'invite',
@@ -161,7 +163,7 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
       'media',
       'social',
     ]);
-    assert.equal(new Set(payloads.map((c) => c.name)).size, 9);
+    assert.equal(new Set(payloads.map((c) => c.name)).size, 10);
 
     for (const cmd of payloads) {
       if (cmd.type === 3) {
@@ -679,6 +681,49 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     await app.prefixCommandHandler.handle(prefixMessage);
     assert.ok(replies.length >= 1);
     assert.equal(replies.at(-1).files.length, 1);
+
+    app.shutdown();
+  });
+
+  it('executes /donate with Midwave embed theme and two Discord Link Buttons', async () => {
+    const app = await createBotApp({ cooldownMs: 0 });
+    const channel = createFakeChannel('ch-donate');
+    const interaction = createMockCommandInteraction({
+      commandName: 'donate',
+      userId: 'user-donate',
+      channel,
+    });
+
+    await app.interactionHandler.handle(interaction);
+    const replies = interaction.getReplies();
+    assert.equal(replies.length, 1);
+    assert.equal(replies[0].type, 'reply');
+
+    const payload = replies[0].payload;
+    assert.equal(payload.embeds.length, 1);
+    const embedJson = payload.embeds[0].toJSON();
+    assert.equal(embedJson.color, COLORS.PRIMARY);
+    assert.equal(embedJson.title, '☕ Buy Me a Coffee?');
+    assert.equal(
+      embedJson.description,
+      'Enjoying Midwave? Consider buying me a coffee! Every little support helps keep this project alive. Thank you for being here! 💙',
+    );
+    assert.equal(embedJson.footer?.text, 'Thank you for supporting Midwave!');
+
+    assert.equal(payload.components.length, 1);
+    const rowJson = payload.components[0].toJSON();
+    assert.equal(rowJson.components.length, 2);
+
+    const [saweriaBtn, kofiBtn] = rowJson.components;
+    assert.equal(saweriaBtn.style, ButtonStyle.Link);
+    assert.equal(saweriaBtn.label, '🇮🇩 Donate via Saweria');
+    assert.equal(saweriaBtn.url, 'https://saweria.co/kyymidnight');
+    assert.equal(saweriaBtn.custom_id, undefined);
+
+    assert.equal(kofiBtn.style, ButtonStyle.Link);
+    assert.equal(kofiBtn.label, '🌍 Donate via Ko-fi');
+    assert.equal(kofiBtn.url, 'https://ko-fi.com/kyymidnight');
+    assert.equal(kofiBtn.custom_id, undefined);
 
     app.shutdown();
   });
