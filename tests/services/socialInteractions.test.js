@@ -79,7 +79,7 @@ describe('Social Interactions System (OtakuGIFs)', () => {
     assert.equal(resolveApiReaction('pat'), 'pat');
     assert.equal(resolveApiReaction('slap'), 'slap');
     assert.equal(resolveApiReaction('bonk'), 'smack');
-    assert.equal(resolveApiReaction('kick'), 'punch');
+    assert.equal(resolveApiReaction('kick'), 'kick');
     assert.equal(resolveApiReaction('poke'), 'poke');
     assert.equal(resolveApiReaction('yeet'), 'punch');
     assert.equal(resolveApiReaction('highfive'), 'brofist');

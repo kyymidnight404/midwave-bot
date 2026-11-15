@@ -1,4 +1,5 @@
 export const OTAKUGIFS_API_URL = 'https://api.otakugifs.xyz/gif';
+export const NEKOS_BEST_API_URL = 'https://nekos.best/api/v2';
 export const OTAKUGIFS_ALL_REACTIONS_URL = 'https://api.otakugifs.xyz/gif/allreactions';
 export const OTAKUGIFS_TIMEOUT_MS = 8_000;
 export const SOCIAL_COOLDOWN_MS = 3_000;
@@ -15,6 +16,7 @@ export const VALID_API_REACTIONS = new Set([
   'smack',
   'poke',
   'punch',
+  'kick',
   'brofist',
   'wave',
   'laugh',
@@ -52,7 +54,8 @@ export const SOCIAL_INTERACTIONS = Object.freeze({
   },
   kick: {
     command: 'kick',
-    apiReaction: 'punch',
+    apiReaction: 'kick',
+    apiProvider: 'nekos_best',
     requiresTarget: true,
     description: 'Menendang pengguna lain secara bercanda (anime GIF)',
     formatMessage: (author, target) => `**${author}** kicks **${target}**!`,
@@ -190,13 +193,20 @@ export async function getReactionGif(reaction, options = {}) {
     throw new OtakuGifsError('API_UNAVAILABLE', 'HTTP client tidak tersedia untuk mengambil GIF.');
   }
 
-  const requestUrl = `${apiUrl}?reaction=${encodeURIComponent(apiReaction)}&format=gif`;
+  const key = typeof reaction === 'string' ? reaction.trim().toLowerCase() : '';
+  const useNekosBest =
+    !options.apiUrl && SOCIAL_INTERACTIONS[key]?.apiProvider === 'nekos_best';
+  const requestUrl = useNekosBest
+    ? `${NEKOS_BEST_API_URL}/${encodeURIComponent(apiReaction)}`
+    : `${apiUrl}?reaction=${encodeURIComponent(apiReaction)}&format=gif`;
 
   let response;
   try {
     response = await fetchFn(requestUrl, {
       method: 'GET',
-      headers: { Accept: 'application/json' },
+      headers: useNekosBest
+        ? { Accept: 'application/json', 'User-Agent': 'MidwaveBot/1.0' }
+        : { Accept: 'application/json' },
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
@@ -223,5 +233,6 @@ export async function getReactionGif(reaction, options = {}) {
     throw new OtakuGifsError('INVALID_RESPONSE', 'Respons dari layanan GIF tidak valid.');
   }
 
-  return validateGifUrl(data?.url);
+  const gifUrl = useNekosBest ? data?.results?.[0]?.url : data?.url;
+  return validateGifUrl(gifUrl);
 }
