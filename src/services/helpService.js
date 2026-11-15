@@ -32,6 +32,13 @@ export const PREFIX_ONLY_METADATA = Object.freeze({
     description: 'Kirim ulang pesan teks melalui bot',
     visibility: 'public',
   }),
+  feedback: Object.freeze({
+    name: 'feedback',
+    category: 'general',
+    usage: 'feedback',
+    description: 'Kirim bug report, saran fitur, atau masukan ke tim staff',
+    visibility: 'public',
+  }),
 });
 
 const registeredPrefixCommandNames = new Set();

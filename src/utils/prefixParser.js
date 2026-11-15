@@ -22,6 +22,7 @@ const COMMAND_ALIASES = Object.freeze({
   igf: 'igf',
   qc: 'qc',
   say: 'say',
+  feedback: 'feedback',
   math: 'math',
   hug: 'hug',
   pat: 'pat',
@@ -262,6 +263,10 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
   const firstLower = args[0]?.toLowerCase() ?? '';
 
   if (commandName === 'games' || commandName === 'help') {
+    return { commandName, subcommand: null, options: {} };
+  }
+
+  if (commandName === 'feedback') {
     return { commandName, subcommand: null, options: {} };
   }
 

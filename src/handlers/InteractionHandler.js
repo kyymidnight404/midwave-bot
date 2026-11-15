@@ -3,6 +3,10 @@ import { DOWNLOAD_COOLDOWN_MS } from '../services/downloader.js';
 import { AI_COOLDOWN_MS } from '../services/gemini.js';
 import { LYRICS_COOLDOWN_MS } from '../services/lyricsService.js';
 import { SOCIAL_COOLDOWN_MS } from '../services/otakuGifsService.js';
+import {
+  FEEDBACK_CUSTOM_ID_PREFIX,
+  handleFeedbackInteraction,
+} from '../services/feedbackService.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
 
 const IGNORED_DISCORD_ERROR_CODES = new Set([10062, 40060]);
@@ -73,11 +77,31 @@ export class InteractionHandler {
    * @param {import('discord.js').Interaction} interaction
    */
   async handle(interaction) {
+    if (!interaction) {
+      return;
+    }
+
+    const isFeedbackComponent =
+      typeof interaction.customId === 'string' &&
+      interaction.customId.startsWith(`${FEEDBACK_CUSTOM_ID_PREFIX}:`) &&
+      (interaction.isButton?.() ||
+        interaction.isStringSelectMenu?.() ||
+        interaction.isModalSubmit?.());
+
+    if (isFeedbackComponent) {
+      await handleFeedbackInteraction(interaction, {
+        ...this.context,
+        cooldowns: this.cooldowns,
+        logger: this.logger,
+      });
+      return;
+    }
+
     const isSlash = typeof interaction?.isChatInputCommand === 'function' && interaction.isChatInputCommand();
     const isContextMenu =
       typeof interaction?.isMessageContextMenuCommand === 'function' &&
       interaction.isMessageContextMenuCommand();
-    if (!interaction || (!isSlash && !isContextMenu)) {
+    if (!isSlash && !isContextMenu) {
       return;
     }
 

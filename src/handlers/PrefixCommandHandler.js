@@ -2,6 +2,7 @@ import { PermissionFlagsBits } from 'discord.js';
 import { DEFAULT_HANDLER_REGISTRY } from '../config/commandRegistry.js';
 import bratPrefixCommand from '../prefixCommands/brat.js';
 import downloadPrefixCommand from '../prefixCommands/download.js';
+import feedbackPrefixCommand from '../prefixCommands/feedback.js';
 import igfCommand from '../prefixCommands/igf.js';
 import lyricsPrefixCommand from '../prefixCommands/lyrics.js';
 import qcPrefixCommand from '../prefixCommands/qc.js';
@@ -23,6 +24,7 @@ const PREFIX_EXECUTORS = new Map([
   [downloadPrefixCommand.name, downloadPrefixCommand],
   [qcPrefixCommand.name, qcPrefixCommand],
   [sayPrefixCommand.name, sayPrefixCommand],
+  [feedbackPrefixCommand.name, feedbackPrefixCommand],
   ['ai', { execute: DEFAULT_HANDLER_REGISTRY.ai }],
   ['math', { execute: DEFAULT_HANDLER_REGISTRY.math }],
   ['games', { execute: DEFAULT_HANDLER_REGISTRY.games }],
