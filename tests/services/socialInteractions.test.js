@@ -71,14 +71,15 @@ function createFakeMessage({ content, author, mentionedUser = null, guild = null
 }
 
 describe('Social Interactions System (OtakuGIFs)', () => {
-  it('maps all 10 commands to validated OtakuGIFs API reactions', () => {
-    assert.equal(TARGETED_SOCIAL_COMMANDS.length, 8);
+  it('maps all 11 commands to validated OtakuGIFs API reactions', () => {
+    assert.equal(TARGETED_SOCIAL_COMMANDS.length, 9);
     assert.equal(SOLO_SOCIAL_COMMANDS.length, 2);
 
     assert.equal(resolveApiReaction('hug'), 'hug');
     assert.equal(resolveApiReaction('pat'), 'pat');
     assert.equal(resolveApiReaction('slap'), 'slap');
     assert.equal(resolveApiReaction('bonk'), 'smack');
+    assert.equal(resolveApiReaction('kick'), 'punch');
     assert.equal(resolveApiReaction('poke'), 'poke');
     assert.equal(resolveApiReaction('yeet'), 'punch');
     assert.equal(resolveApiReaction('highfive'), 'brofist');
@@ -172,6 +173,7 @@ describe('Social Interactions System (OtakuGIFs)', () => {
       pat: `Headpats for **<@${target.id}>** from **<@${author.id}>**~`,
       slap: `**<@${author.id}>** slaps **<@${target.id}>** across the face!`,
       bonk: `**<@${author.id}>** bonks **<@${target.id}>**! Go to jail!`,
+      kick: `**<@${author.id}>** kicks **<@${target.id}>**!`,
       poke: `**<@${author.id}>** pokes **<@${target.id}>** to get their attention.`,
       yeet: `**<@${author.id}>** yeets **<@${target.id}>** into orbit!`,
       highfive: `**<@${author.id}>** gives **<@${target.id}>** an epic high-five!`,
@@ -323,12 +325,12 @@ describe('Social Interactions System (OtakuGIFs)', () => {
     assert.match(invalidTargetMsg.getReplies()[0].embeds[0].toJSON().description, /mention atau ID/i);
   });
 
-  it('executes consolidated /social slash command across all 10 actions with target validation & cooldown', async () => {
+  it('executes consolidated /social slash command across all 11 actions with target validation & cooldown', async () => {
     const json = socialData.toJSON();
     assert.equal(json.name, 'social');
     assert.equal(json.options[0].name, 'action');
     assert.equal(json.options[0].required, true);
-    assert.equal(json.options[0].choices.length, 10);
+    assert.equal(json.options[0].choices.length, 11);
     assert.equal(json.options[1].name, 'user');
     assert.equal(json.options[1].required, false);
 

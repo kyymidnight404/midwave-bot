@@ -7,8 +7,8 @@ const EXPLICIT_SEARCH_PATTERNS = [
 ];
 
 const TEMPORAL_ANCHOR_PATTERNS = [
-  /\b(hari\s+ini|sekarang|saat\s+ini|terbaru|terkini|barusan|tadi|minggu\s+ini|bulan\s+ini|tahun\s+ini)\b/i,
-  /\b(today|right\s+now|currently|latest|recent(ly)?|breaking|this\s+(week|month|year))\b/i,
+  /\b(hari\s+ini|hr\s+ini|sekarang|skrg|skr|skg|saat\s+ini|saat\s+ni|kini|terbaru|terkini|barusan|tadi|minggu\s+ini|bulan\s+ini|tahun\s+ini)\b/i,
+  /\b(today|right\s+now|currently|latest|recent(ly)?|breaking|real-?time|this\s+(week|month|year))\b/i,
   /\b(202[5-9]|203\d)\b/,
 ];
 
@@ -22,8 +22,8 @@ const SPORTS_TOPIC_PATTERNS = [
 ];
 
 const FINANCE_PRICE_PATTERNS = [
-  /\b(harga\s+(terkini|sekarang|hari\s+ini|emas|bbm|bitcoin|btc|eth|crypto|saham|beras|iphone|rtx)|kurs(\s+rupiah)?|nilai\s+tukar|ihsg|usd\s+to\s+idr|idr\s+to\s+usd|bitcoin\s+price|gold\s+price|stock\s+price)\b/i,
-  /\b(harga|kurs|bitcoin|btc|ethereum|eth|ihsg|saham)\b/i,
+  /\b(harga\s+(terkini|sekarang|skrg|hari\s+ini|emas|bbm|bitcoin|btc|eth|crypto|saham|beras|iphone|rtx)|kurs(\s+(rupiah|dollar|dolar|usd|idr|euro|yen|sgd|myr))?|nilai\s+tukar|ihsg|usd\s*(to|ke|di)?\s*idr|idr\s*(to|ke|di)?\s*(usd|dollar|dolar)|bitcoin\s+price|gold\s+price|stock\s+price)\b/i,
+  /\b(harga|kurs|bitcoin|btc|ethereum|eth|ihsg|saham|idr|usd|rupiah|dollar|dolar|euro|eur|yen|jpy|sgd|myr|gbp|valas|forex|emas|gold|solana|sol)\b/i,
 ];
 
 const TECH_GAME_UPDATE_PATTERNS = [

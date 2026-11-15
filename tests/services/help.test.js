@@ -29,7 +29,7 @@ test('Help Embed: single embed with Midnight Ocean visual identity & all 5 categ
   assert.equal(new Set(fieldNames).size, 5);
   assert.ok(fieldNames.some((n) => n.startsWith('<:bot:1571472389592584344> AI & Knowledge')));
   assert.ok(fieldNames.some((n) => n.startsWith('<:game:1571472414875844618> Mini Games')));
-  assert.ok(fieldNames.some((n) => n.startsWith('<:star:1571472439962107985> Social Interactions (10)')));
+  assert.ok(fieldNames.some((n) => n.startsWith('<:star:1571472439962107985> Social Interactions (11)')));
   assert.ok(fieldNames.some((n) => n.startsWith('<:tools:1571472462787641414> Media & Utilities')));
   assert.ok(fieldNames.some((n) => n.startsWith('<:pin:1571472304645345300> General')));
 
@@ -38,7 +38,7 @@ test('Help Embed: single embed with Midnight Ocean visual identity & all 5 categ
   assert.equal(socialField.value.includes('`social`'), false);
   assert.equal(
     socialField.value,
-    ['hug', 'pat', 'slap', 'bonk', 'poke', 'yeet', 'highfive', 'wave', 'laugh', 'cry']
+    ['hug', 'pat', 'slap', 'bonk', 'kick', 'poke', 'yeet', 'highfive', 'wave', 'laugh', 'cry']
       .map((name) => `\`${name}\``)
       .join(', '),
   );

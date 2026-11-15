@@ -642,7 +642,7 @@ export const commandStructure = {
         },
         {
           name: 'user',
-          description: 'Pengguna target (wajib untuk hug, pat, slap, bonk, poke, yeet, highfive, wave)',
+          description: 'Pengguna target (wajib untuk hug, pat, slap, bonk, kick, poke, yeet, highfive, wave)',
           type: 'user',
           required: false,
         },

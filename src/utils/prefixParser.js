@@ -28,6 +28,7 @@ const COMMAND_ALIASES = Object.freeze({
   pat: 'pat',
   slap: 'slap',
   bonk: 'bonk',
+  kick: 'kick',
   poke: 'poke',
   yeet: 'yeet',
   highfive: 'highfive',

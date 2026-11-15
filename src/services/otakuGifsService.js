@@ -50,6 +50,13 @@ export const SOCIAL_INTERACTIONS = Object.freeze({
     description: 'Memukul pengguna lain dengan bonk',
     formatMessage: (author, target) => `**${author}** bonks **${target}**! Go to jail!`,
   },
+  kick: {
+    command: 'kick',
+    apiReaction: 'punch',
+    requiresTarget: true,
+    description: 'Menendang pengguna lain secara bercanda (anime GIF)',
+    formatMessage: (author, target) => `**${author}** kicks **${target}**!`,
+  },
   poke: {
     command: 'poke',
     apiReaction: 'poke',

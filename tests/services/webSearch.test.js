@@ -122,6 +122,35 @@ describe('Real-Time Web Search (Tavily + Gemini)', () => {
     assert.equal(res.sources.length, 1);
   });
 
+  it('2b. Pertanyaan kurs/harga dengan singkatan Indonesia (skrg/idr/dollar) memanggil Tavily', async () => {
+    let tavilyCalls = 0;
+    const res = await askAiWithWebSearch('idr berapa skrg di dollar', {
+      userId: 'u-fx-1',
+      apiKey: 'tvly-test-key',
+      cache: new WebSearchCache(),
+      userCooldowns: new CooldownManager(10_000),
+      globalLimiter: new GlobalSearchRateLimiter(),
+      searchTavilyFn: async () => {
+        tavilyCalls++;
+        return {
+          results: [
+            {
+              title: 'USD to IDR Exchange Rate',
+              url: 'https://example.com/usd-idr',
+              content: '1 USD = 16,200 IDR',
+              score: 0.95,
+            },
+          ],
+          searchedAt: new Date().toISOString(),
+        };
+      },
+      askGeminiFn: async () => ({ text: '1 USD sekitar Rp16.200.', model: 'gemini-2.5-flash' }),
+    });
+
+    assert.equal(tavilyCalls, 1);
+    assert.equal(res.mode, 'web_search');
+  });
+
   it('3. Pertanyaan harga terkini memanggil Tavily dengan topic general', async () => {
     const capturedQueries = [];
     const res = await askAiWithWebSearch('Harga Bitcoin terkini hari ini dalam USD', {
