@@ -137,7 +137,7 @@ export function buildLyricsEmbed(track, view) {
   const embed = createBaseEmbed({
     title: '🎵 Lyrics Finder',
     description,
-    color: COLORS.SECONDARY,
+    color: COLORS.PRIMARY,
     includeThumbnail: false,
   });
 

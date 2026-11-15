@@ -13,7 +13,7 @@ import {
   getRapidApiConfig,
   MAX_DISCORD_ATTACHMENTS,
 } from '../services/downloader.js';
-import { COLORS } from '../utils/constants.js';
+import { COLORS } from '../config/colors.js';
 import { buildErrorEmbed, createBaseEmbed } from '../utils/embeds.js';
 import { detectFirstMediaUrl } from '../utils/urlDetector.js';
 
@@ -118,7 +118,7 @@ function buildAutoDownloadEmbed(params) {
   return createBaseEmbed({
     title: 'MIDWAVE AUTO DOWNLOADER',
     description: lines.join('\n'),
-    color: COLORS.PRIMARY,
+    color: COLORS.SUCCESS,
     includeThumbnail: false,
   });
 }

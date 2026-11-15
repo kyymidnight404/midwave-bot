@@ -186,7 +186,7 @@ export function buildLobbyEmbed({
   status,
   details,
   instructions = 'Gunakan `/invite accept` untuk menerima atau `/invite decline` untuk menolak.',
-  color = COLORS.SECONDARY,
+  color = COLORS.PRIMARY,
 }) {
   const embed = createBaseEmbed({
     title: `Undangan ${gameTitle}`,
@@ -389,7 +389,7 @@ export function buildGamesListEmbed() {
     title: 'Daftar Permainan Midwave',
     description:
       'Semua game mendukung mode **Solo** dan **Multiplayer (2 pemain)** melalui `/game`.\nUntuk fitur media, AI, & interaksi sosial seperti `/media` atau `/social`, lihat `/help`.',
-    color: COLORS.SECONDARY,
+    color: COLORS.PRIMARY,
   });
 
   for (const game of Object.values(GAME_METADATA)) {
@@ -430,7 +430,7 @@ export function buildDownloadProcessingEmbed({ platformLabel }) {
   return createBaseEmbed({
     title: 'MIDWAVE MEDIA DOWNLOADER',
     description: `${badge}\n\n⏳ **Memproses unduhan...**\nMengekstrak dan memvalidasi file media sebelum diunggah ke Discord.`,
-    color: COLORS.SECONDARY,
+    color: COLORS.INFO,
     includeThumbnail: false,
   });
 }
@@ -479,7 +479,7 @@ export function buildDownloadSuccessEmbed({
   return createBaseEmbed({
     title: 'MIDWAVE MEDIA DOWNLOADER',
     description: lines.join('\n'),
-    color: COLORS.PRIMARY,
+    color: COLORS.SUCCESS,
     includeThumbnail: false,
   });
 }

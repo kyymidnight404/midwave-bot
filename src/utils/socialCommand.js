@@ -1,5 +1,5 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
-import { COLORS } from './constants.js';
+import { COLORS } from '../config/colors.js';
 import { buildErrorEmbed, createBaseEmbed } from './embeds.js';
 import {
   getReactionGif,

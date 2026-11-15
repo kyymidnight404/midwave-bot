@@ -1,4 +1,4 @@
-import { COLORS } from './constants.js';
+import { COLORS } from '../config/colors.js';
 import { createBaseEmbed } from './embeds.js';
 
 export const DISCORD_MAX_MESSAGE_LENGTH = 2000;
@@ -300,7 +300,7 @@ export function buildWebSearchEmbed({
   const embed = createBaseEmbed({
     title: isFallback ? 'Midwave AI • Mode Non-Real-Time' : 'Midwave AI • Web Search',
     description: safeDescription || undefined,
-    color: isFallback ? COLORS.WARNING : COLORS.SECONDARY,
+    color: isFallback ? COLORS.WARNING : COLORS.PRIMARY,
     includeThumbnail: false,
   });
 

@@ -14,6 +14,8 @@ import {
 } from '../../src/utils/validators.js';
 import { CooldownManager } from '../../src/utils/cooldown.js';
 import {
+  buildDownloadProcessingEmbed,
+  buildDownloadSuccessEmbed,
   buildErrorEmbed,
   buildGameEmbed,
   buildGamesListEmbed,
@@ -21,11 +23,16 @@ import {
   buildInfoEmbed,
   buildLobbyEmbed,
   buildResultEmbed,
+  buildStatusEmbed,
   buildSuccessEmbed,
   buildWarningEmbed,
   createBaseEmbed,
   hasLogoAsset,
 } from '../../src/utils/embeds.js';
+import { buildLyricsEmbed } from '../../src/utils/lyricsFormatter.js';
+import { buildMathEmbed } from '../../src/commands/math.js';
+import { buildSocialEmbed } from '../../src/utils/socialCommand.js';
+import { buildWebSearchEmbed } from '../../src/utils/aiFormatter.js';
 import { COLORS as CONFIG_COLORS, DEFAULT_EMBED_COLOR, EMBED_COLOR_HEX } from '../../src/config/colors.js';
 import { COLORS, EMBED_FOOTER, GAME_MODES, LOGO_ATTACHMENT_URL } from '../../src/utils/constants.js';
 
@@ -115,7 +122,7 @@ describe('Embed Design System', () => {
       status: 'Menunggu konfirmasi',
     }).toJSON();
 
-    assert.equal(lobby.color, COLORS.SECONDARY);
+    assert.equal(lobby.color, COLORS.PRIMARY);
     assert.equal(lobby.footer, undefined);
     assert.equal(lobby.thumbnail.url, LOGO_ATTACHMENT_URL);
 
@@ -186,5 +193,62 @@ describe('Embed Design System', () => {
     assert.equal(buildErrorEmbed('Gagal').toJSON().color, 0xed4245);
     assert.equal(buildWarningEmbed('Peringatan').toJSON().color, 0xfee75c);
     assert.equal(buildInfoEmbed('Info', 'Detail').toJSON().color, 0x70b1fc);
+  });
+
+  it('produces consistent global semantic colors across command and feature embed builders', () => {
+    assert.equal(buildGamesListEmbed().toJSON().color, CONFIG_COLORS.PRIMARY);
+    assert.equal(buildHelpEmbed().toJSON().color, CONFIG_COLORS.PRIMARY);
+    assert.equal(
+      buildStatusEmbed({
+        sessionId: 'sess-1',
+        gameType: 'tictactoe',
+        mode: GAME_MODES.SOLO,
+        players: ['100'],
+        currentTurn: '100',
+        status: 'active',
+        startedAt: Date.now(),
+        expiresAt: Date.now() + 60_000,
+      }).toJSON().color,
+      CONFIG_COLORS.PRIMARY,
+    );
+
+    assert.equal(
+      buildDownloadProcessingEmbed({ platformLabel: 'TikTok' }).toJSON().color,
+      CONFIG_COLORS.INFO,
+    );
+    assert.equal(
+      buildDownloadSuccessEmbed({
+        platformLabel: 'TikTok',
+        mediaType: 'Video',
+        fileFormat: 'MP4',
+        formattedSize: '1.2 MB',
+        requesterId: '100',
+      }).toJSON().color,
+      CONFIG_COLORS.SUCCESS,
+    );
+
+    assert.equal(
+      buildLyricsEmbed(
+        { title: 'Song', artist: 'Artist', sourceName: 'LRCLIB' },
+        { pages: ['Line 1'], pageIndex: 0 },
+      ).toJSON().color,
+      CONFIG_COLORS.PRIMARY,
+    );
+    assert.equal(
+      buildMathEmbed({ input: '2+2', formattedResult: '4' }).toJSON().color,
+      CONFIG_COLORS.PRIMARY,
+    );
+    assert.equal(
+      buildSocialEmbed({ message: 'Hug!', gifUrl: 'https://example.com/hug.gif' }).toJSON().color,
+      CONFIG_COLORS.PRIMARY,
+    );
+    assert.equal(
+      buildWebSearchEmbed({ description: 'Hasil pencarian', mode: 'web_search' }).toJSON().color,
+      CONFIG_COLORS.PRIMARY,
+    );
+    assert.equal(
+      buildWebSearchEmbed({ description: 'Fallback', mode: 'fallback' }).toJSON().color,
+      CONFIG_COLORS.WARNING,
+    );
   });
 });

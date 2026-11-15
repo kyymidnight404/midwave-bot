@@ -1,5 +1,6 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
-import { COLORS, GAME_METADATA } from '../utils/constants.js';
+import { COLORS } from '../config/colors.js';
+import { GAME_METADATA } from '../utils/constants.js';
 import {
   buildErrorEmbed,
   buildLobbyEmbed,

@@ -1,5 +1,5 @@
+import { COLORS } from '../config/colors.js';
 import {
-  COLORS,
   GAME_METADATA,
   GAME_MODES,
   GAME_TYPES,
@@ -138,7 +138,7 @@ export function createInviteExpireHandler(client) {
       opponentId: expiredInvite.opponentId,
       status: 'Kedaluwarsa',
       instructions: 'Undangan telah melewati batas waktu 60 detik. Buat tantangan baru jika masih ingin bermain.',
-      color: COLORS.MUTED,
+      color: COLORS.WARNING,
     });
 
     await updatePublicMessage(

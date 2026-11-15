@@ -1,5 +1,5 @@
 import { MessageFlags } from 'discord.js';
-import { COLORS } from '../utils/constants.js';
+import { COLORS } from '../config/colors.js';
 
 /**
  * Resolves a Discord User object by ID from message mentions, cache, or API fetch.

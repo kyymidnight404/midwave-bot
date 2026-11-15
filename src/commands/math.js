@@ -1,5 +1,5 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
-import { COLORS } from '../utils/constants.js';
+import { COLORS } from '../config/colors.js';
 import { buildErrorEmbed, createBaseEmbed } from '../utils/embeds.js';
 import { evaluateMathExpression, MATH_MAX_LENGTH } from '../utils/mathEvaluator.js';
 

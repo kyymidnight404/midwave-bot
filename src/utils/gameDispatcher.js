@@ -1,6 +1,6 @@
 import { MessageFlags } from 'discord.js';
+import { COLORS } from '../config/colors.js';
 import {
-  COLORS,
   DICE_CONFIG,
   DIFFICULTY_LABELS,
   GAME_METADATA,
@@ -145,7 +145,7 @@ async function handleStatusAction(interaction, context, { gameType, gameId }) {
       buildInfoEmbed(
         'Tidak Ada Pertandingan Aktif',
         'Kamu sedang tidak berada di pertandingan atau undangan apa pun. Gunakan `/games` untuk melihat daftar game.',
-        COLORS.MUTED,
+        COLORS.INFO,
       ),
     ],
     flags: MessageFlags.Ephemeral,

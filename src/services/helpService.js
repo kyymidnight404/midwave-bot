@@ -6,10 +6,10 @@ import {
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
 } from 'discord.js';
+import { COLORS } from '../config/colors.js';
 import defaultCommandStructure from '../config/commandStructure.js';
 import { SOCIAL_INTERACTIONS } from './otakuGifsService.js';
 import {
-  COLORS,
   GAME_TYPES,
   LOGO_ATTACHMENT_URL,
   LOGO_PATH,

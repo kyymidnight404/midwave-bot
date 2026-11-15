@@ -1,5 +1,6 @@
 import { MessageFlags } from 'discord.js';
-import { COLORS, GAME_METADATA, GAME_MODES, GAME_TYPES } from './constants.js';
+import { COLORS } from '../config/colors.js';
+import { GAME_METADATA, GAME_MODES, GAME_TYPES } from './constants.js';
 import { buildErrorEmbed, buildLobbyEmbed, formatPlayer, getLogoFiles } from './embeds.js';
 import { validateOpponent } from './validators.js';
 import {
