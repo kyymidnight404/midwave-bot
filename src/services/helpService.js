@@ -60,31 +60,31 @@ export const HELP_CATEGORIES = Object.freeze([
   {
     key: 'ai_knowledge',
     label: 'AI & Knowledge',
-    emoji: '🤖',
+    emoji: '<:bot:1571472389592584344>',
     description: 'Asisten AI & manajemen pengetahuan',
   },
   {
     key: 'mini_games',
     label: 'Mini Games',
-    emoji: '🎮',
+    emoji: '<:game:1571472414875844618>',
     description: 'Permainan solo & multiplayer',
   },
   {
     key: 'social',
     label: 'Social Interactions',
-    emoji: '✨',
+    emoji: '<:star:1571472439962107985>',
     description: 'Interaksi sosial & ekspresi GIF anime',
   },
   {
     key: 'media_utilities',
     label: 'Media & Utilities',
-    emoji: '🛠️',
+    emoji: '<:tools:1571472462787641414>',
     description: 'Pembuat gambar, lirik, downloader & utilitas',
   },
   {
     key: 'general',
     label: 'General',
-    emoji: '📌',
+    emoji: '<:pin:1571472304645345300>',
     description: 'Informasi & panduan command Midwave',
   },
 ]);
@@ -304,7 +304,7 @@ function buildSocialEntries(cmd, { prefix, registeredPrefixCommands }) {
     {
       id: 'command:social',
       category,
-      items: [cmd.name, ...interactions.map((item) => item.command)],
+      items: interactions.map((item) => item.command),
       line: lines.join('\n'),
       source: hasPrefix ? 'both' : 'slash',
     },

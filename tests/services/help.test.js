@@ -26,11 +26,22 @@ test('Help Embed: single embed with Midnight Ocean visual identity & all 5 categ
   assert.equal(json.footer, undefined);
 
   const fieldNames = json.fields.map((f) => f.name);
-  assert.ok(fieldNames.some((n) => n.includes('AI & Knowledge')));
-  assert.ok(fieldNames.some((n) => n.includes('Mini Games')));
-  assert.ok(fieldNames.some((n) => n.includes('Social Interactions')));
-  assert.ok(fieldNames.some((n) => n.includes('Media & Utilities')));
-  assert.ok(fieldNames.some((n) => n.includes('General')));
+  assert.equal(new Set(fieldNames).size, 5);
+  assert.ok(fieldNames.some((n) => n.startsWith('<:bot:1571472389592584344> AI & Knowledge')));
+  assert.ok(fieldNames.some((n) => n.startsWith('<:game:1571472414875844618> Mini Games')));
+  assert.ok(fieldNames.some((n) => n.startsWith('<:star:1571472439962107985> Social Interactions (10)')));
+  assert.ok(fieldNames.some((n) => n.startsWith('<:tools:1571472462787641414> Media & Utilities')));
+  assert.ok(fieldNames.some((n) => n.startsWith('<:pin:1571472304645345300> General')));
+
+  const socialField = json.fields.find((f) => f.name.includes('Social Interactions'));
+  assert.ok(socialField);
+  assert.equal(socialField.value.includes('`social`'), false);
+  assert.equal(
+    socialField.value,
+    ['hug', 'pat', 'slap', 'bonk', 'poke', 'yeet', 'highfive', 'wave', 'laugh', 'cry']
+      .map((name) => `\`${name}\``)
+      .join(', '),
+  );
 });
 
 test('Help Embed: renders compact category counts and inline command pills for all active commands', () => {
