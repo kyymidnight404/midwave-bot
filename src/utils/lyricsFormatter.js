@@ -1,5 +1,6 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
-import { COLORS } from './constants.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { COLORS } from '../config/colors.js';
+import { createBaseEmbed } from './embeds.js';
 
 export const LYRICS_EMBED_MAX_PAGE_CHARS = 4000;
 export const LYRICS_DEFAULT_PAGE_CHARS = 1800;
@@ -133,10 +134,12 @@ export function buildLyricsEmbed(track, view) {
 
   const description = `${prefix}${safeBody}${suffix}`;
 
-  const embed = new EmbedBuilder()
-    .setColor(COLORS.SECONDARY)
-    .setTitle('🎵 Lyrics Finder')
-    .setDescription(description);
+  const embed = createBaseEmbed({
+    title: '🎵 Lyrics Finder',
+    description,
+    color: COLORS.SECONDARY,
+    includeThumbnail: false,
+  });
 
   if (track.thumbnailUrl) {
     embed.setThumbnail(track.thumbnailUrl);

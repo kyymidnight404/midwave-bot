@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { COLORS } from '../config/colors.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9,16 +10,7 @@ export const LOGO_FILENAME = 'logo.png';
 export const LOGO_PATH = path.join(PROJECT_ROOT, 'assets', LOGO_FILENAME);
 export const LOGO_ATTACHMENT_URL = `attachment://${LOGO_FILENAME}`;
 
-export const COLORS = Object.freeze({
-  PRIMARY: 0x101b2d,
-  SECONDARY: 0x245b8f,
-  ACCENT: 0x63a9d8,
-  TEXT: 0xffffff,
-  MUTED: 0x91a2b8,
-  SUCCESS: 0x43b581,
-  DANGER: 0xed4245,
-  WARNING: 0xfaa61a,
-});
+export { COLORS };
 
 export const EMBED_FOOTER = 'Midwave • Discord Game Bot';
 

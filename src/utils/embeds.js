@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
+import { COLORS } from '../config/colors.js';
 import { buildDynamicHelpEmbed, discoverHelpEntries } from '../services/helpService.js';
 import {
   BOT_PLAYER_ID,
-  COLORS,
+  EMBED_FOOTER,
   GAME_METADATA,
   GAME_MODES,
   LOGO_ATTACHMENT_URL,
@@ -57,8 +58,16 @@ export function formatDuration(durationMs) {
 }
 
 /**
- * Creates a base Midnight Ocean embed with consistent footer and optional logo thumbnail.
- * @param {{ title?: string, description?: string, color?: number, includeThumbnail?: boolean }} [options]
+ * Creates a base Midwave embed with consistent branding, optional logo thumbnail, footer, and timestamp.
+ * @param {{
+ *   title?: string,
+ *   description?: string,
+ *   color?: number,
+ *   includeThumbnail?: boolean,
+ *   includeFooter?: boolean,
+ *   footer?: string | { text: string, iconURL?: string } | null,
+ *   timestamp?: boolean | Date | number,
+ * }} [options]
  * @returns {EmbedBuilder}
  */
 export function createBaseEmbed({
@@ -66,13 +75,27 @@ export function createBaseEmbed({
   description,
   color = COLORS.PRIMARY,
   includeThumbnail = true,
+  includeFooter = false,
+  footer = null,
+  timestamp = false,
 } = {}) {
-  const embed = new EmbedBuilder().setColor(color);
+  const resolvedColor = color ?? COLORS.PRIMARY;
+  const embed = new EmbedBuilder().setColor(resolvedColor);
 
   if (title) embed.setTitle(title);
   if (description) embed.setDescription(description);
   if (includeThumbnail && hasLogoAsset()) {
     embed.setThumbnail(LOGO_ATTACHMENT_URL);
+  }
+  if (footer) {
+    embed.setFooter(typeof footer === 'string' ? { text: footer } : footer);
+  } else if (includeFooter) {
+    embed.setFooter({ text: EMBED_FOOTER });
+  }
+  if (timestamp === true) {
+    embed.setTimestamp();
+  } else if (timestamp instanceof Date || typeof timestamp === 'number') {
+    embed.setTimestamp(timestamp);
   }
 
   return embed;
@@ -81,15 +104,51 @@ export function createBaseEmbed({
 /**
  * Builds an ephemeral error embed.
  * @param {string} message
- * @param {string} [title='Terjadi Kesalahan']
+ * @param {string} [title='Tidak Dapat Diproses']
+ * @param {{ includeThumbnail?: boolean, includeFooter?: boolean, footer?: string | { text: string, iconURL?: string } | null, timestamp?: boolean | Date | number }} [options]
  * @returns {EmbedBuilder}
  */
-export function buildErrorEmbed(message, title = 'Tidak Dapat Diproses') {
+export function buildErrorEmbed(message, title = 'Tidak Dapat Diproses', options = {}) {
   return createBaseEmbed({
     title,
     description: message,
-    color: COLORS.DANGER,
+    color: COLORS.ERROR,
     includeThumbnail: false,
+    ...options,
+  });
+}
+
+/**
+ * Builds a success status embed.
+ * @param {string} message
+ * @param {string} [title='Berhasil']
+ * @param {{ includeThumbnail?: boolean, includeFooter?: boolean, footer?: string | { text: string, iconURL?: string } | null, timestamp?: boolean | Date | number }} [options]
+ * @returns {EmbedBuilder}
+ */
+export function buildSuccessEmbed(message, title = 'Berhasil', options = {}) {
+  return createBaseEmbed({
+    title,
+    description: message,
+    color: COLORS.SUCCESS,
+    includeThumbnail: false,
+    ...options,
+  });
+}
+
+/**
+ * Builds a warning status embed.
+ * @param {string} message
+ * @param {string} [title='Peringatan']
+ * @param {{ includeThumbnail?: boolean, includeFooter?: boolean, footer?: string | { text: string, iconURL?: string } | null, timestamp?: boolean | Date | number }} [options]
+ * @returns {EmbedBuilder}
+ */
+export function buildWarningEmbed(message, title = 'Peringatan', options = {}) {
+  return createBaseEmbed({
+    title,
+    description: message,
+    color: COLORS.WARNING,
+    includeThumbnail: false,
+    ...options,
   });
 }
 
@@ -98,10 +157,11 @@ export function buildErrorEmbed(message, title = 'Tidak Dapat Diproses') {
  * @param {string} title
  * @param {string} description
  * @param {number} [color]
+ * @param {{ includeThumbnail?: boolean, includeFooter?: boolean, footer?: string | { text: string, iconURL?: string } | null, timestamp?: boolean | Date | number }} [options]
  * @returns {EmbedBuilder}
  */
-export function buildInfoEmbed(title, description, color = COLORS.SECONDARY) {
-  return createBaseEmbed({ title, description, color });
+export function buildInfoEmbed(title, description, color = COLORS.INFO, options = {}) {
+  return createBaseEmbed({ title, description, color, ...options });
 }
 
 /**
@@ -175,7 +235,7 @@ export function buildGameEmbed({
   boardOrInfo,
   instructions,
   finalResult,
-  color = COLORS.ACCENT,
+  color = COLORS.PRIMARY,
 }) {
   const modeLabel = mode === GAME_MODES.SOLO ? 'Solo' : 'Multiplayer';
   const playerText = players.map(formatPlayer).join(' vs ');
@@ -300,7 +360,7 @@ export function buildStatusEmbed(session, now = Date.now()) {
 
   const embed = createBaseEmbed({
     title: 'Status Pertandingan Aktif',
-    color: COLORS.ACCENT,
+    color: COLORS.PRIMARY,
   });
 
   embed.addFields(

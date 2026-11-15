@@ -180,7 +180,7 @@ export class MessageCommandAdapter {
     }
     return payload.embeds.some((embed) => {
       const color = embed?.data?.color ?? embed?.color;
-      return color === COLORS.DANGER;
+      return color === COLORS.ERROR || color === COLORS.DANGER;
     });
   }
 

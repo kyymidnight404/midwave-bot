@@ -18,10 +18,15 @@ import {
   buildGameEmbed,
   buildGamesListEmbed,
   buildHelpEmbed,
+  buildInfoEmbed,
   buildLobbyEmbed,
   buildResultEmbed,
+  buildSuccessEmbed,
+  buildWarningEmbed,
+  createBaseEmbed,
   hasLogoAsset,
 } from '../../src/utils/embeds.js';
+import { COLORS as CONFIG_COLORS, DEFAULT_EMBED_COLOR, EMBED_COLOR_HEX } from '../../src/config/colors.js';
 import { COLORS, EMBED_FOOTER, GAME_MODES, LOGO_ATTACHMENT_URL } from '../../src/utils/constants.js';
 
 describe('Random Utilities', () => {
@@ -145,5 +150,41 @@ describe('Embed Design System', () => {
 
     const help = buildHelpEmbed().toJSON();
     assert.equal(help.footer, undefined);
+  });
+
+  it('enforces official Midwave global embed colors, status builders, and optional footer/timestamp', () => {
+    assert.equal(EMBED_COLOR_HEX.PRIMARY, '#70B1FC');
+    assert.equal(EMBED_COLOR_HEX.SECONDARY, '#477FDC');
+    assert.equal(EMBED_COLOR_HEX.SUCCESS, '#57F287');
+    assert.equal(EMBED_COLOR_HEX.ERROR, '#ED4245');
+    assert.equal(EMBED_COLOR_HEX.WARNING, '#FEE75C');
+    assert.equal(EMBED_COLOR_HEX.INFO, '#70B1FC');
+
+    assert.equal(CONFIG_COLORS.PRIMARY, 0x70b1fc);
+    assert.equal(CONFIG_COLORS.SECONDARY, 0x477fdc);
+    assert.equal(CONFIG_COLORS.SUCCESS, 0x57f287);
+    assert.equal(CONFIG_COLORS.ERROR, 0xed4245);
+    assert.equal(CONFIG_COLORS.WARNING, 0xfee75c);
+    assert.equal(CONFIG_COLORS.INFO, 0x70b1fc);
+    assert.equal(DEFAULT_EMBED_COLOR, 0x70b1fc);
+    assert.equal(COLORS.PRIMARY, CONFIG_COLORS.PRIMARY);
+
+    const defaultEmbed = createBaseEmbed({ title: 'Default' }).toJSON();
+    assert.equal(defaultEmbed.color, 0x70b1fc);
+
+    const customEmbed = createBaseEmbed({
+      title: 'Custom',
+      color: 0x477fdc,
+      includeFooter: true,
+      timestamp: true,
+    }).toJSON();
+    assert.equal(customEmbed.color, 0x477fdc);
+    assert.equal(customEmbed.footer.text, EMBED_FOOTER);
+    assert.ok(customEmbed.timestamp);
+
+    assert.equal(buildSuccessEmbed('Sukses').toJSON().color, 0x57f287);
+    assert.equal(buildErrorEmbed('Gagal').toJSON().color, 0xed4245);
+    assert.equal(buildWarningEmbed('Peringatan').toJSON().color, 0xfee75c);
+    assert.equal(buildInfoEmbed('Info', 'Detail').toJSON().color, 0x70b1fc);
   });
 });

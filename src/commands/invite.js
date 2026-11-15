@@ -109,7 +109,7 @@ export default {
         opponentId: declined.opponentId,
         status: 'Ditolak',
         instructions: `${formatPlayer(interaction.user.id)} menolak undangan ini.`,
-        color: COLORS.DANGER,
+        color: COLORS.ERROR,
       });
 
       await updatePublicMessage(client, declined.lobbyMessageRef, { embeds: [declinedLobby] });

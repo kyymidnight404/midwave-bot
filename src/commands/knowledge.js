@@ -4,8 +4,14 @@ import {
   KnowledgeServiceError,
   defaultKnowledgeStore,
 } from '../services/knowledge/index.js';
-import { COLORS } from '../utils/constants.js';
-import { buildErrorEmbed, buildInfoEmbed, createBaseEmbed } from '../utils/embeds.js';
+import { COLORS } from '../config/colors.js';
+import {
+  buildErrorEmbed,
+  buildInfoEmbed,
+  buildSuccessEmbed,
+  buildWarningEmbed,
+  createBaseEmbed,
+} from '../utils/embeds.js';
 
 const CATEGORY_CHOICES = Object.entries(KNOWLEDGE_CATEGORIES).map(([value, name]) => ({
   name,
@@ -163,10 +169,9 @@ export async function execute(interaction, context = {}) {
       if (results.length === 0) {
         await interaction.reply({
           embeds: [
-            buildInfoEmbed(
-              'Global Bot Knowledge',
+            buildWarningEmbed(
               'Tidak ada entri knowledge yang cocok dengan pencarian tersebut.',
-              COLORS.WARNING,
+              'Global Bot Knowledge',
             ),
           ],
           flags: MessageFlags.Ephemeral,
@@ -198,10 +203,9 @@ export async function execute(interaction, context = {}) {
       const reloaded = store.reload();
       await interaction.reply({
         embeds: [
-          buildInfoEmbed(
-            'Knowledge Reloaded',
+          buildSuccessEmbed(
             `Berhasil memuat ulang **${reloaded.entries.length}** entri Global Bot Knowledge dari penyimpanan persisten.`,
-            COLORS.SUCCESS,
+            'Knowledge Reloaded',
           ),
         ],
         flags: MessageFlags.Ephemeral,
@@ -224,10 +228,9 @@ export async function execute(interaction, context = {}) {
 
       await interaction.reply({
         embeds: [
-          buildInfoEmbed(
-            'Global Knowledge Ditambahkan',
+          buildSuccessEmbed(
             `Entri \`${entry.id}\` (**${entry.title}**) berhasil disimpan secara persisten pada kategori \`${entry.category}\`.`,
-            COLORS.SUCCESS,
+            'Global Knowledge Ditambahkan',
           ),
         ],
         flags: MessageFlags.Ephemeral,
@@ -252,10 +255,9 @@ export async function execute(interaction, context = {}) {
       const updated = store.updateEntry(interaction.options.getString('id', true), patch, auth);
       await interaction.reply({
         embeds: [
-          buildInfoEmbed(
-            'Global Knowledge Diperbarui',
+          buildSuccessEmbed(
             `Entri \`${updated.id}\` (**${updated.title}**) berhasil diperbarui dan disimpan.`,
-            COLORS.SUCCESS,
+            'Global Knowledge Diperbarui',
           ),
         ],
         flags: MessageFlags.Ephemeral,
@@ -270,10 +272,9 @@ export async function execute(interaction, context = {}) {
       if (entries.length === 0) {
         await interaction.reply({
           embeds: [
-            buildInfoEmbed(
-              'Daftar Global Bot Knowledge',
+            buildWarningEmbed(
               'Belum ada entri knowledge pada filter kategori tersebut.',
-              COLORS.WARNING,
+              'Daftar Global Bot Knowledge',
             ),
           ],
           flags: MessageFlags.Ephemeral,
@@ -303,10 +304,9 @@ export async function execute(interaction, context = {}) {
       const removed = store.deleteEntry(interaction.options.getString('id', true), auth);
       await interaction.reply({
         embeds: [
-          buildInfoEmbed(
-            'Global Knowledge Dihapus',
+          buildSuccessEmbed(
             `Entri \`${removed.id}\` (**${removed.title}**) telah dihapus dari penyimpanan persisten.`,
-            COLORS.SUCCESS,
+            'Global Knowledge Dihapus',
           ),
         ],
         flags: MessageFlags.Ephemeral,
