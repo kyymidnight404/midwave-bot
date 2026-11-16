@@ -33,8 +33,11 @@ export async function execute(interaction, context = {}) {
     return reply(buildInfoEmbed('Auto Role MIDWAVE', description, COLORS.PRIMARY));
   }
 
-  const role = interaction.options.getRole('role', true);
-  if (!role || role.guild?.id !== guildId || !interaction.guild.roles.cache.has(role.id)) {
+  const role = interaction.options.getRole('role', false);
+  if (!role) {
+    return reply(buildErrorEmbed('Pilih parameter `role` terlebih dahulu untuk aksi `add` atau `delete`.'));
+  }
+  if (role.guild?.id !== guildId || !interaction.guild.roles.cache.has(role.id)) {
     return reply(buildErrorEmbed('Role tersebut tidak ditemukan di server ini.'));
   }
   const botMember = interaction.guild.members.me ?? await interaction.guild.members.fetchMe();

@@ -214,12 +214,24 @@ export async function execute(interaction, context = {}) {
     }
 
     if (sub === 'add') {
+      const id = interaction.options.getString('id', false)?.trim();
+      const category = interaction.options.getString('category', false)?.trim();
+      const title = interaction.options.getString('title', false)?.trim();
+      const content = interaction.options.getString('content', false)?.trim();
+      if (!id || !category || !title || !content) {
+        await interaction.reply({
+          embeds: [buildErrorEmbed('Aksi `add` membutuhkan parameter `id`, `category`, `title`, dan `content`.')],
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
       const entry = store.addEntry(
         {
-          id: interaction.options.getString('id', true),
-          category: interaction.options.getString('category', true),
-          title: interaction.options.getString('title', true),
-          content: interaction.options.getString('content', true),
+          id,
+          category,
+          title,
+          content,
           tags: interaction.options.getString('tags', false) ?? '',
           verificationStatus: interaction.options.getString('status', false) ?? 'verified',
         },
@@ -239,6 +251,15 @@ export async function execute(interaction, context = {}) {
     }
 
     if (sub === 'update') {
+      const id = interaction.options.getString('id', false)?.trim();
+      if (!id) {
+        await interaction.reply({
+          embeds: [buildErrorEmbed('Aksi `update` membutuhkan parameter `id`.')],
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
       const patch = {};
       const title = interaction.options.getString('title', false);
       const content = interaction.options.getString('content', false);
@@ -252,7 +273,7 @@ export async function execute(interaction, context = {}) {
       if (tags !== null) patch.tags = tags;
       if (status !== null) patch.verificationStatus = status;
 
-      const updated = store.updateEntry(interaction.options.getString('id', true), patch, auth);
+      const updated = store.updateEntry(id, patch, auth);
       await interaction.reply({
         embeds: [
           buildSuccessEmbed(
@@ -301,7 +322,16 @@ export async function execute(interaction, context = {}) {
     }
 
     if (sub === 'delete' || sub === 'remove') {
-      const removed = store.deleteEntry(interaction.options.getString('id', true), auth);
+      const id = interaction.options.getString('id', false)?.trim();
+      if (!id) {
+        await interaction.reply({
+          embeds: [buildErrorEmbed('Aksi `remove` membutuhkan parameter `id`.')],
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const removed = store.deleteEntry(id, auth);
       await interaction.reply({
         embeds: [
           buildSuccessEmbed(

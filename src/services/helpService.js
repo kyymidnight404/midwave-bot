@@ -272,15 +272,16 @@ function buildGameEntries(cmd, { prefix, registeredPrefixCommands }) {
     },
   ];
 
-  if (isSubcommand && cmd.subcommands?.some((s) => s.name === 'list')) {
+  if (actions.includes('list')) {
     const hasPrefixGamesList = registeredPrefixCommands.has('games');
+    const listSlashUsage = isSubcommand ? '/game list' : '/game action:list';
     entries.push({
       id: 'command:games',
       category,
       items: ['games'],
       line: hasPrefixGamesList
-        ? `• \`${prefix}games\` | \`/game list\` — Lihat daftar permainan & aturan main`
-        : `• \`/game list\` *(Slash)* — Lihat daftar permainan & aturan main`,
+        ? `• \`${prefix}games\` | \`${listSlashUsage}\` — Lihat daftar permainan & aturan main`
+        : `• \`${listSlashUsage}\` *(Slash)* — Lihat daftar permainan & aturan main`,
       source: hasPrefixGamesList ? 'both' : 'slash',
     });
   }

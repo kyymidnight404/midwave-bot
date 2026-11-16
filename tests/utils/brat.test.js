@@ -245,18 +245,20 @@ describe('Brat Generator utility & /brat command', () => {
     );
   });
 
-  it('registers /media command with brat subcommand and required text option (max 1000)', async () => {
+  it('registers /media command with brat action choice and text option', async () => {
     const app = await createBotApp();
     const json = app.commandHandler.toJSON();
     assert.equal(json.find((cmd) => cmd.name === 'brat'), undefined);
     const mediaCmd = json.find((cmd) => cmd.name === 'media');
     assert.ok(mediaCmd, '/media must be registered');
-    const bratSub = mediaCmd.options.find((opt) => opt.name === 'brat');
-    assert.ok(bratSub, '/media must expose brat subcommand');
-    const textOption = bratSub.options.find((opt) => opt.name === 'text');
-    assert.ok(textOption, '/media brat must expose required text option');
-    assert.equal(textOption.required, true);
-    assert.equal(textOption.max_length, 1000);
+    const actionOption = mediaCmd.options.find((opt) => opt.name === 'action');
+    assert.ok(actionOption, '/media must expose action option');
+    assert.equal(actionOption.required, true);
+    assert.ok(actionOption.choices.some((ch) => ch.value === 'brat'), '/media action must expose brat choice');
+    const textOption = mediaCmd.options.find((opt) => opt.name === 'text');
+    assert.ok(textOption, '/media must expose text option');
+    assert.equal(textOption.required, false);
+    assert.equal(textOption.max_length, 2000);
     assert.equal(bratCommand.name, 'brat');
     assert.equal(mediaData.name, 'media');
     app.shutdown();

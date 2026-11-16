@@ -17,9 +17,9 @@ function createMockInteraction(commandName, userId = '111', subcommand = null) {
     replied: false,
     isChatInputCommand: () => true,
     options: {
-      getSubcommand: () => subcommand,
+      getSubcommand: () => null,
       getSubcommandGroup: () => null,
-      getString: () => null,
+      getString: (name) => (name === 'action' ? subcommand : null),
     },
     async reply(payload) {
       this.replied = true;
@@ -118,6 +118,10 @@ describe('CommandHandler & InteractionHandler', () => {
     assert.ok(autoroleCmd);
     assert.deepEqual(
       autoroleCmd.options.map((o) => o.name),
+      ['action', 'role'],
+    );
+    assert.deepEqual(
+      autoroleCmd.options[0].choices.map((c) => c.value),
       ['add', 'delete', 'list'],
     );
     assert.ok(guildResult.find((c) => c.name === 'donate'));
@@ -126,12 +130,16 @@ describe('CommandHandler & InteractionHandler', () => {
     assert.ok(mediaCmd);
     assert.deepEqual(
       mediaCmd.options.map((o) => o.name),
+      ['action', 'text', 'query', 'artist', 'url'],
+    );
+    assert.deepEqual(
+      mediaCmd.options[0].choices.map((c) => c.value),
       ['qc', 'brat', 'lyrics', 'download'],
     );
     const gameCmd = guildResult.find((c) => c.name === 'game');
     assert.ok(gameCmd);
     assert.deepEqual(
-      gameCmd.options.map((o) => o.name),
+      gameCmd.options[0].choices.map((c) => c.value),
       ['solo', 'challenge', 'choose', 'drop', 'move', 'answer', 'status', 'cancel', 'list'],
     );
     const socialCmd = guildResult.find((c) => c.name === 'social');

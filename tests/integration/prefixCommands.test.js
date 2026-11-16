@@ -154,8 +154,8 @@ function createMockSlashInteraction({ commandName, subcommand = null, userId, ch
     replied: false,
     isChatInputCommand: () => true,
     options: {
-      getSubcommand: () => subcommand,
-      getString: (name) => options[name] ?? null,
+      getSubcommand: () => null,
+      getString: (name) => options[name] ?? (name === 'action' ? subcommand : null),
       getInteger: (name) => options[name] ?? null,
       getUser: (name) => options[name] ?? null,
     },

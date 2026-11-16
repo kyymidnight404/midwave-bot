@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "scope": "global_bot_knowledge_only",
-  "updatedAt": "2026-11-16T07:06:47.221Z",
+  "updatedAt": "2026-11-16T07:37:25.567Z",
   "categories": {
     "bot_identity": {
       "label": "Bot Identity",

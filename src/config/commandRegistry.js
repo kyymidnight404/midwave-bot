@@ -188,6 +188,7 @@ export function resolveCommandExecutor(commandConfig, handlerRegistry = DEFAULT_
       }
 
       const wrapped = createMappedInteraction(interaction, {
+        forcedSubcommand: actionValue,
         forcedAction: actionValue,
         fixedOptions: commandConfig.fixedOptions,
       });
