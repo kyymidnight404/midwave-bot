@@ -12,6 +12,9 @@ import {
   getDownloaderConfig,
   getRapidApiConfig,
   MAX_DISCORD_ATTACHMENTS,
+  PLATFORMS,
+  sanitizeLogText,
+  validateMediaUrl,
 } from '../services/downloader.js';
 import { COLORS } from '../config/colors.js';
 import { buildErrorEmbed, createBaseEmbed } from '../utils/embeds.js';
@@ -233,6 +236,16 @@ export class AutoDownloaderHandler {
       return false;
     }
 
+    let validated;
+    try {
+      validated = validateMediaUrl(detected.url);
+    } catch {
+      return false;
+    }
+    if (validated.platform !== PLATFORMS.TIKTOK && validated.platform !== PLATFORMS.INSTAGRAM) {
+      return false;
+    }
+
     const config = this.getConfig();
     if (!config.configured) {
       return false;
@@ -263,8 +276,8 @@ export class AutoDownloaderHandler {
         });
 
       result = await this.downloadFn({
-        url: detected.url,
-        platform: detected.platform,
+        url: validated.normalizedUrl,
+        platform: validated.platform,
         config: downloaderConfig,
       });
 
@@ -308,7 +321,10 @@ export class AutoDownloaderHandler {
       return true;
     } catch (error) {
       const safeCode = error instanceof DownloaderError ? error.code : DOWNLOADER_ERROR_CODES.EXTRACTION_FAILED;
-      this.logger.error(`[AutoDownloader] Failed (${safeCode}):`, error instanceof Error ? error.message : error);
+      this.logger.error(
+        `[AutoDownloader] Failed (${safeCode}):`,
+        sanitizeLogText(error instanceof Error ? error.message : error),
+      );
 
       const userMessage =
         error instanceof DownloaderError

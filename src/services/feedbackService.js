@@ -3,8 +3,10 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ChannelType,
   MessageFlags,
   ModalBuilder,
+  OverwriteType,
   PermissionFlagsBits,
   StringSelectMenuBuilder,
   TextInputBuilder,
@@ -12,6 +14,7 @@ import {
 } from 'discord.js';
 import { COLORS } from '../config/colors.js';
 import { buildErrorEmbed, createBaseEmbed, getLogoFiles } from '../utils/embeds.js';
+import { sanitizeError } from '../utils/errorSanitizer.js';
 
 export const FEEDBACK_COOLDOWN_MS = 60_000;
 export const FEEDBACK_SUBJECT_MAX = 100;
@@ -82,10 +85,26 @@ const SNOWFLAKE_RE = /^\d{17,22}$/;
 const IGNORED_DISCORD_CODES = new Set([10062, 40060]);
 
 // In-memory ephemeral state for prompt selections, active submissions, and report metadata
+const FEEDBACK_REPORT_TTL_MS = 24 * 60 * 60 * 1000;
+const FEEDBACK_REPORT_MAX_ENTRIES = 500;
 const pendingPrompts = new Map();
 const activeSubmissions = new Set();
 const activeStatusUpdates = new Set();
 const reportStore = new Map();
+
+function pruneReportStore(now = Date.now()) {
+  for (const [key, entry] of reportStore.entries()) {
+    const createdAt = entry?.createdAt instanceof Date ? entry.createdAt.getTime() : Number(entry?.createdAt || 0);
+    if (!entry || (createdAt > 0 && now - createdAt > FEEDBACK_REPORT_TTL_MS)) {
+      reportStore.delete(key);
+    }
+  }
+  while (reportStore.size > FEEDBACK_REPORT_MAX_ENTRIES) {
+    const oldestKey = reportStore.keys().next().value;
+    if (oldestKey === undefined) break;
+    reportStore.delete(oldestKey);
+  }
+}
 
 function pruneExpiredPrompts(now = Date.now()) {
   for (const [key, entry] of pendingPrompts.entries()) {
@@ -111,6 +130,13 @@ export function getFeedbackChannelId(env = process.env) {
   return SNOWFLAKE_RE.test(raw) ? raw : null;
 }
 
+/**
+ * Extracts and validates comma-separated staff role Snowflakes from `FEEDBACK_STAFF_ROLE_IDS`.
+ * When empty or invalid, only Discord server Administrators are treated as trusted staff (fail-closed).
+ *
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {string[]}
+ */
 export function getStaffRoleIds(env = process.env) {
   const raw = typeof env?.FEEDBACK_STAFF_ROLE_IDS === 'string' ? env.FEEDBACK_STAFF_ROLE_IDS : '';
   return raw
@@ -119,6 +145,18 @@ export function getStaffRoleIds(env = process.env) {
     .filter((id) => SNOWFLAKE_RE.test(id));
 }
 
+/**
+ * Determines whether a guild member is authorized to review feedback reports.
+ *
+ * Policy:
+ * - Discord `Administrator` permission inherently bypasses channel overwrites at the platform level
+ *   and is treated as trusted staff.
+ * - All other members must hold at least one role listed in `FEEDBACK_STAFF_ROLE_IDS`.
+ *
+ * @param {import('discord.js').GuildMember | null | undefined} member
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {boolean}
+ */
 export function isStaffMember(member, env = process.env) {
   if (!member) return false;
 
@@ -161,6 +199,9 @@ export function validateScreenshotUrl(rawUrl) {
     const parsed = new URL(trimmed);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       return { valid: false, error: 'URL screenshot harus menggunakan protokol http:// atau https://.' };
+    }
+    if (parsed.username || parsed.password) {
+      return { valid: false, error: 'URL screenshot tidak boleh menyertakan username atau password.' };
     }
     return { valid: true, url: parsed.toString() };
   } catch {
@@ -233,7 +274,7 @@ export async function resolveFeedbackChannel(client, { env = process.env, logger
     try {
       channel = await client.channels.fetch(channelId);
     } catch (err) {
-      logger.error?.('[Feedback] Failed to fetch feedback channel:', err?.message ?? err);
+      logger.error?.('[Feedback] Failed to fetch feedback channel:', sanitizeError(err));
       channel = null;
     }
   }
@@ -244,6 +285,27 @@ export async function resolveFeedbackChannel(client, { env = process.env, logger
       ok: false,
       reason: 'CHANNEL_UNAVAILABLE',
       userMessage: 'Channel tujuan feedback tidak tersedia saat ini. Silakan hubungi admin.',
+    };
+  }
+
+  const isThread =
+    (typeof channel.isThread === 'function' && channel.isThread()) ||
+    channel.type === ChannelType.PublicThread ||
+    channel.type === ChannelType.PrivateThread ||
+    channel.type === ChannelType.AnnouncementThread;
+
+  const isSupportedGuildText =
+    typeof channel.type !== 'number' ||
+    channel.type === ChannelType.GuildText ||
+    channel.type === ChannelType.GuildAnnouncement;
+
+  if (isThread || !isSupportedGuildText) {
+    logger.error?.('[Feedback] Rejected feedback channel: threads and non-text channel types are not allowed.');
+    return {
+      ok: false,
+      reason: 'UNSUPPORTED_CHANNEL_TYPE',
+      userMessage:
+        'Pengiriman laporan ditolak: channel feedback harus berupa text channel server privat, bukan thread atau tipe channel lain.',
     };
   }
 
@@ -268,11 +330,105 @@ export async function resolveFeedbackChannel(client, { env = process.env, logger
     }
   }
 
-  const everyoneRole = channel.guild.roles?.everyone;
-  if (everyoneRole && typeof channel.permissionsFor === 'function') {
-    const everyonePerms = channel.permissionsFor(everyoneRole);
-    if (everyonePerms?.has?.(PermissionFlagsBits.ViewChannel)) {
-      logger.warn?.('[Feedback] Warning: configured feedback channel is visible to @everyone.');
+  const everyoneRole =
+    channel.guild.roles?.everyone ?? channel.guild.roles?.cache?.get?.(channel.guild.id) ?? null;
+
+  if (!everyoneRole || typeof channel.permissionsFor !== 'function') {
+    logger.error?.(
+      '[Feedback] Rejected feedback channel: unable to verify @everyone ViewChannel permissions.',
+    );
+    return {
+      ok: false,
+      reason: 'CHANNEL_PRIVACY_UNVERIFIED',
+      userMessage:
+        'Pengiriman laporan ditolak karena privasi channel feedback belum dapat diverifikasi. Pastikan channel berada di server yang valid dan batasi izin `@everyone`.',
+    };
+  }
+
+  const everyonePerms = channel.permissionsFor(everyoneRole);
+  if (everyonePerms?.has?.(PermissionFlagsBits.ViewChannel) !== false) {
+    logger.error?.(
+      '[Feedback] Rejected insecure feedback channel: channel is accessible by @everyone.',
+    );
+    return {
+      ok: false,
+      reason: 'CHANNEL_NOT_PRIVATE',
+      userMessage:
+        'Pengiriman laporan ditolak demi privasi: channel feedback saat ini dapat dilihat oleh `@everyone`. Admin wajib mengatur `FEEDBACK_CHANNEL_ID` ke channel privat khusus staff (nonaktifkan izin `View Channel` untuk `@everyone`).',
+    };
+  }
+
+  const overwritesCache = channel.permissionOverwrites?.cache;
+  if (!overwritesCache || typeof overwritesCache.values !== 'function') {
+    logger.error?.(
+      '[Feedback] Rejected feedback channel: unable to verify channel permission overwrites.',
+    );
+    return {
+      ok: false,
+      reason: 'CHANNEL_PRIVACY_UNVERIFIED',
+      userMessage:
+        'Pengiriman laporan ditolak karena permission overwrite channel feedback tidak dapat diverifikasi. Pastikan channel berada di server yang valid.',
+    };
+  }
+
+  const staffRoleIds = new Set(getStaffRoleIds(env));
+
+  for (const overwrite of overwritesCache.values()) {
+    if (!overwrite || overwrite.id === channel.guild.id) continue;
+
+    const isRoleOverwrite =
+      overwrite.type === OverwriteType.Role || overwrite.type === 0 || overwrite.type === 'role';
+    const isMemberOverwrite =
+      overwrite.type === OverwriteType.Member || overwrite.type === 1 || overwrite.type === 'member';
+
+    if (isRoleOverwrite && !staffRoleIds.has(overwrite.id) && overwrite.allow?.has?.(PermissionFlagsBits.ViewChannel)) {
+      logger.error?.(
+        `[Feedback] Rejected insecure feedback channel: non-staff role ${overwrite.id} has ViewChannel overwrite.`,
+      );
+      return {
+        ok: false,
+        reason: 'CHANNEL_NOT_PRIVATE',
+        userMessage:
+          'Pengiriman laporan ditolak demi privasi: terdapat role non-staff yang memiliki izin `View Channel` pada channel feedback. Admin wajib membatasi akses hanya untuk role staff terdaftar (`FEEDBACK_STAFF_ROLE_IDS`) dan Administrator server.',
+      };
+    }
+
+    if (
+      isMemberOverwrite &&
+      overwrite.id !== client?.user?.id &&
+      overwrite.allow?.has?.(PermissionFlagsBits.ViewChannel)
+    ) {
+      logger.error?.(
+        `[Feedback] Rejected insecure feedback channel: member ${overwrite.id} has explicit ViewChannel overwrite.`,
+      );
+      return {
+        ok: false,
+        reason: 'CHANNEL_NOT_PRIVATE',
+        userMessage:
+          'Pengiriman laporan ditolak demi privasi: terdapat member non-bot yang diberi izin `View Channel` secara langsung pada channel feedback.',
+      };
+    }
+  }
+
+  if (channel.guild.roles?.cache && typeof channel.guild.roles.cache.values === 'function') {
+    for (const role of channel.guild.roles.cache.values()) {
+      if (!role || role.id === channel.guild.id || role.managed) continue;
+      if (staffRoleIds.has(role.id)) continue;
+      // Discord Administrators inherently bypass channel overwrites and are treated as trusted staff.
+      if (role.permissions?.has?.(PermissionFlagsBits.Administrator)) continue;
+
+      const rolePerms = channel.permissionsFor(role);
+      if (rolePerms?.has?.(PermissionFlagsBits.ViewChannel) === true) {
+        logger.error?.(
+          `[Feedback] Rejected insecure feedback channel: non-staff role ${role.id} can view channel.`,
+        );
+        return {
+          ok: false,
+          reason: 'CHANNEL_NOT_PRIVATE',
+          userMessage:
+            'Pengiriman laporan ditolak demi privasi: terdapat role non-staff yang memiliki akses `View Channel` pada channel feedback. Admin wajib membatasi akses hanya untuk role staff terdaftar (`FEEDBACK_STAFF_ROLE_IDS`) dan Administrator server.',
+        };
+      }
     }
   }
 
@@ -473,7 +629,7 @@ async function safeEphemeralError(interaction, message) {
     }
   } catch (err) {
     if (!IGNORED_DISCORD_CODES.has(err?.code)) {
-      console.error('[Feedback] Failed to send ephemeral error:', err);
+      console.error('[Feedback] Failed to send ephemeral error:', sanitizeError(err));
     }
   }
 }
@@ -559,7 +715,7 @@ export async function handleFeedbackInteraction(interaction, context = {}) {
       });
     } catch (err) {
       if (!IGNORED_DISCORD_CODES.has(err?.code)) {
-        logger.error?.('[Feedback] Failed to update category selection:', err);
+        logger.error?.('[Feedback] Failed to update category selection:', sanitizeError(err));
       }
     }
     return true;
@@ -603,7 +759,7 @@ export async function handleFeedbackInteraction(interaction, context = {}) {
       await interaction.showModal(modal);
     } catch (err) {
       if (!IGNORED_DISCORD_CODES.has(err?.code)) {
-        logger.error?.('[Feedback] Failed to open feedback modal:', err);
+        logger.error?.('[Feedback] Failed to open feedback modal:', sanitizeError(err));
         await safeEphemeralError(interaction, 'Gagal membuka formulir feedback. Silakan coba lagi.');
       }
     }
@@ -693,7 +849,7 @@ export async function handleFeedbackInteraction(interaction, context = {}) {
           files: getLogoFiles(),
         });
       } catch (err) {
-        logger.error?.('[Feedback] Failed to deliver report to staff channel:', err);
+        logger.error?.('[Feedback] Failed to deliver report to staff channel:', sanitizeError(err));
         await safeEphemeralError(
           interaction,
           'Gagal meneruskan laporan ke channel staff. Silakan coba lagi nanti.',
@@ -702,6 +858,7 @@ export async function handleFeedbackInteraction(interaction, context = {}) {
       }
 
       reportStore.set(reportId, reportData);
+        pruneReportStore();
       pendingPrompts.delete(promptId);
 
       // Disable original prompt components silently if accessible
@@ -737,7 +894,7 @@ export async function handleFeedbackInteraction(interaction, context = {}) {
       });
     } catch (err) {
       if (!IGNORED_DISCORD_CODES.has(err?.code)) {
-        logger.error?.('[Feedback] Unexpected error during modal submission:', err);
+        logger.error?.('[Feedback] Unexpected error during modal submission:', sanitizeError(err));
         await safeEphemeralError(interaction, 'Terjadi kesalahan saat memproses feedback Anda.');
       }
     } finally {
@@ -810,7 +967,7 @@ export async function handleFeedbackInteraction(interaction, context = {}) {
       });
     } catch (err) {
       if (!IGNORED_DISCORD_CODES.has(err?.code)) {
-        logger.error?.('[Feedback] Failed to update report status:', err);
+        logger.error?.('[Feedback] Failed to update report status:', sanitizeError(err));
         await safeEphemeralError(interaction, 'Gagal memperbarui status laporan. Silakan coba lagi.');
       }
     } finally {

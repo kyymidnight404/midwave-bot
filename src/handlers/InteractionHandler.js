@@ -7,7 +7,12 @@ import {
   FEEDBACK_CUSTOM_ID_PREFIX,
   handleFeedbackInteraction,
 } from '../services/feedbackService.js';
+import {
+  GAME_CENTER_CUSTOM_ID_PREFIX,
+  handleGameCenterInteraction,
+} from '../events/gameInteraction.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
+import { sanitizeError } from '../utils/errorSanitizer.js';
 
 const IGNORED_DISCORD_ERROR_CODES = new Set([10062, 40060]);
 const COMMAND_COOLDOWNS = Object.freeze({
@@ -40,7 +45,7 @@ export async function safeReplyError(interaction, message) {
     }
   } catch (err) {
     if (!IGNORED_DISCORD_ERROR_CODES.has(err?.code)) {
-      console.error('[InteractionHandler] Failed to send error response:', err);
+      console.error('[InteractionHandler] Failed to send error response:', sanitizeError(err));
     }
   }
 }
@@ -90,6 +95,20 @@ export class InteractionHandler {
 
     if (isFeedbackComponent) {
       await handleFeedbackInteraction(interaction, {
+        ...this.context,
+        cooldowns: this.cooldowns,
+        logger: this.logger,
+      });
+      return;
+    }
+
+    const isGameCenterComponent =
+      typeof interaction.customId === 'string' &&
+      interaction.customId.startsWith(`${GAME_CENTER_CUSTOM_ID_PREFIX}:`) &&
+      Boolean(interaction.isButton?.());
+
+    if (isGameCenterComponent) {
+      await handleGameCenterInteraction(interaction, {
         ...this.context,
         cooldowns: this.cooldowns,
         logger: this.logger,
@@ -162,7 +181,10 @@ export class InteractionHandler {
         this.logger.warn?.(`[InteractionHandler] Ignored Discord interaction timing error (${err.code}) on /${interaction.commandName}`);
         return;
       }
-      this.logger.error(`[InteractionHandler] Error executing /${interaction.commandName}:`, err);
+      this.logger.error(
+        `[InteractionHandler] Error executing /${interaction.commandName}:`,
+        sanitizeError(err),
+      );
       await safeReplyError(
         interaction,
         'Terjadi gangguan saat memproses perintah ini. Silakan coba lagi.',

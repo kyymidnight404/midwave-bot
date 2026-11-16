@@ -34,6 +34,7 @@ function createMockGuildChannel({
     name,
     sentMessages,
     isTextBased: () => true,
+    permissionOverwrites: { cache: new Map() },
     guild: {
       id: 'guild-1',
       name: 'Midwave HQ',

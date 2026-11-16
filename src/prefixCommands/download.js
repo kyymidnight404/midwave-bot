@@ -5,6 +5,7 @@ import {
   cleanupTempDir,
   downloadMediaFromUrl,
   getDownloaderConfig,
+  sanitizeLogText,
   validateMediaUrl,
 } from '../services/downloader.js';
 import {
@@ -129,7 +130,10 @@ export async function execute(interaction, context = {}) {
     });
   } catch (error) {
     const safeErrorCode = error instanceof DownloaderError ? error.code : 'UPLOAD_OR_INTERNAL_ERROR';
-    console.error(`[Download] Command failed (${safeErrorCode}):`, error instanceof Error ? error.message : error);
+    console.error(
+      `[Download] Command failed (${safeErrorCode}):`,
+      sanitizeLogText(error instanceof Error ? error.message : error),
+    );
 
     const userMessage = resolveUploadErrorMessage(error);
     await interaction

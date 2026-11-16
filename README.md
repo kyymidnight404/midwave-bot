@@ -1,6 +1,6 @@
 # Midwave — Discord Game & Utility Bot
 
-**Midwave** is a lightweight, modular Discord bot built with **Node.js** and **discord.js**. It brings together 7 interactive mini-games (Solo & 2-Player Multiplayer) and modern utility tools in a single **zero-database** package—storing all active sessions, invites, and caches strictly in RAM with automatic TTL cleanup.
+**Midwave** is a modular Discord bot built with **Node.js**, **discord.js**, and **Prisma (SQLite)**. It combines interactive mini-games, Game Center leaderboards, AI assistance, and utility tools—keeping active game sessions, invites, and AI conversation context strictly in ephemeral RAM with automatic TTL cleanup, while persisting only Game Center player statistics and Knowledge Base entries in SQLite.
 
 ---
 
@@ -20,8 +20,8 @@ Supports both Slash Commands (`/`) and Prefix Commands (`!` by default):
 
 ### 2. Utilities & AI
 
-* **Midwave AI** (`/ai` & `!ai`) — **Stateless** chatbot powered by **Google Gemini API** (`gemini-2.5-flash`) with automatic real-time web search (**Tavily Search**), >2,000-character Markdown-safe splitting, and mention sanitization.
-* **Media Downloader** (`/download` & Auto-Downloader) — Downloads public **Instagram** and **TikTok** photos, videos/reels, and carousels via RapidAPI with anti-SSRF & magic-byte validation, automatic chat link detection, and direct CDN button fallbacks for large files.
+* **Midwave AI** (`/ai` & `!ai`) — Conversational AI assistant powered by **Google Gemini API** (`gemini-2.5-flash`) with temporary **15-minute RAM-only conversation context** per user/channel (auto-expired and manually clearable via `/ai question:reset`, `!ai reset`, or `!ai hapus riwayat`), automatic real-time web search (**Tavily Search**), >2,000-character Markdown-safe splitting, and mention sanitization.
+* **Media Downloader** (`/media action:download` & Auto-Downloader) — Downloads public **Instagram** and **TikTok** photos, videos/reels, and carousels via RapidAPI with strict domain allowlisting, anti-SSRF & magic-byte validation, automatic chat link detection, and direct CDN button fallbacks for large files.
 * **Lyrics Finder** (`/lyrics` & `!lyrics`) — Fetches song lyrics via **LRCLIB API** enriched with cover art (iTunes / optional Genius API) and interactive pagination buttons.
 * **Brat Generator** (`/brat`) — Generates minimalist `1024×1024` Brat-style PNG images directly in memory.
 * **Instagram Post Frame** (`!igf`) — Generates a transparent `1080×1080` Instagram Post Card PNG using the user's Discord avatar and display name.
@@ -120,6 +120,31 @@ midwave/
 └── package.json
 
 ```
+
+---
+
+## Privacy & Data Processing
+
+Midwave minimizes data retention and keeps transient interaction context strictly in ephemeral memory (RAM):
+
+### Temporary AI Conversation Context (15-Minute TTL)
+* **Ephemeral RAM Storage:** `/ai` and `!ai` store recent conversation turns strictly in RAM (scoped to `guildId`, `channelId`, and `userId`)—never saved permanently to disk or SQLite without consent.
+* **15-Minute Automatic Expiration:** Inactive conversation context automatically expires after **15 minutes** (`DEFAULT_AI_CONVERSATION_TTL_MS = 900,000 ms`) and is periodically swept from memory as well as cleared on bot shutdown.
+* **On-Demand Deletion:** Users can immediately delete their temporary conversation history in the current channel at any time using `/ai question:reset`, `!ai reset`, `!ai clear`, or `!ai hapus riwayat`.
+
+### Third-Party Services & Processed Data
+* **Google Gemini (`@google/genai`)**:
+  * **Purpose:** Generates responses for `/ai` and `!ai`.
+  * **Data Processed:** User question text (up to 1,500 chars), temporary 15-minute RAM conversation context for that channel/user, optional excerpt of a Discord message the user explicitly replied to, plus matched local Knowledge Base or search snippets when applicable. Bot secrets and API keys are never sent as prompt content and are redacted from logs.
+* **Tavily (`Tavily Search API`)**:
+  * **Purpose:** Provides real-time web search results for time-sensitive `/ai` / `!ai` queries.
+  * **Data Processed:** Only the normalized search query string derived from the user's question (along with search topic and result limit settings). Conversation history, Discord user IDs, and bot credentials are never sent to Tavily.
+* **RapidAPI**:
+  * **Purpose:** Extracts public media download URLs for **Instagram** and **TikTok** via `/media action:download` and Auto-Downloader.
+  * **Data Processed:** Only validated public HTTPS URLs (or Instagram shortcodes) belonging strictly to allowlisted **Instagram** (`instagram.com`, `instagr.am`) and **TikTok** (`tiktok.com`) domains, with tracking query parameters stripped beforehand. Non-TikTok/Instagram URLs are rejected before calling RapidAPI, user URLs are neither persisted nor logged unnecessarily, and temporary downloaded files are deleted immediately after upload.
+
+### Feedback Channel Privacy (`FEEDBACK_CHANNEL_ID`)
+* `/feedback` and `!feedback` strictly require `FEEDBACK_CHANNEL_ID` to point to a **private staff channel** inaccessible to `@everyone` (`View Channel` denied). Reports are rejected if the channel is accessible to `@everyone` or if channel privacy permissions cannot be verified.
 
 ---
 

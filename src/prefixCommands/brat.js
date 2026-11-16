@@ -5,6 +5,7 @@ import {
   validateBratText,
 } from '../utils/bratGenerator.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
+import { sanitizeError } from '../utils/errorSanitizer.js';
 
 /**
  * Executes Brat image generation for both `/media action:brat` and `!brat`.
@@ -33,7 +34,7 @@ export async function execute(interaction, context = {}) {
 
     await interaction.editReply({ files: [attachment] });
   } catch (error) {
-    console.error('[Brat] Render failed:', error instanceof Error ? error.message : error);
+    console.error('[Brat] Render failed:', sanitizeError(error));
     await interaction.editReply({
       embeds: [buildErrorEmbed('Gagal merender gambar Brat. Silakan coba lagi.')],
     });

@@ -1,4 +1,5 @@
 import dns from 'node:dns/promises';
+import https from 'node:https';
 import net from 'node:net';
 import { DOWNLOADER_ERROR_CODES, DownloaderError } from './errors.js';
 
@@ -66,17 +67,65 @@ function isPrivateIpv4(ip) {
     return true;
   }
 
-  const [a, b] = parts;
+  const [a, b, c] = parts;
   if (a === 0 || a === 10 || a === 127) return true;
   if (a === 100 && b >= 64 && b <= 127) return true;
   if (a === 169 && b === 254) return true;
   if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 192 && b === 0 && parts[2] === 0) return true;
+  if (a === 192 && b === 0 && (c === 0 || c === 2)) return true;
+  if (a === 192 && b === 88 && c === 99) return true;
   if (a === 192 && b === 168) return true;
   if (a === 198 && (b === 18 || b === 19)) return true;
+  if (a === 198 && b === 51 && c === 100) return true;
+  if (a === 203 && b === 0 && c === 113) return true;
   if (a >= 224) return true;
 
   return false;
+}
+
+/**
+ * Expands an IPv6 address (including compressed `::` and embedded IPv4) into 8 16-bit hextets.
+ * Returns null if invalid.
+ *
+ * @param {string} ip
+ * @returns {number[] | null}
+ */
+function expandIpv6(ip) {
+  const halves = ip.split('::');
+  if (halves.length > 2) return null;
+
+  const parsePart = (part) => {
+    if (!part) return [];
+    const tokens = part.split(':');
+    const out = [];
+    for (let i = 0; i < tokens.length; i += 1) {
+      const token = tokens[i];
+      if (token.includes('.')) {
+        if (i !== tokens.length - 1 || !net.isIPv4(token)) return null;
+        const octets = token.split('.').map((n) => Number.parseInt(n, 10));
+        out.push((octets[0] << 8) | octets[1], (octets[2] << 8) | octets[3]);
+      } else {
+        if (!/^[0-9a-f]{1,4}$/i.test(token)) return null;
+        out.push(Number.parseInt(token, 16));
+      }
+    }
+    return out;
+  };
+
+  const left = parsePart(halves[0]);
+  if (!left) return null;
+
+  if (halves.length === 1) {
+    return left.length === 8 ? left : null;
+  }
+
+  const right = parsePart(halves[1]);
+  if (!right) return null;
+
+  const missing = 8 - (left.length + right.length);
+  if (missing < 1) return null;
+
+  return [...left, ...Array(missing).fill(0), ...right];
 }
 
 /**
@@ -97,31 +146,47 @@ export function isPrivateOrReservedIp(rawIp) {
     return true;
   }
 
-  if (ip === '::' || ip === '::1') return true;
+  const h = expandIpv6(ip);
+  if (!h) return true;
 
-  // Handle IPv4-mapped IPv6 addresses (e.g., ::ffff:127.0.0.1 or ::ffff:7f00:1)
-  if (ip.startsWith('::ffff:')) {
-    const mapped = ip.slice('::ffff:'.length);
-    if (net.isIPv4(mapped)) {
-      return isPrivateIpv4(mapped);
-    }
-    const hexParts = mapped.split(':');
-    if (hexParts.length === 2) {
-      const high = Number.parseInt(hexParts[0], 16);
-      const low = Number.parseInt(hexParts[1], 16);
-      if (Number.isFinite(high) && Number.isFinite(low)) {
-        const reconstructed = `${(high >> 8) & 0xff}.${high & 0xff}.${(low >> 8) & 0xff}.${low & 0xff}`;
-        return isPrivateIpv4(reconstructed);
-      }
-    }
-    return true;
+  // ::/128 (unspecified) and ::1/128 (loopback)
+  const firstSevenZero =
+    h[0] === 0 && h[1] === 0 && h[2] === 0 && h[3] === 0 && h[4] === 0 && h[5] === 0 && h[6] === 0;
+  if (firstSevenZero && (h[7] === 0 || h[7] === 1)) return true;
+
+  // ::/96 IPv4-compatible IPv6 (deprecated, e.g. ::127.0.0.1)
+  const firstSixZero =
+    h[0] === 0 && h[1] === 0 && h[2] === 0 && h[3] === 0 && h[4] === 0 && h[5] === 0;
+  if (firstSixZero) return true;
+
+  // ::ffff:0:0/96 IPv4-mapped IPv6
+  if (h[0] === 0 && h[1] === 0 && h[2] === 0 && h[3] === 0 && h[4] === 0 && h[5] === 0xffff) {
+    const reconstructed = `${(h[6] >> 8) & 0xff}.${h[6] & 0xff}.${(h[7] >> 8) & 0xff}.${h[7] & 0xff}`;
+    return isPrivateIpv4(reconstructed);
   }
 
-  const firstHextet = Number.parseInt(ip.split(':')[0] || '0', 16);
-  // fc00::/7 Unique Local, fe80::/10 Link-Local, ff00::/8 Multicast
-  if ((firstHextet & 0xfe00) === 0xfc00) return true;
-  if ((firstHextet & 0xffc0) === 0xfe80) return true;
-  if ((firstHextet & 0xff00) === 0xff00) return true;
+  // 64:ff9b::/96 (NAT64 well-known) and 64:ff9b:1::/48 (NAT64 local-use)
+  if (h[0] === 0x0064 && h[1] === 0xff9b) {
+    if (h[2] === 0x0001) return true;
+    if (h[2] === 0 && h[3] === 0 && h[4] === 0 && h[5] === 0) return true;
+  }
+
+  // 100::/64 Discard-Only
+  if (h[0] === 0x0100 && h[1] === 0 && h[2] === 0 && h[3] === 0) return true;
+
+  // 2001::/32 Teredo, 2001:2::/48 Benchmarking, 2001:db8::/32 Documentation
+  if (h[0] === 0x2001 && h[1] === 0x0000) return true;
+  if (h[0] === 0x2001 && h[1] === 0x0002 && h[2] === 0x0000) return true;
+  if (h[0] === 0x2001 && h[1] === 0x0db8) return true;
+
+  // 2002::/16 6to4 (embeds IPv4 in h[1..2])
+  if (h[0] === 0x2002) return true;
+
+  // fc00::/7 Unique Local, fe80::/10 Link-Local, fec0::/10 Site-Local, ff00::/8 Multicast
+  if ((h[0] & 0xfe00) === 0xfc00) return true;
+  if ((h[0] & 0xffc0) === 0xfe80) return true;
+  if ((h[0] & 0xffc0) === 0xfec0) return true;
+  if ((h[0] & 0xff00) === 0xff00) return true;
 
   return false;
 }
@@ -154,7 +219,8 @@ export async function assertSafeRemoteHost(hostname, options = {}) {
         'Tujuan URL mengarah ke alamat IP privat atau terlarang.',
       );
     }
-    return;
+    const family = net.isIP(cleanHost);
+    return { hostname: cleanHost, address: cleanHost, family, addresses: [{ address: cleanHost, family }] };
   }
 
   let records;
@@ -181,6 +247,14 @@ export async function assertSafeRemoteHost(hostname, options = {}) {
       'Tujuan URL mengarah ke jaringan internal yang diblokir demi keamanan.',
     );
   }
+
+  const primary = records[0];
+  return {
+    hostname: cleanHost,
+    address: primary.address,
+    family: primary.family || net.isIP(primary.address),
+    addresses: records.map((r) => ({ address: r.address, family: r.family || net.isIP(r.address) })),
+  };
 }
 
 const TRACKING_QUERY_PARAMS = new Set([
@@ -342,12 +416,94 @@ export function validateMediaUrl(rawUrl) {
 }
 
 /**
- * Safely resolves short-link HTTP redirects step by step with SSRF and domain validation
- * on every redirect hop.
+ * Creates an HTTPS agent that pins the socket connection to the already-validated IP address
+ * while preserving TLS SNI and hostname certificate verification (`rejectUnauthorized: true`).
+ *
+ * @param {string} expectedHost
+ * @param {{ address: string, family: number, addresses?: Array<{ address: string, family: number }> }} resolved
+ * @returns {https.Agent}
+ */
+export function createPinnedHttpsAgent(expectedHost, resolved) {
+  const cleanExpected = String(expectedHost || '').toLowerCase();
+  return new https.Agent({
+    lookup: (hostname, opts, cb) => {
+      const callback = typeof opts === 'function' ? opts : cb;
+      if (String(hostname || '').toLowerCase() !== cleanExpected) {
+        callback(new Error(`DNS pinning host mismatch: ${hostname}`));
+        return;
+      }
+      if (opts && typeof opts === 'object' && opts.all) {
+        const list = resolved.addresses?.length
+          ? resolved.addresses
+          : [{ address: resolved.address, family: resolved.family || 4 }];
+        callback(null, list);
+        return;
+      }
+      callback(null, resolved.address, resolved.family || 4);
+    },
+  });
+}
+
+/**
+ * Issues a single non-redirecting HTTPS GET using a DNS-pinned agent and immediately
+ * closes the body stream after inspecting status & Location headers.
+ *
+ * @param {string} targetUrl
+ * @param {{ address: string, family: number, addresses?: Array<{ address: string, family: number }> }} resolved
+ * @param {{ timeoutMs: number, headers: Record<string, string>, httpsRequestFn?: typeof https.request }} options
+ * @returns {Promise<{ status: number, location: string | null }>}
+ */
+function pinnedRedirectProbe(targetUrl, resolved, { timeoutMs, headers, httpsRequestFn = https.request }) {
+  const parsed = new URL(targetUrl);
+  const agent = createPinnedHttpsAgent(parsed.hostname, resolved);
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (err, value) => {
+      if (settled) return;
+      settled = true;
+      agent.destroy();
+      if (err) reject(err);
+      else resolve(value);
+    };
+
+    const req = httpsRequestFn(
+      parsed,
+      {
+        method: 'GET',
+        agent,
+        headers,
+        servername: parsed.hostname,
+        rejectUnauthorized: true,
+      },
+      (res) => {
+        const status = res.statusCode ?? 0;
+        const rawLoc = res.headers?.location;
+        const location = Array.isArray(rawLoc) ? rawLoc[0] : rawLoc ?? null;
+        res.destroy();
+        finish(null, { status, location });
+      },
+    );
+
+    req.setTimeout(timeoutMs, () => {
+      const timeoutErr = new Error('Short-link redirect probe timed out');
+      timeoutErr.name = 'TimeoutError';
+      req.destroy(timeoutErr);
+    });
+
+    req.on('error', (err) => finish(err));
+    req.end();
+  });
+}
+
+/**
+ * Safely resolves short-link HTTP redirects step by step with DNS pinning, SSRF,
+ * and domain validation on every redirect hop.
  *
  * @param {ReturnType<typeof validateMediaUrl>} validated
  * @param {{
  *   fetchFn?: typeof fetch,
+ *   httpsRequestFn?: typeof https.request,
  *   lookupFn?: typeof dns.lookup,
  *   timeoutMs?: number,
  *   maxHops?: number,
@@ -356,54 +512,86 @@ export function validateMediaUrl(rawUrl) {
  */
 export async function resolveAndValidateRedirects(validated, options = {}) {
   const {
-    fetchFn = fetch,
+    fetchFn = null,
+    httpsRequestFn = https.request,
     lookupFn = dns.lookup,
     timeoutMs = 10_000,
     maxHops = 5,
   } = options;
 
   let current = validated;
-  await assertSafeRemoteHost(current.hostname, { lookupFn });
+  let resolvedHost = await assertSafeRemoteHost(current.hostname, { lookupFn });
 
   if (!current.isShortLink) {
     return current;
   }
 
+  const probeHeaders = {
+    'User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  };
+
   for (let hop = 0; hop < maxHops; hop += 1) {
-    let response;
-    try {
-      response = await fetchFn(current.normalizedUrl, {
-        method: 'GET',
-        redirect: 'manual',
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        },
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-    } catch (error) {
-      if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+    let status = 0;
+    let location = null;
+
+    if (fetchFn) {
+      let response;
+      try {
+        response = await fetchFn(current.normalizedUrl, {
+          method: 'GET',
+          redirect: 'manual',
+          headers: probeHeaders,
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        status = response.status;
+        location = response.headers.get('location');
+      } catch (error) {
+        if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+          throw new DownloaderError(
+            DOWNLOADER_ERROR_CODES.TIMEOUT,
+            'Waktu habis saat memeriksa tautan pendek. Silakan coba lagi.',
+            { retryable: true, cause: error },
+          );
+        }
         throw new DownloaderError(
-          DOWNLOADER_ERROR_CODES.TIMEOUT,
-          'Waktu habis saat memeriksa tautan pendek. Silakan coba lagi.',
+          DOWNLOADER_ERROR_CODES.EXTRACTION_FAILED,
+          'Gagal mengikuti tautan pendek. Pastikan URL valid dan dapat diakses.',
+          { retryable: true, cause: error },
+        );
+      } finally {
+        try {
+          await response?.body?.cancel();
+        } catch {
+          // Ignore stream cancellation cleanup error
+        }
+      }
+    } else {
+      try {
+        const probe = await pinnedRedirectProbe(current.normalizedUrl, resolvedHost, {
+          timeoutMs,
+          headers: probeHeaders,
+          httpsRequestFn,
+        });
+        status = probe.status;
+        location = probe.location;
+      } catch (error) {
+        if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+          throw new DownloaderError(
+            DOWNLOADER_ERROR_CODES.TIMEOUT,
+            'Waktu habis saat memeriksa tautan pendek. Silakan coba lagi.',
+            { retryable: true, cause: error },
+          );
+        }
+        throw new DownloaderError(
+          DOWNLOADER_ERROR_CODES.EXTRACTION_FAILED,
+          'Gagal mengikuti tautan pendek. Pastikan URL valid dan dapat diakses.',
           { retryable: true, cause: error },
         );
       }
-      throw new DownloaderError(
-        DOWNLOADER_ERROR_CODES.EXTRACTION_FAILED,
-        'Gagal mengikuti tautan pendek. Pastikan URL valid dan dapat diakses.',
-        { retryable: true, cause: error },
-      );
-    } finally {
-      try {
-        await response?.body?.cancel();
-      } catch {
-        // Ignore stream cancellation cleanup error
-      }
     }
 
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get('location');
+    if (status >= 300 && status < 400) {
       if (!location) {
         return current;
       }
@@ -419,7 +607,7 @@ export async function resolveAndValidateRedirects(validated, options = {}) {
       }
 
       const nextValidated = validateMediaUrl(nextUrl);
-      await assertSafeRemoteHost(nextValidated.hostname, { lookupFn });
+      resolvedHost = await assertSafeRemoteHost(nextValidated.hostname, { lookupFn });
       current = nextValidated;
 
       if (!current.isShortLink) {

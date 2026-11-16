@@ -22,6 +22,10 @@ import {
   formatDiscordAiChunks,
   formatDiscordMaskedLinks,
 } from '../../src/utils/aiFormatter.js';
+import { CommandHandler } from '../../src/handlers/CommandHandler.js';
+import { PrefixCommandHandler } from '../../src/handlers/PrefixCommandHandler.js';
+import { parsePrefixInvocation } from '../../src/utils/prefixParser.js';
+import { CooldownManager } from '../../src/utils/cooldown.js';
 
 function createTempKnowledgeFile() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'midwave-kb-'));
@@ -325,33 +329,41 @@ describe('Midwave Global Bot Knowledge Memory System', () => {
     }
 
     // Owner can list and remove entries via /knowledge list & /knowledge remove
-    const listInteraction = createMockKnowledgeInteraction({
-      subcommand: 'list',
-      userId: '999999999999999999',
-      options: { category: 'bot_identity' },
-    });
-    await executeKnowledge(listInteraction, ownerAuth);
-    const listReply = listInteraction.getReplies()[0];
-    assert.equal(listReply.flags, MessageFlags.Ephemeral);
-    assert.match(listReply.embeds[0].toJSON().title, /Daftar Global Bot Knowledge/);
+    const isolatedTmp = createTempKnowledgeFile();
+    try {
+      const isolatedStore = new KnowledgeStore({ filePath: isolatedTmp.filePath });
+      const isolatedOwnerAuth = { ...ownerAuth, knowledgeStore: isolatedStore };
 
-    await executeKnowledge(
-      createMockKnowledgeInteraction({
-        subcommand: 'add',
+      const listInteraction = createMockKnowledgeInteraction({
+        subcommand: 'list',
         userId: '999999999999999999',
-        options: { id: 'temp-remove-test', category: 'bot_identity', title: 'Temp', content: 'Temp content for remove test' },
-      }),
-      ownerAuth,
-    );
-    const removeInteraction = createMockKnowledgeInteraction({
-      subcommand: 'remove',
-      userId: '999999999999999999',
-      options: { id: 'temp-remove-test' },
-    });
-    await executeKnowledge(removeInteraction, ownerAuth);
-    const removeReply = removeInteraction.getReplies()[0];
-    assert.equal(removeReply.flags, MessageFlags.Ephemeral);
-    assert.match(removeReply.embeds[0].toJSON().title, /Dihapus/i);
+        options: { category: 'bot_identity' },
+      });
+      await executeKnowledge(listInteraction, isolatedOwnerAuth);
+      const listReply = listInteraction.getReplies()[0];
+      assert.equal(listReply.flags, MessageFlags.Ephemeral);
+      assert.match(listReply.embeds[0].toJSON().title, /Daftar Global Bot Knowledge/);
+
+      await executeKnowledge(
+        createMockKnowledgeInteraction({
+          subcommand: 'add',
+          userId: '999999999999999999',
+          options: { id: 'temp-remove-test', category: 'bot_identity', title: 'Temp', content: 'Temp content for remove test' },
+        }),
+        isolatedOwnerAuth,
+      );
+      const removeInteraction = createMockKnowledgeInteraction({
+        subcommand: 'remove',
+        userId: '999999999999999999',
+        options: { id: 'temp-remove-test' },
+      });
+      await executeKnowledge(removeInteraction, isolatedOwnerAuth);
+      const removeReply = removeInteraction.getReplies()[0];
+      assert.equal(removeReply.flags, MessageFlags.Ephemeral);
+      assert.match(removeReply.embeds[0].toJSON().title, /Dihapus/i);
+    } finally {
+      isolatedTmp.cleanup();
+    }
 
     // Gemini receives consistent creator/website/repo context for all 5 identity consistency questions
     const consistencyQuestions = [
@@ -502,5 +514,169 @@ describe('Midwave Global Bot Knowledge Memory System', () => {
       formatDiscordAiChunks('Website resmi: [website](https://midwave.ai.id/)'),
       ['Website resmi: [website](https://midwave.ai.id/)'],
     );
+  });
+
+  it('12. Knowledge bersifat prefix-only (!knowledge), tidak terdaftar sebagai slash command, dan data tetap utuh', async () => {
+    const commandHandler = new CommandHandler();
+    await commandHandler.loadCommands();
+    const slashNames = commandHandler.toJSON().map((c) => c.name);
+    assert.equal(slashNames.includes('knowledge'), false, '/knowledge must NOT be registered as a slash command');
+    for (const kept of ['ai', 'autorole', 'donate', 'game', 'help', 'invite', 'math', 'media', 'social', 'Generate QC']) {
+      assert.ok(slashNames.includes(kept), `Slash command ${kept} must remain registered`);
+    }
+
+    // Prefix parser supports all !knowledge subcommands
+    assert.deepEqual(parsePrefixInvocation('!knowledge categories'), {
+      commandName: 'knowledge',
+      subcommand: 'categories',
+      options: {},
+    });
+    assert.deepEqual(parsePrefixInvocation('!knowledge search category:bot_identity midwave'), {
+      commandName: 'knowledge',
+      subcommand: 'search',
+      options: { query: 'midwave', category: 'bot_identity' },
+    });
+    assert.deepEqual(parsePrefixInvocation('!knowledge add k-1 | bot_identity | Judul | Isi konten | tag1 | verified'), {
+      commandName: 'knowledge',
+      subcommand: 'add',
+      options: { id: 'k-1', category: 'bot_identity', title: 'Judul', content: 'Isi konten', tags: 'tag1', status: 'verified' },
+    });
+    assert.deepEqual(parsePrefixInvocation('!knowledge update k-1 | title=Judul Baru | content=Isi Baru'), {
+      commandName: 'knowledge',
+      subcommand: 'update',
+      options: { id: 'k-1', title: 'Judul Baru', content: 'Isi Baru' },
+    });
+    assert.deepEqual(parsePrefixInvocation('!knowledge remove k-1'), {
+      commandName: 'knowledge',
+      subcommand: 'remove',
+      options: { id: 'k-1' },
+    });
+    assert.deepEqual(parsePrefixInvocation('!knowledge reload'), {
+      commandName: 'knowledge',
+      subcommand: 'reload',
+      options: {},
+    });
+
+    // End-to-end execution via PrefixCommandHandler with temporary store
+    const tmp = createTempKnowledgeFile();
+    try {
+      const store = new KnowledgeStore({ filePath: tmp.filePath });
+      const sentMessages = [];
+      const prefixHandler = new PrefixCommandHandler({
+        commandHandler,
+        cooldowns: new CooldownManager(0),
+        prefix: '!',
+        context: {
+          knowledgeStore: store,
+          authorizedUserIds: ['999999999999999999'],
+        },
+      });
+
+      const makeMsg = (content, userId = '999999999999999999') => ({
+        id: 'm1',
+        content,
+        author: { id: userId, bot: false },
+        channel: {
+          send: async (p) => {
+            sentMessages.push(p);
+            return p;
+          },
+        },
+        async reply(p) {
+          sentMessages.push(p);
+          return p;
+        },
+      });
+
+      await prefixHandler.handle(makeMsg('!knowledge categories'));
+      assert.match(sentMessages.at(-1).embeds[0].toJSON().title, /Kategori Global Bot Knowledge/);
+
+      await prefixHandler.handle(makeMsg('!knowledge add pfx-test | bot_identity | Prefix Test | Konten prefix test'));
+      assert.match(sentMessages.at(-1).embeds[0].toJSON().title, /Ditambahkan/);
+
+      await prefixHandler.handle(makeMsg('!knowledge update pfx-test | title=Prefix Updated'));
+      assert.match(sentMessages.at(-1).embeds[0].toJSON().title, /Diperbarui/);
+
+      await prefixHandler.handle(makeMsg('!knowledge remove pfx-test'));
+      assert.match(sentMessages.at(-1).embeds[0].toJSON().title, /Dihapus/);
+
+      await prefixHandler.handle(makeMsg('!knowledge list', '111111111111111111'));
+      assert.match(sentMessages.at(-1).embeds[0].toJSON().description, /Akses ditolak/i);
+    } finally {
+      tmp.cleanup();
+    }
+  });
+
+  it('13. AI anti-hallucination: klarifikasi untuk pertanyaan ambigu, tanpa mengarang info KB yang kosong, dan pakai riwayat', async () => {
+    // System instruction enforces clarification & anti-hallucination
+    assert.match(MIDWAVE_AI_SYSTEM_INSTRUCTION, /ajukan pertanyaan klarifikasi yang spesifik/i);
+    assert.match(MIDWAVE_AI_SYSTEM_INSTRUCTION, /jangan mengarang nama, fakta, tanggal/i);
+    assert.match(MIDWAVE_AI_SYSTEM_INSTRUCTION, /Jangan terlalu sering meminta klarifikasi/i);
+
+    const captured = [];
+    const mockClient = () => ({
+      models: {
+        generateContent: async (params) => {
+          captured.push(params);
+          if (/Tidak ditemukan entri relevan/i.test(String(params.contents))) {
+            return { text: 'Saya belum memiliki informasi yang tersedia di Knowledge Base mengenai hal tersebut.' };
+          }
+          if (/Bagaimana cara mengaktifkannya/i.test(String(params.contents)) && !/Riwayat percakapan/i.test(String(params.contents))) {
+            return { text: 'Yang ingin kamu aktifkan fitur yang mana? Bisa sebutkan nama fiturnya?' };
+          }
+          return { text: 'Untuk mengaktifkan Auto Role, gunakan `/autorole action:add role:@Role`.' };
+        },
+      },
+    });
+
+    // 1. Ambiguous without context -> requests clarification
+    const ambig = await askGemini('Bagaimana cara mengaktifkannya?', {
+      apiKey: 'fake-key',
+      createClient: mockClient,
+    });
+    assert.match(ambig.text, /fitur yang mana/i);
+
+    // 2. Same question WITH conversation history -> resolves context directly
+    const withHistory = await askGemini('Bagaimana cara mengaktifkannya?', {
+      apiKey: 'fake-key',
+      history: [
+        { role: 'user', content: 'Saya ingin pakai fitur Auto Role di server.' },
+        { role: 'model', content: 'Fitur Auto Role memberi role otomatis saat member bergabung.' },
+      ],
+      createClient: mockClient,
+    });
+    assert.match(captured[1].contents, /Riwayat percakapan terakhir/);
+    assert.match(withHistory.text, /Auto Role/i);
+
+    // 3a. Midwave query with matching KB entry -> receives <global_bot_knowledge> as authoritative source
+    await askGemini('Siapa developer rahasia kedua dari Midwave?', {
+      apiKey: 'fake-key',
+      createClient: mockClient,
+    });
+    assert.match(captured[2].contents, /<global_bot_knowledge>/);
+    assert.match(captured[2].contents, /Hengky T/);
+
+    // 3b. Midwave internal query when Knowledge Base has NO matching entries -> injects explicit KB miss notice
+    const emptyTmp = createTempKnowledgeFile();
+    try {
+      const emptyStore = new KnowledgeStore({ filePath: emptyTmp.filePath });
+      emptyStore.data = { schemaVersion: 2, scope: 'global_bot_knowledge_only', entries: [] };
+      const missingKb = await askGemini('Kapan jadwal maintenance Midwave minggu depan?', {
+        apiKey: 'fake-key',
+        knowledgeStore: { load: () => ({ entries: [] }) },
+        createClient: mockClient,
+      });
+      assert.match(captured[3].contents, /Status Knowledge Base Midwave: Tidak ditemukan entri relevan/);
+      assert.match(missingKb.text, /belum memiliki informasi/i);
+    } finally {
+      emptyTmp.cleanup();
+    }
+
+    // 4. General clear question -> stays clean prompt string without unnecessary clarification
+    await askGemini('Jelaskan perbedaan let dan const di JavaScript.', {
+      apiKey: 'fake-key',
+      createClient: mockClient,
+    });
+    assert.equal(captured[4].contents, 'Jelaskan perbedaan let dan const di JavaScript.');
   });
 });

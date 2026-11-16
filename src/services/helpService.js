@@ -39,6 +39,34 @@ export const PREFIX_ONLY_METADATA = Object.freeze({
     description: 'Kirim bug report, saran fitur, atau masukan ke tim staff',
     visibility: 'public',
   }),
+  quiz: Object.freeze({
+    name: 'quiz',
+    category: 'mini_games',
+    usage: 'quiz [kategori] [kesulitan]',
+    description: 'Buka lobby Quiz Battle (2–10 pemain) dengan tombol interaktif',
+    visibility: 'public',
+  }),
+  lb: Object.freeze({
+    name: 'lb',
+    category: 'mini_games',
+    usage: 'lb [ttt|connect4|quiz|rps]',
+    description: 'Tampilkan leaderboard Game Center',
+    visibility: 'public',
+  }),
+  profile: Object.freeze({
+    name: 'profile',
+    category: 'mini_games',
+    usage: 'profile [@user]',
+    description: 'Lihat statistik Game Center pemain',
+    visibility: 'public',
+  }),
+  knowledge: Object.freeze({
+    name: 'knowledge',
+    category: 'ai_knowledge',
+    usage: 'knowledge <categories|search|add|update|list|remove|reload>',
+    description: 'Kelola Global Bot Knowledge Midwave (Admin)',
+    visibility: 'admin',
+  }),
 });
 
 const registeredPrefixCommandNames = new Set();

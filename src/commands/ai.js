@@ -12,7 +12,20 @@ import {
   formatDiscordAiChunks,
   sanitizeAiMentions,
 } from '../utils/aiFormatter.js';
-import { buildErrorEmbed } from '../utils/embeds.js';
+import { buildErrorEmbed, buildSuccessEmbed } from '../utils/embeds.js';
+import { sanitizeError } from '../utils/errorSanitizer.js';
+
+const AI_RESET_COMMAND_REGEX =
+  /^(?:(?:reset|clear)(?:\s+(?:chat|riwayat|konteks|history|percakapan))?|hapus\s+(?:riwayat|konteks|percakapan|chat))$/i;
+
+/**
+ * Checks whether the user explicitly asked to delete their temporary AI conversation context.
+ * @param {string} rawQuestion
+ * @returns {boolean}
+ */
+export function isAiConversationResetCommand(rawQuestion) {
+  return typeof rawQuestion === 'string' && AI_RESET_COMMAND_REGEX.test(rawQuestion.trim());
+}
 
 export const data = new SlashCommandBuilder()
   .setName('ai')
@@ -75,7 +88,7 @@ async function sendSafeAiError(interaction, message) {
       allowedMentions: { parse: [], repliedUser: false },
     });
   } catch (sendErr) {
-    console.error('[AI] Failed to deliver error embed:', sendErr?.code ?? sendErr?.message ?? 'unknown');
+    console.error('[AI] Failed to deliver error embed:', sanitizeError(sendErr));
   }
 }
 
@@ -108,14 +121,28 @@ export async function execute(interaction, context = {}) {
     return;
   }
 
-  await interaction.deferReply();
-
   const conversationManager = context.aiConversationManager ?? null;
   const scope = {
     guildId: interaction.guildId ?? null,
     channelId: interaction.channelId ?? null,
     userId: interaction.user?.id ?? null,
   };
+
+  if (isAiConversationResetCommand(question)) {
+    const removed = conversationManager?.clearConversation?.(scope) ?? false;
+    const message = removed
+      ? 'Riwayat percakapan sementara kamu di channel ini telah dihapus dari RAM. Pertanyaan berikutnya akan memulai sesi baru.'
+      : 'Tidak ada riwayat percakapan aktif untukmu di channel ini (riwayat sementara otomatis terhapus setelah 15 menit tidak aktif).';
+    await interaction.reply({
+      embeds: [buildSuccessEmbed(message, 'Riwayat Percakapan Dihapus')],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  // Questions, optional reply excerpts, and ephemeral 15m context are processed via Google Gemini (and Tavily for real-time web queries).
+  await interaction.deferReply();
+
   const history =
     context.geminiOptions?.history ??
     (conversationManager ? conversationManager.getHistory(scope) : undefined);
@@ -235,10 +262,7 @@ export async function execute(interaction, context = {}) {
       });
     }
   } catch (discordError) {
-    console.error(
-      '[AI] Discord failed to send response:',
-      discordError?.code ?? discordError?.message ?? 'unknown',
-    );
+    console.error('[AI] Discord failed to send response:', sanitizeError(discordError));
     await sendSafeAiError(
       interaction,
       'Gagal mengirim jawaban ke channel Discord. Pastikan bot memiliki izin mengirim pesan.',

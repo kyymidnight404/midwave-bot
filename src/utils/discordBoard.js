@@ -1,4 +1,5 @@
 import { COLORS } from '../config/colors.js';
+import { sanitizeError } from './errorSanitizer.js';
 import {
   GAME_METADATA,
   GAME_MODES,
@@ -38,7 +39,7 @@ export async function updatePublicMessage(client, messageRef, payload, fallbackC
     } catch (err) {
       // 10008 = Unknown Message (deleted); fall through to send a fresh board message.
       if (err?.code !== 10008 && err?.code !== 10003) {
-        console.warn('[DiscordBoard] Failed to edit public message:', err?.message ?? err);
+        console.warn('[DiscordBoard] Failed to edit public message:', sanitizeError(err));
       }
     }
   }
@@ -56,7 +57,7 @@ export async function updatePublicMessage(client, messageRef, payload, fallbackC
       return { channelId: sent.channelId, messageId: sent.id };
     }
   } catch (err) {
-    console.warn('[DiscordBoard] Failed to send fallback public message:', err?.message ?? err);
+    console.warn('[DiscordBoard] Failed to send fallback public message:', sanitizeError(err));
   }
 
   return null;
@@ -226,7 +227,7 @@ export function scheduleTriviaRoundTimer({
     } catch (err) {
       // Session might already be closed between timer fire and exclusive lock
       if (!String(err?.message).includes('berakhir')) {
-        console.error('[TriviaTimer] Error advancing round:', err);
+        console.error('[TriviaTimer] Error advancing round:', sanitizeError(err));
       }
     }
   }, durationMs);

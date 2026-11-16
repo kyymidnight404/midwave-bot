@@ -1,6 +1,7 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { COLORS } from '../config/colors.js';
 import { buildErrorEmbed, createBaseEmbed } from './embeds.js';
+import { sanitizeError } from './errorSanitizer.js';
 import {
   getReactionGif,
   OtakuGifsError,
@@ -90,7 +91,7 @@ export async function executeSocialAction(interaction, actionName, context = {})
         ? error.message
         : 'Gagal memuat GIF interaksi sosial. Silakan coba lagi nanti.';
     if (!(error instanceof OtakuGifsError)) {
-      console.error(`[Social:${config.command}] Failed:`, error instanceof Error ? error.message : error);
+      console.error(`[Social:${config.command}] Failed:`, sanitizeError(error));
     }
     await interaction.editReply({
       embeds: [buildErrorEmbed(friendlyMessage)],

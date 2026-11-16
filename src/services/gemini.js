@@ -1,6 +1,10 @@
 import dns from 'node:dns';
 import { GoogleGenAI } from '@google/genai';
-import { formatKnowledgeContext, retrieveRelevantKnowledge } from './knowledge/index.js';
+import {
+  formatKnowledgeContext,
+  isMidwaveKnowledgeQuery,
+  retrieveRelevantKnowledge,
+} from './knowledge/index.js';
 
 // Prefer IPv4 first on hosts/containers (e.g., Docker) where broken IPv6 routes stall fetch().
 try {
@@ -47,14 +51,17 @@ export const MIDWAVE_AI_SYSTEM_INSTRUCTION = [
   '- DILARANG mengakhiri jawaban dengan pertanyaan otomatis ala customer service seperti "Ada lagi yang ingin ditanyakan?", "Apakah ada yang bisa saya bantu lagi?", "Mau saya jelaskan lebih lanjut?", "Ada pertanyaan lain?", atau "Apakah Anda ingin contoh?". Ajukan pertanyaan balik hanya jika ada detail penting yang benar-benar kurang untuk menjawab permintaan.',
   '',
   'Kesadaran konteks & adaptasi bahasa:',
-  '- Jika tersedia riwayat percakapan terakhir atau konteks pesan yang direply, perlakukan percakapan sebagai satu kesatuan: pahami rujukan seperti "itu", "yang tadi", "fitur tersebut", dan "sebelumnya", jangan meminta pengguna mengulang detail yang sudah diberikan, dan saat pengguna meminta revisi cukup fokus memperbaiki bagian yang dikoreksi.',
+  '- Jika tersedia riwayat percakapan terakhir atau konteks pesan yang direply, perlakukan percakapan sebagai satu kesatuan: pahami rujukan seperti "itu", "yang tadi", "fitur tersebut", dan "sebelumnya", jangan meminta pengguna mengulang detail yang sudah diberikan atau pertanyaan yang sudah dijawab pengguna, dan saat pengguna meminta revisi cukup fokus memperbaiki bagian yang dikoreksi.',
   '- Jika tidak ada riwayat percakapan pada permintaan saat ini, jawab permintaan secara langsung tanpa mengarang konteks percakapan sebelumnya.',
   '- Adaptasikan bahasa dan nada mengikuti pengguna secara otomatis: gunakan Bahasa Indonesia jika pengguna berbahasa Indonesia, Bahasa Inggris jika pengguna berbahasa Inggris (atau bahasa lain sesuai permintaan); pakai gaya santai untuk obrolan ringan dan gaya analitis/profesional untuk bahasan teknis tanpa menerjemahkan istilah teknis populer secara paksa. Gunakan emoji secukupnya hanya bila wajar.',
   '',
-  'Akurasi, Markdown Discord & Global Bot Knowledge:',
-  '- Prioritaskan akurasi di atas jawaban yang terdengar meyakinkan: jangan mengarang fakta, API, library, endpoint, konfigurasi, angka, atau dokumentasi; nyatakan ketidakpastian secara jujur bila tidak tahu.',
+  'Anti-halusinasi, klarifikasi & akurasi Global Bot Knowledge:',
+  '- Prioritaskan akurasi di atas jawaban yang terdengar meyakinkan: jangan mengarang nama, fakta, tanggal, angka, API, library, endpoint, konfigurasi, fitur, perintah, atau dokumentasi; jangan menyajikan asumsi sebagai fakta; nyatakan ketidakpastian secara jujur bila tidak tahu atau informasi belum tersedia.',
+  '- Jika tidak memahami maksud pertanyaan, pertanyaan terlalu ambigu/kekurangan konteks (misalnya merujuk "itu", "fitur tersebut", atau "cara mengaktifkannya" tanpa penjelasan pada riwayat atau reply), atau kekurangan informasi untuk menjawab dengan pasti, JANGAN menebak — langsung ajukan pertanyaan klarifikasi yang spesifik dan singkat.',
+  '- Jangan terlalu sering meminta klarifikasi apabila pertanyaan sebenarnya sudah jelas dan lengkap atau konteksnya sudah cukup dari riwayat percakapan.',
+  '- Jika hanya sebagian informasi yang diketahui dengan pasti, jawab bagian yang terverifikasi tersebut dan jelaskan secara jujur bagian yang belum dapat dipastikan atau belum tersedia.',
   '- Gunakan Markdown Discord seperlunya (**bold** untuk poin kunci, `inline code`, code block, daftar/tabel hanya bila mempermudah pembacaan) dan jaga panjang pesan agar nyaman dibaca di Discord.',
-  '- Jika tersedia blok <global_bot_knowledge>, gunakan sebagai data referensi resmi tentang Midwave (identitas, pembuat, website/tautan, fitur, teknis, kebijakan); jangan mengarang fitur, tautan, atau informasi developer yang tidak ada atau berstatus pending_verification/unknown.',
+  '- Jika tersedia blok <global_bot_knowledge>, prioritaskan sebagai referensi resmi internal tentang Midwave (identitas, pembuat, website/tautan, fitur, teknis, kebijakan). Bedakan dengan tegas antara informasi dari Knowledge Base, pengetahuan umum, dan asumsi; jangan pernah mengklaim informasi yang tidak ditemukan di <global_bot_knowledge> sebagai dokumentasi atau fakta resmi Midwave, dan jangan mengarang fitur, tautan, atau informasi developer yang berstatus pending_verification/unknown.',
   '- Aturan format tautan resmi Midwave di Discord: selalu gunakan Markdown masked link [label](URL) dengan label singkat seperti [website](https://midwave.ai.id/), [github](https://github.com/kyymidnight404), dan [repository](https://github.com/kyymidnight404/midwave-bot). Jangan menampilkan URL dua kali (seperti [https://...](https://...) atau label: https://...), jangan meng-escape Markdown link dengan backslash, jangan memasukkan link ke dalam inline code atau code block, jangan mengubah URL asli, dan jangan membuat URL yang tidak ada di Global Bot Knowledge.',
 ].join('\n');
 
@@ -377,9 +384,11 @@ export function resolveGeminiTemperature(rawTemp) {
 }
 
 /**
- * Sends a prompt to Google Gemini and returns the generated answer text.
+ * Sends a prompt (along with optional ephemeral conversation history and reply/search context)
+ * to Google Gemini and returns the generated answer text.
  * Validates the 1500-character limit strictly against the user's question,
  * never against system instructions, conversation history, or search context.
+ * Real-time web search queries, when enabled, are routed beforehand through Tavily (`webSearch`).
  *
  * @param {string} rawQuestion
  * @param {{
@@ -420,6 +429,13 @@ export async function askGemini(rawQuestion, options = {}) {
         store: options.knowledgeStore,
       });
       knowledgeBlock = formatKnowledgeContext(relevantEntries);
+      if (!knowledgeBlock && isMidwaveKnowledgeQuery(userQuestion)) {
+        knowledgeBlock = [
+          '[Status Knowledge Base Midwave: Tidak ditemukan entri relevan di Global Bot Knowledge untuk pertanyaan terkait Midwave ini.',
+          'Jangan mengarang fakta internal, nama fitur, pembuat, konfigurasi, atau dokumentasi resmi Midwave di luar Knowledge Base.',
+          'Jika informasi tidak tersedia, nyatakan dengan jujur bahwa informasi belum tersedia atau ajukan pertanyaan klarifikasi yang spesifik.]',
+        ].join(' ');
+      }
     } catch {
       knowledgeBlock = '';
     }

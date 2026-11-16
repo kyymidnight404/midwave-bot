@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { BOT_PLAYER_ID, MATCH_STATUS, TIMEOUTS } from '../utils/constants.js';
+import { sanitizeError } from '../utils/errorSanitizer.js';
 
 /**
  * Manages active in-memory game sessions, TTL idle timeouts,
@@ -265,7 +266,7 @@ export class SessionManager {
       try {
         dispose();
       } catch (err) {
-        console.error(`[SessionManager] Disposer error on session ${sessionId}:`, err);
+        console.error(`[SessionManager] Disposer error on session ${sessionId}:`, sanitizeError(err));
       }
     }
 
@@ -309,7 +310,7 @@ export class SessionManager {
       const closed = this.endSession(session.sessionId, MATCH_STATUS.TIMEOUT);
       if (closed && typeof closed.onTimeout === 'function') {
         Promise.resolve(closed.onTimeout(closed)).catch((err) => {
-          console.error(`[SessionManager] Timeout callback error for ${closed.sessionId}:`, err);
+          console.error(`[SessionManager] Timeout callback error for ${closed.sessionId}:`, sanitizeError(err));
         });
       }
     }, session.idleTimeoutMs);

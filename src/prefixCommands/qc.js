@@ -1,5 +1,6 @@
 import { AttachmentBuilder, MessageFlags } from 'discord.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
+import { sanitizeError } from '../utils/errorSanitizer.js';
 import {
   QC_ATTACHMENT_NAME,
   renderQcPng,
@@ -91,7 +92,7 @@ export async function renderAndReplyQc(interaction, { rawText, timestamp, contex
     const attachment = new AttachmentBuilder(pngBuffer, { name: QC_ATTACHMENT_NAME });
     await interaction.editReply({ files: [attachment] });
   } catch (error) {
-    console.error('[QC] Render failed:', error instanceof Error ? error.message : error);
+    console.error('[QC] Render failed:', sanitizeError(error));
     await interaction.editReply({
       embeds: [buildErrorEmbed('Gagal merender gambar QC. Silakan coba lagi.')],
     });

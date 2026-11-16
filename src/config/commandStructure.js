@@ -7,7 +7,6 @@ import {
   TTT_POSITIONS,
 } from '../utils/constants.js';
 import { AI_MAX_QUESTION_LENGTH } from '../services/gemini.js';
-import { KNOWLEDGE_CATEGORIES } from '../services/knowledge/index.js';
 import {
   LYRICS_MAX_ARTIST_LENGTH,
   LYRICS_MAX_QUERY_LENGTH,
@@ -16,17 +15,6 @@ import { SOCIAL_INTERACTIONS } from '../services/otakuGifsService.js';
 import { BRAT_MAX_LENGTH } from '../utils/bratGenerator.js';
 import { MATH_MAX_LENGTH } from '../utils/mathEvaluator.js';
 import { QC_MAX_LENGTH } from '../utils/qcGenerator.js';
-
-const KNOWLEDGE_CATEGORY_CHOICES = Object.entries(KNOWLEDGE_CATEGORIES).map(([value, name]) => ({
-  name,
-  value,
-}));
-
-const KNOWLEDGE_STATUS_CHOICES = [
-  { name: 'Verified', value: 'verified' },
-  { name: 'Pending Verification', value: 'pending_verification' },
-  { name: 'Unknown', value: 'unknown' },
-];
 
 const GAME_CHOICES = [
   { name: 'Coin Flip', value: GAME_TYPES.COINFLIP },
@@ -122,85 +110,6 @@ export const commandStructure = {
           type: 'string',
           required: true,
           maxLength: AI_MAX_QUESTION_LENGTH,
-        },
-      ],
-    },
-    {
-      name: 'knowledge',
-      description: 'Kelola Global Bot Knowledge Midwave (khusus creator/admin terotorisasi)',
-      enabled: true,
-      type: 'choice',
-      handler: 'knowledge',
-      defaultMemberPermissions: PermissionFlagsBits.Administrator,
-      help: {
-        category: 'ai_knowledge',
-        visibility: 'admin',
-        usage: 'knowledge action:<categories|search|add|update|list|remove>',
-        description: 'Kelola knowledge base Midwave (Admin)',
-      },
-      options: [
-        {
-          name: 'action',
-          description: 'Pilih aksi Global Bot Knowledge',
-          type: 'string',
-          required: true,
-          choices: [
-            { name: 'categories — Lihat daftar kategori', value: 'categories' },
-            { name: 'search — Cari entri knowledge', value: 'search' },
-            { name: 'add — Tambah entri knowledge baru', value: 'add' },
-            { name: 'update — Perbarui entri knowledge', value: 'update' },
-            { name: 'list — Lihat ringkasan entri', value: 'list' },
-            { name: 'remove — Hapus entri knowledge', value: 'remove' },
-          ],
-        },
-        {
-          name: 'id',
-          description: 'ID unik entri (wajib untuk add/update/remove)',
-          type: 'string',
-          required: false,
-          maxLength: 64,
-        },
-        {
-          name: 'category',
-          description: 'Kategori Global Knowledge (wajib untuk add, opsional untuk search/list/update)',
-          type: 'string',
-          required: false,
-          choices: KNOWLEDGE_CATEGORY_CHOICES,
-        },
-        {
-          name: 'title',
-          description: 'Judul entri (wajib untuk add, opsional untuk update)',
-          type: 'string',
-          required: false,
-          maxLength: 140,
-        },
-        {
-          name: 'content',
-          description: 'Isi pengetahuan bot (wajib untuk add, opsional untuk update)',
-          type: 'string',
-          required: false,
-          maxLength: 1500,
-        },
-        {
-          name: 'query',
-          description: 'Kata kunci pencarian (untuk search)',
-          type: 'string',
-          required: false,
-          maxLength: 150,
-        },
-        {
-          name: 'tags',
-          description: 'Tag dipisah koma (opsional untuk add/update)',
-          type: 'string',
-          required: false,
-          maxLength: 200,
-        },
-        {
-          name: 'status',
-          description: 'Status verifikasi (opsional untuk add/update)',
-          type: 'string',
-          required: false,
-          choices: KNOWLEDGE_STATUS_CHOICES,
         },
       ],
     },

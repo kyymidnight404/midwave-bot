@@ -1,18 +1,25 @@
 import { PermissionFlagsBits } from 'discord.js';
 import { DEFAULT_HANDLER_REGISTRY } from '../config/commandRegistry.js';
 import bratPrefixCommand from '../prefixCommands/brat.js';
+import connect4CenterCommand from '../commands/connect4.js';
 import downloadPrefixCommand from '../prefixCommands/download.js';
 import feedbackPrefixCommand from '../prefixCommands/feedback.js';
 import igfCommand from '../prefixCommands/igf.js';
+import leaderboardCenterCommand from '../commands/leaderboard.js';
 import lyricsPrefixCommand from '../prefixCommands/lyrics.js';
+import profileCenterCommand from '../commands/profile.js';
 import qcPrefixCommand from '../prefixCommands/qc.js';
+import quizCenterCommand from '../commands/quiz.js';
+import rpsCenterCommand from '../commands/rps.js';
 import sayPrefixCommand, { SAY_COOLDOWN_MS } from '../prefixCommands/say.js';
+import tttCenterCommand from '../commands/ttt.js';
 import { DOWNLOAD_COOLDOWN_MS } from '../services/downloader.js';
 import { AI_COOLDOWN_MS } from '../services/gemini.js';
 import { LYRICS_COOLDOWN_MS } from '../services/lyricsService.js';
 import { SOCIAL_COOLDOWN_MS, SOCIAL_INTERACTIONS } from '../services/otakuGifsService.js';
 import { GAME_MODES, GAME_TYPES } from '../utils/constants.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
+import { sanitizeError } from '../utils/errorSanitizer.js';
 import { executeGameCommand } from '../utils/gameDispatcher.js';
 import { parsePrefixInvocation, resolvePrefix } from '../utils/prefixParser.js';
 import { executeSocialAction } from '../utils/socialCommand.js';
@@ -25,12 +32,16 @@ const PREFIX_EXECUTORS = new Map([
   [qcPrefixCommand.name, qcPrefixCommand],
   [sayPrefixCommand.name, sayPrefixCommand],
   [feedbackPrefixCommand.name, feedbackPrefixCommand],
+  [quizCenterCommand.name, quizCenterCommand],
+  [leaderboardCenterCommand.name, leaderboardCenterCommand],
+  [profileCenterCommand.name, profileCenterCommand],
   ['ai', { execute: DEFAULT_HANDLER_REGISTRY.ai }],
   ['math', { execute: DEFAULT_HANDLER_REGISTRY.math }],
   ['games', { execute: DEFAULT_HANDLER_REGISTRY.games }],
   ['help', { execute: DEFAULT_HANDLER_REGISTRY.help }],
   ['invite', { execute: DEFAULT_HANDLER_REGISTRY.invite }],
   ['game', { execute: DEFAULT_HANDLER_REGISTRY.game }],
+  ['knowledge', { execute: DEFAULT_HANDLER_REGISTRY.knowledge }],
   [lyricsPrefixCommand.name, lyricsPrefixCommand],
   ...Object.keys(SOCIAL_INTERACTIONS).map((cmd) => [
     cmd,
@@ -90,7 +101,28 @@ const COMMANDS_REQUIRING_ATTACH_FILES = new Set([
   GAME_TYPES.CONNECT4,
 ]);
 
-function requiresAttachFiles(commandName, subcommand) {
+const GAME_CENTER_CHALLENGE_EXECUTORS = new Map([
+  [GAME_TYPES.TICTACTOE, tttCenterCommand],
+  [GAME_TYPES.CONNECT4, connect4CenterCommand],
+  [GAME_TYPES.RPS, rpsCenterCommand],
+]);
+
+function isGameCenterDirectChallenge(content, prefix, parsed) {
+  if (
+    parsed?.subcommand !== 'challenge' ||
+    !GAME_CENTER_CHALLENGE_EXECUTORS.has(parsed.commandName)
+  ) {
+    return false;
+  }
+  const tokens = content.slice(prefix.length).trim().split(/\s+/);
+  const firstArg = tokens[1]?.toLowerCase() ?? '';
+  return firstArg !== 'challenge';
+}
+
+function requiresAttachFiles(commandName, subcommand, isGameCenterChallenge = false) {
+  if (isGameCenterChallenge) {
+    return false;
+  }
   if (commandName === 'brat' || commandName === 'download' || commandName === 'igf' || commandName === 'qc' || commandName === 'games' || commandName === 'help') {
     return true;
   }
@@ -181,7 +213,7 @@ export class PrefixCommandHandler {
    * @param {string | null} subcommand
    * @returns {Promise<{ allowed: boolean, canManageMessages: boolean, canEmbedLinks: boolean }>}
    */
-  async _checkPermissions(message, commandName, subcommand) {
+  async _checkPermissions(message, commandName, subcommand, isGameCenterChallenge = false) {
     if (!message.guild || typeof message.channel?.permissionsFor !== 'function') {
       return { allowed: true, canManageMessages: false, canEmbedLinks: true };
     }
@@ -211,7 +243,7 @@ export class PrefixCommandHandler {
       return { allowed: false, canManageMessages: false, canEmbedLinks: false };
     }
 
-    if (requiresAttachFiles(commandName, subcommand) && !perms.has(PermissionFlagsBits.AttachFiles)) {
+    if (requiresAttachFiles(commandName, subcommand, isGameCenterChallenge) && !perms.has(PermissionFlagsBits.AttachFiles)) {
       await this._safeReplyError(
         message,
         `Bot memerlukan izin **Attach Files** di channel ini untuk menjalankan \`${this.prefix}${commandName}\`.`,
@@ -252,12 +284,15 @@ export class PrefixCommandHandler {
       return;
     }
 
-    const command = PREFIX_EXECUTORS.get(parsed.commandName) ?? this.commandHandler.get(parsed.commandName);
+    const isGcChallenge = isGameCenterDirectChallenge(message.content, this.prefix, parsed);
+    const command = isGcChallenge
+      ? GAME_CENTER_CHALLENGE_EXECUTORS.get(parsed.commandName)
+      : (PREFIX_EXECUTORS.get(parsed.commandName) ?? this.commandHandler.get(parsed.commandName));
     if (!command) {
       return;
     }
 
-    const permCheck = await this._checkPermissions(message, parsed.commandName, parsed.subcommand);
+    const permCheck = await this._checkPermissions(message, parsed.commandName, parsed.subcommand, isGcChallenge);
     if (!permCheck.allowed) {
       return;
     }
@@ -336,7 +371,10 @@ export class PrefixCommandHandler {
     try {
       await command.execute(adapter, this.context);
     } catch (err) {
-      this.logger.error(`[PrefixCommandHandler] Error executing ${this.prefix}${parsed.commandName}:`, err);
+      this.logger.error(
+        `[PrefixCommandHandler] Error executing ${this.prefix}${parsed.commandName}:`,
+        sanitizeError(err),
+      );
       const errEmbed = buildErrorEmbed('Terjadi gangguan saat memproses perintah ini. Silakan coba lagi.');
       try {
         if (adapter.deferred) {

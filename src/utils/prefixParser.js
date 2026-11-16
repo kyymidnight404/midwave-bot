@@ -46,6 +46,11 @@ const COMMAND_ALIASES = Object.freeze({
   ttt: 'tictactoe',
   connect4: 'connect4',
   c4: 'connect4',
+  quiz: 'quiz',
+  lb: 'lb',
+  leaderboard: 'lb',
+  profile: 'profile',
+  knowledge: 'knowledge',
 });
 
 const RPS_CHOICE_MAP = Object.freeze({
@@ -262,6 +267,168 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
   const rawRest = (tokenMatch[2] ?? '').trim();
   const args = rawRest ? rawRest.split(/\s+/) : [];
   const firstLower = args[0]?.toLowerCase() ?? '';
+
+  if (commandName === 'knowledge') {
+    const sub = firstLower;
+    const bodyAfterSub = rawRest.slice(args[0]?.length ?? 0).trim();
+    const usage =
+      `Format \`${prefix}knowledge\`: \`categories\`, \`list [kategori]\`, \`search [category:<kat>] <kata kunci>\`, ` +
+      `\`add <id> | <kategori> | <judul> | <isi> [| <tags>] [| <status>]\`, ` +
+      `\`update <id> | title=<...> | content=<...>\`, \`remove <id>\`, \`reload\`.`;
+
+    if (!sub) {
+      return { commandName: 'knowledge', subcommand: null, options: {}, error: usage };
+    }
+    if (sub === 'categories' || sub === 'reload') {
+      return { commandName: 'knowledge', subcommand: sub, options: {} };
+    }
+    if (sub === 'list') {
+      const category = args[1]?.trim() || null;
+      return { commandName: 'knowledge', subcommand: 'list', options: category ? { category } : {} };
+    }
+    if (sub === 'search') {
+      let category = null;
+      const queryTokens = [];
+      for (const token of args.slice(1)) {
+        if (/^category:/i.test(token)) {
+          category = token.slice('category:'.length).trim() || null;
+        } else {
+          queryTokens.push(token);
+        }
+      }
+      return {
+        commandName: 'knowledge',
+        subcommand: 'search',
+        options: { query: queryTokens.join(' '), ...(category ? { category } : {}) },
+      };
+    }
+    if (sub === 'remove' || sub === 'delete') {
+      const id = args[1]?.trim() ?? '';
+      if (!id || args.length > 2) {
+        return {
+          commandName: 'knowledge',
+          subcommand: sub,
+          options: {},
+          error: `Gunakan \`${prefix}knowledge ${sub} <id>\`.`,
+        };
+      }
+      return { commandName: 'knowledge', subcommand: sub, options: { id } };
+    }
+    if (sub === 'add') {
+      const parts = bodyAfterSub.split('|').map((s) => s.trim());
+      if (parts.length < 4 || !parts[0] || !parts[1] || !parts[2] || !parts[3]) {
+        return {
+          commandName: 'knowledge',
+          subcommand: 'add',
+          options: {},
+          error: `Gunakan \`${prefix}knowledge add <id> | <kategori> | <judul> | <isi> [| <tags>] [| <status>]\`.`,
+        };
+      }
+      const [id, category, title, content, tags, status] = parts;
+      return {
+        commandName: 'knowledge',
+        subcommand: 'add',
+        options: {
+          id,
+          category,
+          title,
+          content,
+          ...(tags ? { tags } : {}),
+          ...(status ? { status } : {}),
+        },
+      };
+    }
+    if (sub === 'update') {
+      const parts = bodyAfterSub.split('|').map((s) => s.trim());
+      const id = parts[0] || '';
+      if (!id || parts.length < 2) {
+        return {
+          commandName: 'knowledge',
+          subcommand: 'update',
+          options: {},
+          error: `Gunakan \`${prefix}knowledge update <id> | title=<...> | content=<...> | category=<...> | tags=<...> | status=<...>\`.`,
+        };
+      }
+      const restParts = parts.slice(1);
+      const options = { id };
+      const hasKeyValue = restParts.some((p) => /^(title|content|category|tags|status)=/i.test(p));
+      if (hasKeyValue) {
+        for (const p of restParts) {
+          const eqIdx = p.indexOf('=');
+          if (eqIdx > 0) {
+            const k = p.slice(0, eqIdx).trim().toLowerCase();
+            const v = p.slice(eqIdx + 1).trim();
+            if (['title', 'content', 'category', 'tags', 'status'].includes(k) && v) {
+              options[k] = v;
+            }
+          }
+        }
+      } else {
+        const keys = ['title', 'content', 'category', 'tags', 'status'];
+        restParts.forEach((val, idx) => {
+          if (idx < keys.length && val && val !== '-') {
+            options[keys[idx]] = val;
+          }
+        });
+      }
+      return { commandName: 'knowledge', subcommand: 'update', options };
+    }
+
+    return { commandName: 'knowledge', subcommand: null, options: {}, error: usage };
+  }
+
+  if (commandName === 'quiz') {
+    let category = 'all';
+    let difficulty = 'all';
+
+    for (const token of args) {
+      const lower = token.toLowerCase();
+      if (lower === 'all') continue;
+      if (TRIVIA_CATEGORY_SET.has(lower)) {
+        category = lower;
+      } else if (DIFFICULTY_SET.has(lower)) {
+        difficulty = lower;
+      } else {
+        return {
+          commandName: 'quiz',
+          subcommand: null,
+          options: {},
+          error: `Argumen \`${token}\` tidak dikenali. Contoh: \`${prefix}quiz\`, \`${prefix}quiz science\`, atau \`${prefix}quiz science hard\`.`,
+        };
+      }
+    }
+
+    return { commandName: 'quiz', subcommand: null, options: { category, difficulty } };
+  }
+
+  if (commandName === 'lb') {
+    const rawFilter = args[0]?.toLowerCase() ?? 'all';
+    if (args.length > 1) {
+      return {
+        commandName: 'lb',
+        subcommand: null,
+        options: {},
+        error: `Gunakan \`${prefix}lb\`, \`${prefix}lb ttt\`, \`${prefix}lb connect4\`, \`${prefix}lb quiz\`, atau \`${prefix}lb rps\`.`,
+      };
+    }
+    return { commandName: 'lb', subcommand: null, options: { game: rawFilter } };
+  }
+
+  if (commandName === 'profile') {
+    if (args.length === 0) {
+      return { commandName: 'profile', subcommand: null, options: {} };
+    }
+    const targetId = extractMentionOrId(args[0]);
+    if (!targetId || args.length > 1) {
+      return {
+        commandName: 'profile',
+        subcommand: null,
+        options: {},
+        error: `Mention pengguna yang valid. Contoh: \`${prefix}profile\` atau \`${prefix}profile @user\`.`,
+      };
+    }
+    return { commandName: 'profile', subcommand: null, options: { userId: targetId } };
+  }
 
   if (commandName === 'games' || commandName === 'help') {
     return { commandName, subcommand: null, options: {} };

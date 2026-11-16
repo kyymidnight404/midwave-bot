@@ -13,5 +13,6 @@ export {
 export {
   detectRelevantKnowledgeCategories,
   formatKnowledgeContext,
+  isMidwaveKnowledgeQuery,
   retrieveRelevantKnowledge,
 } from './retriever.js';

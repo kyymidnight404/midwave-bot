@@ -1,4 +1,4 @@
-import { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
+import { MessageFlags } from 'discord.js';
 import {
   KNOWLEDGE_CATEGORIES,
   KnowledgeServiceError,
@@ -13,118 +13,9 @@ import {
   createBaseEmbed,
 } from '../utils/embeds.js';
 
-const CATEGORY_CHOICES = Object.entries(KNOWLEDGE_CATEGORIES).map(([value, name]) => ({
-  name,
-  value,
-}));
-
-export const data = new SlashCommandBuilder()
-  .setName('knowledge')
-  .setDescription('Kelola Global Bot Knowledge Midwave (khusus creator/admin terotorisasi)')
-  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-  .addSubcommand((sub) =>
-    sub.setName('categories').setDescription('Lihat daftar kategori Global Bot Knowledge'),
-  )
-  .addSubcommand((sub) =>
-    sub
-      .setName('search')
-      .setDescription('Cari entri pada Global Bot Knowledge')
-      .addStringOption((opt) =>
-        opt.setName('query').setDescription('Kata kunci pencarian').setRequired(false).setMaxLength(150),
-      )
-      .addStringOption((opt) =>
-        opt
-          .setName('category')
-          .setDescription('Filter kategori')
-          .setRequired(false)
-          .addChoices(...CATEGORY_CHOICES),
-      ),
-  )
-  .addSubcommand((sub) =>
-    sub
-      .setName('add')
-      .setDescription('Tambah entri Global Bot Knowledge baru (creator/admin only)')
-      .addStringOption((opt) =>
-        opt.setName('id').setDescription('ID unik entri (contoh: links-docs-v2)').setRequired(true).setMaxLength(64),
-      )
-      .addStringOption((opt) =>
-        opt
-          .setName('category')
-          .setDescription('Kategori Global Knowledge')
-          .setRequired(true)
-          .addChoices(...CATEGORY_CHOICES),
-      )
-      .addStringOption((opt) =>
-        opt.setName('title').setDescription('Judul entri').setRequired(true).setMaxLength(140),
-      )
-      .addStringOption((opt) =>
-        opt.setName('content').setDescription('Isi pengetahuan bot').setRequired(true).setMaxLength(1500),
-      )
-      .addStringOption((opt) =>
-        opt.setName('tags').setDescription('Tag dipisah koma (opsional)').setRequired(false).setMaxLength(200),
-      )
-      .addStringOption((opt) =>
-        opt
-          .setName('status')
-          .setDescription('Status verifikasi')
-          .setRequired(false)
-          .addChoices(
-            { name: 'Verified', value: 'verified' },
-            { name: 'Pending Verification', value: 'pending_verification' },
-            { name: 'Unknown', value: 'unknown' },
-          ),
-      ),
-  )
-  .addSubcommand((sub) =>
-    sub
-      .setName('update')
-      .setDescription('Perbarui entri Global Bot Knowledge (creator/admin only)')
-      .addStringOption((opt) =>
-        opt.setName('id').setDescription('ID entri yang akan diperbarui').setRequired(true).setMaxLength(64),
-      )
-      .addStringOption((opt) =>
-        opt.setName('title').setDescription('Judul baru (opsional)').setRequired(false).setMaxLength(140),
-      )
-      .addStringOption((opt) =>
-        opt.setName('content').setDescription('Isi baru (opsional)').setRequired(false).setMaxLength(1500),
-      )
-      .addStringOption((opt) =>
-        opt
-          .setName('category')
-          .setDescription('Kategori baru (opsional)')
-          .setRequired(false)
-          .addChoices(...CATEGORY_CHOICES),
-      )
-      .addStringOption((opt) =>
-        opt.setName('tags').setDescription('Tag baru dipisah koma (opsional)').setRequired(false).setMaxLength(200),
-      )
-      .addStringOption((opt) =>
-        opt
-          .setName('status')
-          .setDescription('Status verifikasi baru (opsional)')
-          .setRequired(false)
-          .addChoices(
-            { name: 'Verified', value: 'verified' },
-            { name: 'Pending Verification', value: 'pending_verification' },
-            { name: 'Unknown', value: 'unknown' },
-          ),
-      ),
-  )
-  .addSubcommand((sub) =>
-    sub
-      .setName('delete')
-      .setDescription('Hapus entri Global Bot Knowledge (creator/admin only)')
-      .addStringOption((opt) =>
-        opt.setName('id').setDescription('ID entri yang akan dihapus').setRequired(true).setMaxLength(64),
-      ),
-  )
-  .addSubcommand((sub) =>
-    sub.setName('reload').setDescription('Muat ulang Global Bot Knowledge dari disk (creator/admin only)'),
-  );
-
 /**
- * Executes `/knowledge` subcommands cleanly with strict Discord User ID authorization
- * for mutating actions.
+ * Executes `!knowledge` prefix subcommands cleanly with strict Discord User ID authorization
+ * for all Global Bot Knowledge management operations.
  *
  * @param {import('discord.js').ChatInputCommandInteraction} interaction
  * @param {{
@@ -345,7 +236,7 @@ export async function execute(interaction, context = {}) {
     }
 
     await interaction.reply({
-      embeds: [buildErrorEmbed(`Subcommand \`/knowledge ${sub}\` tidak dikenali.`)],
+      embeds: [buildErrorEmbed(`Subcommand \`!knowledge ${sub}\` tidak dikenali.`)],
       flags: MessageFlags.Ephemeral,
     });
   } catch (error) {
@@ -360,4 +251,4 @@ export async function execute(interaction, context = {}) {
   }
 }
 
-export default { data, execute };
+export default { name: 'knowledge', execute };

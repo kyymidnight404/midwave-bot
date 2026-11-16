@@ -5,6 +5,7 @@ import {
   validateLyricsInput,
 } from '../services/lyricsService.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
+import { sanitizeError } from '../utils/errorSanitizer.js';
 import {
   LYRICS_PAGINATION_TIMEOUT_MS,
   buildLyricsEmbed,
@@ -44,7 +45,7 @@ async function sendSafeLyricsError(interaction, message) {
     });
   } catch (sendErr) {
     if (!IGNORED_DISCORD_ERROR_CODES.has(sendErr?.code)) {
-      console.error('[Lyrics] Failed to deliver error embed:', sendErr?.code ?? sendErr?.message ?? 'unknown');
+      console.error('[Lyrics] Failed to deliver error embed:', sanitizeError(sendErr));
     }
   }
 }
@@ -140,7 +141,7 @@ export async function execute(interaction, context = {}) {
     replyMessage = await interaction.editReply(buildView(currentPage));
   } catch (discordError) {
     if (!IGNORED_DISCORD_ERROR_CODES.has(discordError?.code)) {
-      console.error('[Lyrics] Failed to send lyrics embed:', discordError?.code ?? discordError?.message ?? 'unknown');
+      console.error('[Lyrics] Failed to send lyrics embed:', sanitizeError(discordError));
     }
     return;
   }
@@ -176,7 +177,7 @@ export async function execute(interaction, context = {}) {
       await btnInteraction.update(buildView(currentPage));
     } catch (btnErr) {
       if (!IGNORED_DISCORD_ERROR_CODES.has(btnErr?.code)) {
-        console.error('[Lyrics] Pagination button error:', btnErr?.code ?? btnErr?.message ?? 'unknown');
+        console.error('[Lyrics] Pagination button error:', sanitizeError(btnErr));
       }
     }
   });
@@ -186,7 +187,7 @@ export async function execute(interaction, context = {}) {
       await interaction.editReply(buildView(currentPage, true));
     } catch (endErr) {
       if (!IGNORED_DISCORD_ERROR_CODES.has(endErr?.code)) {
-        console.warn('[Lyrics] Failed to disable pagination buttons on timeout:', endErr?.code ?? endErr?.message ?? 'unknown');
+        console.warn('[Lyrics] Failed to disable pagination buttons on timeout:', sanitizeError(endErr));
       }
     }
   });

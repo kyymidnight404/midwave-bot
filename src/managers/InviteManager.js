@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { TIMEOUTS } from '../utils/constants.js';
+import { sanitizeError } from '../utils/errorSanitizer.js';
 
 /**
  * Manages temporary multiplayer game invitations in RAM with automatic TTL expiration.
@@ -79,7 +80,7 @@ export class InviteManager {
         const expired = this._deleteInvite(inviteId);
         if (expired && typeof expired.onExpire === 'function') {
           Promise.resolve(expired.onExpire(expired)).catch((err) => {
-            console.error(`[InviteManager] Expiration callback error for ${inviteId}:`, err);
+            console.error(`[InviteManager] Expiration callback error for ${inviteId}:`, sanitizeError(err));
           });
         }
       }, ttlMs);

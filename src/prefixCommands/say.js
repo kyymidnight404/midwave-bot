@@ -1,6 +1,7 @@
 import { MessageFlags } from 'discord.js';
 import { DISCORD_MAX_MESSAGE_LENGTH } from '../utils/aiFormatter.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
+import { sanitizeError } from '../utils/errorSanitizer.js';
 
 export const SAY_MAX_LENGTH = DISCORD_MAX_MESSAGE_LENGTH;
 export const SAY_COOLDOWN_MS = 3_000;
@@ -187,7 +188,7 @@ export async function execute(adapter, context = {}) {
     }
   } catch (error) {
     const code = error?.code ?? error?.status ?? 'unknown';
-    logger.error?.(`[Say] Failed to send message (${code}):`, error instanceof Error ? error.message : error);
+    logger.error?.(`[Say] Failed to send message (${code}):`, sanitizeError(error));
     await sendSafeSayError(adapter, mapDiscordSendErrorMessage(error));
   }
 }

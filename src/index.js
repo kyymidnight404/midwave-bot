@@ -10,6 +10,7 @@ import { InviteManager } from './managers/InviteManager.js';
 import { GameManager } from './managers/GameManager.js';
 import { AiConversationManager } from './managers/AiConversationManager.js';
 import { CooldownManager } from './utils/cooldown.js';
+import { sanitizeError } from './utils/errorSanitizer.js';
 import { GAME_TYPES } from './utils/constants.js';
 import { resolvePrefix } from './utils/prefixParser.js';
 import { CoinFlipGame } from './games/CoinFlipGame.js';
@@ -24,6 +25,7 @@ import readyEvent from './events/ready.js';
 import interactionCreateEvent from './events/interactionCreate.js';
 import messageCreateEvent from './events/messageCreate.js';
 import guildMemberAddEvent from './events/guildMemberAdd.js';
+import { clearAllGameCenterTimers } from './games/services/sessionService.js';
 import { prisma as defaultPrisma } from './services/prisma.js';
 
 /**
@@ -115,7 +117,7 @@ export async function createBotApp(options = {}) {
   }
 
   client.on('error', (err) => {
-    console.error('[Midwave] Discord client error:', err);
+    console.error('[Midwave] Discord client error:', sanitizeError(err));
   });
 
   return {
@@ -136,6 +138,7 @@ export async function createBotApp(options = {}) {
       inviteManager.clearAll();
       aiConversationManager.clear();
       cooldowns.clear();
+      clearAllGameCenterTimers();
       if (!options.prisma) defaultPrisma.$disconnect().catch(() => {});
       client.destroy();
     },
@@ -167,11 +170,11 @@ export async function startBot() {
   process.once('SIGTERM', () => handleSignal('SIGTERM'));
 
   process.on('unhandledRejection', (reason) => {
-    console.error('[Midwave] Unhandled promise rejection:', reason);
+    console.error('[Midwave] Unhandled promise rejection:', sanitizeError(reason));
   });
 
   process.on('uncaughtException', (err) => {
-    console.error('[Midwave] Uncaught exception:', err);
+    console.error('[Midwave] Uncaught exception:', sanitizeError(err));
   });
 
   await app.client.login(token);
@@ -183,7 +186,7 @@ const isEntryPoint =
 
 if (isEntryPoint) {
   startBot().catch((err) => {
-    console.error('[Midwave] Fatal startup error:', err.message);
+    console.error('[Midwave] Fatal startup error:', sanitizeError(err));
     process.exit(1);
   });
 }

@@ -6,6 +6,7 @@ import {
 
 export const DEFAULT_AI_CONVERSATION_TTL_MS = 15 * 60 * 1000;
 export const DEFAULT_AI_MAX_CONVERSATIONS = 500;
+export const DEFAULT_AI_CLEANUP_INTERVAL_MS = 60 * 1000;
 
 /**
  * Ephemeral, RAM-only short-term conversation context store for `/ai` and `!ai`.
@@ -27,15 +28,47 @@ export class AiConversationManager {
     maxMessages = AI_MAX_HISTORY_MESSAGES,
     maxChars = AI_MAX_HISTORY_CHARS,
     maxConversations = DEFAULT_AI_MAX_CONVERSATIONS,
+    cleanupIntervalMs = DEFAULT_AI_CLEANUP_INTERVAL_MS,
     nowFn = () => Date.now(),
   } = {}) {
     this.ttlMs = Math.max(0, ttlMs);
     this.maxMessages = Math.max(2, maxMessages);
     this.maxChars = Math.max(200, maxChars);
     this.maxConversations = Math.max(10, maxConversations);
+    this.cleanupIntervalMs = Math.max(0, cleanupIntervalMs);
     this.nowFn = nowFn;
     /** @type {Map<string, { messages: Array<{ role: string, content: string }>, updatedAt: number }>} */
     this.conversations = new Map();
+    /** @type {ReturnType<typeof setInterval> | null} */
+    this.cleanupTimer = null;
+  }
+
+  /**
+   * Starts a non-blocking periodic cleanup sweep while conversations are active in RAM.
+   */
+  ensureCleanupTimer() {
+    if (
+      this.cleanupIntervalMs <= 0 ||
+      this.ttlMs <= 0 ||
+      this.cleanupTimer ||
+      this.conversations.size === 0
+    ) {
+      return;
+    }
+    this.cleanupTimer = setInterval(() => {
+      this.pruneExpired();
+    }, this.cleanupIntervalMs);
+    this.cleanupTimer.unref?.();
+  }
+
+  /**
+   * Stops the periodic cleanup sweep when no conversations remain or on shutdown.
+   */
+  stopCleanupTimer() {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
   }
 
   /**
@@ -57,6 +90,7 @@ export class AiConversationManager {
    */
   pruneExpired() {
     if (this.ttlMs <= 0 || this.conversations.size === 0) {
+      this.stopCleanupTimer();
       return;
     }
     const now = this.nowFn();
@@ -64,6 +98,9 @@ export class AiConversationManager {
       if (now - entry.updatedAt >= this.ttlMs) {
         this.conversations.delete(key);
       }
+    }
+    if (this.conversations.size === 0) {
+      this.stopCleanupTimer();
     }
   }
 
@@ -135,17 +172,24 @@ export class AiConversationManager {
       messages: trimmed,
       updatedAt: this.nowFn(),
     });
+    this.ensureCleanupTimer();
   }
 
   /**
    * Clears history for a single conversation scope.
    * @param {{ guildId?: string | null, channelId?: string | null, userId?: string | null }} scope
+   * @returns {boolean} True if an active conversation entry was removed.
    */
   clearConversation(scope = {}) {
     const key = this.buildScopeKey(scope);
-    if (key) {
-      this.conversations.delete(key);
+    if (!key) {
+      return false;
     }
+    const removed = this.conversations.delete(key);
+    if (this.conversations.size === 0) {
+      this.stopCleanupTimer();
+    }
+    return removed;
   }
 
   /**
@@ -153,6 +197,7 @@ export class AiConversationManager {
    */
   clear() {
     this.conversations.clear();
+    this.stopCleanupTimer();
   }
 
   /**

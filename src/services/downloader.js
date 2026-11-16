@@ -19,6 +19,7 @@ import {
   formatBytes,
 } from './downloader/fileManager.js';
 import {
+  assertSafeRemoteHost,
   PLATFORMS,
   PLATFORM_LABELS,
   extractInstagramShortcode,
@@ -78,28 +79,117 @@ export function getRapidApiConfig(env = process.env) {
 }
 
 /**
- * Validates that a candidate CDN URL uses HTTPS without embedded credentials.
+ * Explicit allowlist of platform-owned CDN domains for Instagram and TikTok media.
+ *
+ * Security rationale (Multi-Tenant CDN Policy):
+ * - Includes only first-party / dedicated CDN domains operated for Meta (Instagram)
+ *   and ByteDance (TikTok).
+ * - Shared multi-tenant CDN suffixes (`cloudfront.net`, `akamaized.net`) are intentionally
+ *   excluded because any third-party tenant can register arbitrary distributions under them,
+ *   which would weaken host-level SSRF & origin isolation.
+ * - Wildcard patterns (`*`) are never used; matching requires exact host or `.domain` boundary.
+ */
+export const ALLOWED_CDN_DOMAINS = Object.freeze([
+  'cdninstagram.com',
+  'fbcdn.net',
+  'instagram.com',
+  'tiktokcdn.com',
+  'tiktokcdn-us.com',
+  'tiktokcdn-eu.com',
+  'tiktokcdn-in.com',
+  'tiktokv.com',
+  'tiktokv.us',
+  'tiktok.com',
+  'muscdn.com',
+  'byteoversea.com',
+  'ibytedtos.com',
+  'ibyteimg.com',
+  'ttwstatic.com',
+]);
+
+/**
+ * Checks whether a hostname matches the explicit CDN domain allowlist.
+ *
+ * @param {string} hostname
+ * @returns {boolean}
+ */
+export function isAllowedCdnHost(hostname) {
+  const clean = String(hostname || '').trim().toLowerCase().replace(/\.+$/, '');
+  if (!clean || clean === 'localhost' || clean.endsWith('.localhost')) {
+    return false;
+  }
+  return ALLOWED_CDN_DOMAINS.some(
+    (domain) => clean === domain || clean.endsWith(`.${domain}`),
+  );
+}
+
+/**
+ * Validates that a candidate CDN URL uses HTTPS, has no embedded credentials,
+ * and belongs to an allowed CDN host.
  *
  * @param {string} rawUrl
  * @returns {string | null}
  */
-function sanitizeCdnUrl(rawUrl) {
+export function sanitizeCdnUrl(rawUrl) {
   if (typeof rawUrl !== 'string') return null;
   const trimmed = rawUrl.trim();
   if (!trimmed) return null;
 
   try {
     const parsed = new URL(trimmed);
-    if (parsed.protocol === 'http:') {
-      parsed.protocol = 'https:';
-    }
     if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+      return null;
+    }
+    if (!isAllowedCdnHost(parsed.hostname)) {
       return null;
     }
     return parsed.toString();
   } catch {
     return null;
   }
+}
+
+/**
+ * Validates a CDN fallback URL including host allowlist and DNS/IP safety.
+ *
+ * @param {string} rawUrl
+ * @param {{ lookupFn?: Function }} [options]
+ * @returns {Promise<string>}
+ */
+export async function validateCdnFallbackUrl(rawUrl, options = {}) {
+  const clean = sanitizeCdnUrl(rawUrl);
+  if (!clean) {
+    throw new DownloaderError(
+      DOWNLOADER_ERROR_CODES.UNSAFE_TARGET,
+      'URL CDN fallback tidak valid atau berasal dari host yang tidak diizinkan.',
+    );
+  }
+  const parsed = new URL(clean);
+  await assertSafeRemoteHost(parsed.hostname, {
+    lookupFn: options.lookupFn,
+    allowPrivate: false,
+  });
+  return clean;
+}
+
+/**
+ * Validates every CDN candidate URL (host allowlist + DNS/IP check) before any
+ * download or fallback response occurs.
+ *
+ * @param {Array<{ url: string }>} candidates
+ * @param {{ lookupFn?: Function }} [options]
+ * @returns {Promise<string[]>}
+ */
+export async function validateAllCdnCandidates(candidates, options = {}) {
+  if (!Array.isArray(candidates) || candidates.length === 0) {
+    throw new DownloaderError(
+      DOWNLOADER_ERROR_CODES.NOT_FOUND,
+      'Tidak ada URL media yang valid ditemukan pada respons RapidAPI.',
+    );
+  }
+  return Promise.all(
+    candidates.map((candidate) => validateCdnFallbackUrl(candidate?.url, options)),
+  );
 }
 
 /**
@@ -152,10 +242,12 @@ function inferCandidateKind(entry, url) {
   return 'video';
 }
 
-function sanitizeLogText(value, maxLen = 160) {
+export function sanitizeLogText(value, maxLen = 160) {
   return String(value ?? '')
+    .replace(/AIza[0-9A-Za-z_-]{10,}|tvly-[A-Za-z0-9_-]{6,}/gi, '[REDACTED_KEY]')
     .replace(/(x-rapidapi-key|api[_-]?key|token|authorization)\s*[:=]\s*\S+/gi, '$1=[REDACTED]')
-    .replace(/(https?:\/\/[^\s?]+)\?[^\s]*/gi, '$1?[REDACTED]')
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [REDACTED]')
+    .replace(/https?:\/\/[^\s"'<>]+/gi, '[REDACTED_URL]')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, maxLen);
@@ -836,10 +928,19 @@ function summarizeDownloadedMedia(items) {
  * @param {typeof axios} axiosClient
  */
 async function requestRapidApiMetadata(targetUrl, config, axiosClient, options = {}) {
-  const { platform = null, shortcode = null, logger = console } = options;
+  // Enforce TikTok/Instagram allowlist directly at the RapidAPI boundary as defense in depth.
+  const validated = validateMediaUrl(targetUrl);
+  if (validated.platform !== PLATFORMS.INSTAGRAM && validated.platform !== PLATFORMS.TIKTOK) {
+    throw new DownloaderError(
+      DOWNLOADER_ERROR_CODES.UNSUPPORTED_PLATFORM,
+      'Platform tidak didukung. Hanya tautan publik Instagram dan TikTok yang dapat diteruskan.',
+    );
+  }
+
+  const { platform = validated.platform, shortcode = validated.shortcode, logger = console } = options;
 
   if (platform === PLATFORMS.INSTAGRAM) {
-    const resolvedShortcode = shortcode || extractInstagramShortcode(targetUrl);
+    const resolvedShortcode = shortcode || extractInstagramShortcode(validated.normalizedUrl);
     if (!resolvedShortcode) {
       throw new DownloaderError(
         DOWNLOADER_ERROR_CODES.UNSUPPORTED_PLATFORM,
@@ -874,7 +975,7 @@ async function requestRapidApiMetadata(targetUrl, config, axiosClient, options =
         lastError = mapped;
 
         logger?.warn?.(
-          `[Downloader] RapidAPI Instagram request failed (${endpointLabel}, shortcode=${resolvedShortcode}, status=${status ?? error?.code ?? 'ERR'}, code=${mapped.code}): ${sanitizeLogText(mapped.details || mapped.userMessage)}`,
+          `[Downloader] RapidAPI Instagram request failed (${endpointLabel}, status=${status ?? error?.code ?? 'ERR'}, code=${mapped.code}): ${sanitizeLogText(mapped.details || mapped.userMessage)}`,
         );
 
         if (attempt === 0 && mapped.retryable) {
@@ -896,7 +997,7 @@ async function requestRapidApiMetadata(targetUrl, config, axiosClient, options =
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const response = await axiosClient.get(tiktokEndpoint, {
-        params: { url: targetUrl },
+        params: { url: validated.normalizedUrl },
         headers: {
           'x-rapidapi-key': config.rapidApiKey,
           'x-rapidapi-host': config.rapidApiHost,
@@ -987,6 +1088,9 @@ export async function downloadMediaFromUrl(params) {
       shortcode: resolved.shortcode,
       logger: deps.logger || console,
     });
+    const validatedCdnUrls = await validateAllCdnCandidates(parsed.candidates, {
+      lookupFn: deps.lookupFn,
+    });
     jobDir = await createJobTempDir(config.tempBaseDir);
 
     const downloadOpts = {
@@ -1074,7 +1178,7 @@ export async function downloadMediaFromUrl(params) {
             items: [file],
             attachments: [file],
             primaryCdnUrl: candidate.url,
-            cdnLinks: parsed.candidates.map((c) => c.url),
+            cdnLinks: validatedCdnUrls,
             truncatedCount: 0,
             ...summary,
           };
@@ -1091,6 +1195,10 @@ export async function downloadMediaFromUrl(params) {
       await cleanupTempDir(jobDir);
       jobDir = null;
 
+      const verifiedFallbackUrls = await validateAllCdnCandidates(parsed.candidates, {
+        lookupFn: deps.lookupFn,
+      });
+
       const isTooLarge =
         lastDownloadError instanceof DownloaderError &&
         lastDownloadError.code === DOWNLOADER_ERROR_CODES.FILE_TOO_LARGE;
@@ -1106,8 +1214,8 @@ export async function downloadMediaFromUrl(params) {
         author: parsed.author,
         items: [],
         attachments: [],
-        primaryCdnUrl: parsed.candidates[0].url,
-        cdnLinks: parsed.candidates.map((c) => c.url),
+        primaryCdnUrl: verifiedFallbackUrls[0],
+        cdnLinks: verifiedFallbackUrls,
         reason: isTooLarge
           ? `Ukuran media melebihi batas unggahan standar ${formatBytes(maxBytes)}.`
           : 'Media tidak dapat dilampirkan langsung ke Discord, gunakan tautan CDN langsung di bawah ini.',

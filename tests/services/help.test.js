@@ -119,7 +119,7 @@ test('Help Discovery: excludes commands not registered in CommandHandler.command
   assert.equal(ids.includes('command:ai'), false);
 });
 
-test('Help Privacy: /knowledge hidden from normal users and visible to Administrator', () => {
+test('Help Privacy: !knowledge hidden from normal users and visible to Administrator', () => {
   const regularEntries = discoverHelpEntries({
     memberPermissions: null,
     prefix: '!',
@@ -129,12 +129,14 @@ test('Help Privacy: /knowledge hidden from normal users and visible to Administr
     prefix: '!',
   });
 
+  assert.equal(regularEntries.some((e) => e.id === 'command:knowledge'), false);
+  assert.equal(adminEntries.some((e) => e.id === 'command:knowledge'), false);
   assert.equal(
-    regularEntries.some((e) => e.id === 'command:knowledge'),
+    regularEntries.some((e) => e.id === 'prefix:knowledge'),
     false
   );
   assert.equal(
-    adminEntries.some((e) => e.id === 'command:knowledge'),
+    adminEntries.some((e) => e.id === 'prefix:knowledge'),
     true
   );
 });

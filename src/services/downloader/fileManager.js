@@ -5,8 +5,11 @@ import os from 'node:os';
 import path from 'node:path';
 import dns from 'node:dns/promises';
 import { Readable } from 'node:stream';
+import axios from 'axios';
 import { DOWNLOADER_ERROR_CODES, DownloaderError } from './errors.js';
-import { assertSafeRemoteHost } from './urlValidator.js';
+import { assertSafeRemoteHost, createPinnedHttpsAgent } from './urlValidator.js';
+
+export { createPinnedHttpsAgent };
 
 /**
  * Creates a unique, isolated temporary directory for one download job.
@@ -225,8 +228,8 @@ async function validateMediaStreamTarget(rawUrl, options = {}) {
     );
   }
 
-  await assertSafeRemoteHost(parsed.hostname, { lookupFn, allowPrivate: false });
-  return parsed;
+  const resolved = await assertSafeRemoteHost(parsed.hostname, { lookupFn, allowPrivate: false });
+  return { parsed, resolved };
 }
 
 /**
@@ -312,24 +315,26 @@ export async function downloadMediaToTempFile(params) {
     };
 
     for (let hop = 0; hop < 6; hop += 1) {
-      await validateMediaStreamTarget(currentUrl, { lookupFn });
+      const { parsed, resolved } = await validateMediaStreamTarget(currentUrl, { lookupFn });
 
-      if (axiosClient) {
-        const axRes = await axiosClient.get(currentUrl, {
+      if (axiosClient || !fetchFn) {
+        const effectiveAxios = axiosClient || axios;
+        const pinnedAgent = resolved ? createPinnedHttpsAgent(parsed.hostname, resolved) : undefined;
+        const axRes = await effectiveAxios.get(currentUrl, {
           responseType: 'stream',
           maxRedirects: 0,
           validateStatus: () => true,
           timeout: timeoutMs,
           headers: requestHeaders,
           signal: controller.signal,
+          ...(pinnedAgent ? { httpsAgent: pinnedAgent } : {}),
         });
         statusCode = axRes.status ?? 200;
         resHeaders = axRes.headers ?? {};
         bodyStream = Buffer.isBuffer(axRes.data) ? Readable.from(axRes.data) : axRes.data;
         isWebStream = false;
       } else {
-        const doFetch = fetchFn || fetch;
-        const fRes = await doFetch(currentUrl, {
+        const fRes = await fetchFn(currentUrl, {
           method: 'GET',
           redirect: 'manual',
           headers: requestHeaders,

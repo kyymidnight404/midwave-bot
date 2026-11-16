@@ -16,3 +16,74 @@ model AutoRole {
   @@unique([guildId, roleId])
   @@index([guildId])
 }
+
+model GameSession {
+  id            String            @id
+  guildId       String
+  channelId     String
+  messageId     String?
+  gameType      String
+  status        String
+  hostId        String
+  currentTurnId String?
+  winnerId      String?
+  isDraw        Boolean           @default(false)
+  stateJson     String
+  statsRecorded Boolean           @default(false)
+  expiresAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  participants  GameParticipant[]
+
+  @@index([guildId, status])
+  @@index([messageId])
+  @@index([status, expiresAt])
+}
+
+model GameParticipant {
+  id        Int         @id @default(autoincrement())
+  sessionId String
+  userId    String
+  username  String?
+  role      String
+  score     Int         @default(0)
+  outcome   String?
+  joinedAt  DateTime    @default(now())
+  session   GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
+  @@index([userId])
+}
+
+model GameStats {
+  id        Int      @id @default(autoincrement())
+  guildId   String
+  userId    String
+  username  String?
+  gameType  String
+  matches   Int      @default(0)
+  wins      Int      @default(0)
+  losses    Int      @default(0)
+  draws     Int      @default(0)
+  points    Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@unique([guildId, userId, gameType])
+  @@index([guildId, gameType, points])
+  @@index([guildId, userId])
+}
+
+model QuizQuestion {
+  id           Int      @id @default(autoincrement())
+  externalKey  String?  @unique
+  category     String
+  difficulty   String
+  question     String
+  optionsJson  String
+  correctIndex Int
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@index([category, difficulty, isActive])
+}
