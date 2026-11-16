@@ -21,6 +21,7 @@ export const FEATURE_ICONS = Object.freeze({
   feedback: 'feedback.png',
   join: 'join.png',
   menu: 'menu.png',
+  quiz: 'quiz.png',
   rps: 'rps.png',
   tictactoe: 'tic-tac-toe.png',
   'tic-tac-toe': 'tic-tac-toe.png',

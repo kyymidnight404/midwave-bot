@@ -475,7 +475,7 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     const quizFinalEmbed = quizMsg.payload.embeds[0].toJSON();
     assert.equal(quizFinalEmbed.footer, undefined);
     assert.equal(quizFinalEmbed.timestamp, undefined);
-    assert.equal(quizFinalEmbed.thumbnail?.url, 'attachment://logo.png');
+    assert.equal(quizFinalEmbed.thumbnail?.url, 'attachment://quiz.png');
     assert.doesNotMatch(quizFinalEmbed.description, /poin|bonus/i);
 
     // Quick test: non-host cannot click Stop Quiz, host CAN stop active quiz early
@@ -509,7 +509,7 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     );
     const cancelledSession = await getPersistedSession(sessionId2, prisma);
     assert.equal(cancelledSession.status, 'cancelled');
-    assert.equal(quizMsg2.payload.embeds[0].toJSON().thumbnail?.url, 'attachment://logo.png');
+    assert.equal(quizMsg2.payload.embeds[0].toJSON().thumbnail?.url, 'attachment://quiz.png');
   });
 
   it('ignores !lb and !profile commands and never writes GameStats rows', async () => {

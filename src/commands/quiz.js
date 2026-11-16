@@ -1,6 +1,6 @@
 import { MessageFlags } from 'discord.js';
 import { prisma as defaultPrisma } from '../services/prisma.js';
-import { buildErrorEmbed, getLogoFiles } from '../utils/embeds.js';
+import { buildErrorEmbed, getIconFiles } from '../utils/embeds.js';
 import {
   DEFAULT_QUIZ_ROUND_MS,
   scheduleQuizRoundTimer,
@@ -113,7 +113,7 @@ export default {
 
     const sentMsg = await interaction.reply({
       ...payload,
-      files: canAttach ? getLogoFiles() : [],
+      files: canAttach ? getIconFiles('quiz') : [],
     });
 
     if (sentMsg?.id) {

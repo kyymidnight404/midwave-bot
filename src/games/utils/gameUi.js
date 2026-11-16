@@ -294,6 +294,7 @@ export function buildQuizLobbyMessage({
             `**Pemain (${state.players.length}/${QUIZ_MAX_PLAYERS}):**\n${playerList}`,
       ),
     includeThumbnail,
+    'quiz',
   );
 
   const row = new ActionRowBuilder().addComponents(
@@ -354,6 +355,7 @@ export function buildQuizQuestionMessage({
           '💬 Ketik **a**, **b**, **c**, atau **d** langsung di chat untuk menjawab!',
       ),
     includeThumbnail,
+    'quiz',
   );
 
   const row = new ActionRowBuilder().addComponents(
@@ -402,6 +404,7 @@ export function buildQuizRoundResultMessage({
             : '*Menghitung hasil akhir...*'),
       ),
     includeThumbnail,
+    'quiz',
   );
 
   return { embeds: [embed], components: [] };
@@ -436,6 +439,7 @@ export function buildQuizFinalMessage({
       .setTitle('🏆 Quiz Battle — Hasil Akhir')
       .setDescription(`${headerLine}\n\n**Ringkasan Jawaban:**\n${leaderboardLines}`),
     includeThumbnail,
+    'quiz',
   );
 
   return { embeds: [embed], components: [] };
@@ -455,6 +459,7 @@ export function buildQuizCancelledMessage({
       .setTitle('🧠 Quiz Battle — Dihentikan')
       .setDescription(`❌ Quiz dihentikan oleh Host (<@${cancelledById ?? state?.hostId}>) pada ronde ${state?.round ?? 1}/${state?.totalQuestions ?? QUIZ_TOTAL_QUESTIONS}.`),
     includeThumbnail,
+    'quiz',
   );
 
   return { embeds: [embed], components: [] };
