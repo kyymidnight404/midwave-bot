@@ -3,9 +3,8 @@ import {
   CONNECT4_CONFIG,
   DICE_CONFIG,
   DIFFICULTIES,
+  QUIZ_CATEGORIES,
   RPS_CHOICES,
-  TRIVIA_CATEGORIES,
-  TRIVIA_CONFIG,
   TTT_POSITIONS,
 } from './constants.js';
 
@@ -40,8 +39,8 @@ export function isValidDifficulty(difficulty) {
  * @param {string} category
  * @returns {boolean}
  */
-export function isValidTriviaCategory(category) {
-  return TRIVIA_CATEGORIES.includes(category);
+export function isValidQuizCategory(category) {
+  return QUIZ_CATEGORIES.includes(category);
 }
 
 /**
@@ -90,14 +89,6 @@ export function isValidRpsChoice(choice) {
  */
 export function isValidCoinChoice(choice) {
   return COIN_CHOICES.includes(choice);
-}
-
-/**
- * @param {string} letter
- * @returns {boolean}
- */
-export function isValidTriviaOption(letter) {
-  return TRIVIA_CONFIG.OPTION_LETTERS.includes(String(letter).toUpperCase());
 }
 
 /**

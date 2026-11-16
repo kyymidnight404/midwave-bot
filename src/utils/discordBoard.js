@@ -1,12 +1,6 @@
 import { COLORS } from '../config/colors.js';
 import { sanitizeError } from './errorSanitizer.js';
-import {
-  GAME_METADATA,
-  GAME_MODES,
-  GAME_TYPES,
-  MATCH_STATUS,
-  TRIVIA_CONFIG,
-} from './constants.js';
+import { GAME_METADATA } from './constants.js';
 import {
   buildGameEmbed,
   buildInfoEmbed,
@@ -33,7 +27,10 @@ export async function updatePublicMessage(client, messageRef, payload, fallbackC
       const channel = await client.channels.fetch(messageRef.channelId);
       if (channel?.isTextBased?.()) {
         const msg = await channel.messages.fetch(messageRef.messageId);
-        await msg.edit({ embeds: payload.embeds });
+        await msg.edit({
+          embeds: payload.embeds,
+          ...(payload.components !== undefined ? { components: payload.components } : {}),
+        });
         return { channelId: msg.channelId, messageId: msg.id };
       }
     } catch (err) {
@@ -52,6 +49,7 @@ export async function updatePublicMessage(client, messageRef, payload, fallbackC
     if (channel?.isTextBased?.()) {
       const sent = await channel.send({
         embeds: payload.embeds,
+        ...(payload.components !== undefined ? { components: payload.components } : {}),
         files: getLogoFiles(),
       });
       return { channelId: sent.channelId, messageId: sent.id };
@@ -119,7 +117,7 @@ export function createSessionTimeoutHandler(client) {
     await updatePublicMessage(
       client,
       closedSession.boardMessageRef,
-      { embeds: [embed] },
+      { embeds: [embed], components: [] },
       closedSession.channelId,
     );
   };
@@ -145,107 +143,8 @@ export function createInviteExpireHandler(client) {
     await updatePublicMessage(
       client,
       expiredInvite.lobbyMessageRef,
-      { embeds: [embed] },
+      { embeds: [embed], components: [] },
       expiredInvite.channelId,
     );
   };
-}
-
-/**
- * Schedules the 20-second round timer for an active Trivia session.
- * Clears previous round timers so only one round timer is active at a time.
- * @param {{
- *   client: import('discord.js').Client,
- *   sessionManager: import('../managers/SessionManager.js').SessionManager,
- *   gameManager: import('../managers/GameManager.js').GameManager,
- *   sessionId: string,
- *   expectedRoundIndex: number,
- *   durationMs?: number,
- * }} params
- */
-export function scheduleTriviaRoundTimer({
-  client,
-  sessionManager,
-  gameManager,
-  sessionId,
-  expectedRoundIndex,
-  durationMs = TRIVIA_CONFIG.ROUND_DURATION_MS,
-}) {
-  sessionManager.clearExtraTimers(sessionId);
-
-  const handle = setTimeout(async () => {
-    const live = sessionManager.getSession(sessionId);
-    if (!live || live.status !== MATCH_STATUS.ACTIVE) return;
-
-    try {
-      const outcome = await sessionManager.runExclusive(sessionId, async (session) => {
-        if (session.state.currentRoundIndex !== expectedRoundIndex) {
-          return null;
-        }
-
-        const engine = gameManager.getEngine(GAME_TYPES.TRIVIA);
-        const step = engine.advanceRoundOnTimeout(session.state);
-        const publicView = engine.getPublicView(step.state);
-
-        if (step.finished) {
-          const closed = sessionManager.endSession(sessionId, MATCH_STATUS.FINISHED);
-          const elapsed = Math.max(0, (closed?.endedAt ?? Date.now()) - session.startedAt);
-          return { finished: true, result: step.result, publicView, durationMs: elapsed, session: closed ?? session };
-        }
-
-        sessionManager.updateSession(sessionId, step.state, step.state.currentTurn ?? null);
-        return { finished: false, state: step.state, publicView, session };
-      });
-
-      if (!outcome) return;
-
-      const embed = renderGameOrResultEmbed(
-        GAME_TYPES.TRIVIA,
-        outcome.publicView,
-        outcome.finished ? outcome.result : null,
-        outcome.durationMs ?? 0,
-      );
-
-      const newRef = await updatePublicMessage(
-        client,
-        outcome.session.boardMessageRef,
-        { embeds: [embed] },
-        outcome.session.channelId,
-      );
-
-      if (!outcome.finished) {
-        if (newRef) sessionManager.setBoardMessageRef(sessionId, newRef);
-        scheduleTriviaRoundTimer({
-          client,
-          sessionManager,
-          gameManager,
-          sessionId,
-          expectedRoundIndex: outcome.state.currentRoundIndex,
-          durationMs,
-        });
-      }
-    } catch (err) {
-      // Session might already be closed between timer fire and exclusive lock
-      if (!String(err?.message).includes('berakhir')) {
-        console.error('[TriviaTimer] Error advancing round:', sanitizeError(err));
-      }
-    }
-  }, durationMs);
-
-  sessionManager.registerTimer(sessionId, handle);
-}
-
-/**
- * Helper used by `/invite accept` and `/game cancel` to start/update board after challenge acceptance.
- */
-export function startTriviaTimerIfNeeded({ client, sessionManager, gameManager, session }) {
-  if (session?.gameType === GAME_TYPES.TRIVIA && session.mode === GAME_MODES.MULTIPLAYER) {
-    scheduleTriviaRoundTimer({
-      client,
-      sessionManager,
-      gameManager,
-      sessionId: session.sessionId,
-      expectedRoundIndex: session.state.currentRoundIndex,
-    });
-  }
 }

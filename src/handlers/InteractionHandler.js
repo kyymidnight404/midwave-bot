@@ -11,6 +11,10 @@ import {
   GAME_CENTER_CUSTOM_ID_PREFIX,
   handleGameCenterInteraction,
 } from '../events/gameInteraction.js';
+import {
+  COINFLIP_CUSTOM_ID_PREFIX,
+  handleCoinflipInteraction,
+} from '../utils/coinflipComponents.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
 import { sanitizeError } from '../utils/errorSanitizer.js';
 
@@ -113,6 +117,16 @@ export class InteractionHandler {
         cooldowns: this.cooldowns,
         logger: this.logger,
       });
+      return;
+    }
+
+    const isCoinflipComponent =
+      typeof interaction.customId === 'string' &&
+      interaction.customId.startsWith(`${COINFLIP_CUSTOM_ID_PREFIX}:`) &&
+      Boolean(interaction.isButton?.());
+
+    if (isCoinflipComponent) {
+      await handleCoinflipInteraction(interaction, this.context);
       return;
     }
 

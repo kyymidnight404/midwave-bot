@@ -411,19 +411,18 @@ export function buildQuizQuestionMessage({
         `📚 **Kategori:** \`${q.category}\` | ⚡ **Kesulitan:** \`${q.difficulty}\`\n` +
           `⏱️ **Berakhir:** <t:${endsUnix}:R> | 👥 **Sudah menjawab:** ${answeredCount}/${state.players.length}\n\n` +
           `**${q.question}**\n\n` +
-          `${optionsText}`,
+          `${optionsText}\n\n` +
+          '💬 Ketik **a**, **b**, **c**, atau **d** langsung di chat untuk menjawab!',
       ),
     includeThumbnail,
   );
 
   const row = new ActionRowBuilder().addComponents(
-    OPTION_LETTERS.map((letter, idx) =>
-      new ButtonBuilder()
-        .setCustomId(buildGameCustomId('quiz', sessionId, 'ans', state.round, idx))
-        .setLabel(letter)
-        .setEmoji(OPTION_EMOJIS[idx])
-        .setStyle(ButtonStyle.Primary),
-    ),
+    new ButtonBuilder()
+      .setCustomId(buildGameCustomId('quiz', sessionId, 'cancel'))
+      .setLabel('Stop Quiz')
+      .setEmoji('🛑')
+      .setStyle(ButtonStyle.Danger),
   );
 
   return { embeds: [embed], components: [row] };
@@ -466,18 +465,7 @@ export function buildQuizRoundResultMessage({
     includeThumbnail,
   );
 
-  const row = new ActionRowBuilder().addComponents(
-    OPTION_LETTERS.map((letter, idx) =>
-      new ButtonBuilder()
-        .setCustomId(buildGameCustomId('quiz', sessionId, 'ans', state.round, idx))
-        .setLabel(letter)
-        .setEmoji(OPTION_EMOJIS[idx])
-        .setStyle(idx === summary.correctIndex ? ButtonStyle.Success : ButtonStyle.Secondary)
-        .setDisabled(true),
-    ),
-  );
-
-  return { embeds: [embed], components: [row] };
+  return { embeds: [embed], components: [] };
 }
 
 /**
@@ -488,23 +476,45 @@ export function buildQuizFinalMessage({
   standings,
   includeThumbnail = false,
 }) {
+  const isSolo = standings.length <= 1;
   const leaderboardLines = standings
     .map((row, idx) => {
       const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
-      const bonusTag = state.winnerId === row.userId ? ' *(+5 Bonus Juara)*' : '';
+      const bonusTag = !isSolo && state.winnerId === row.userId ? ' *(+5 Bonus Juara)*' : '';
       return `${medal} <@${row.userId}> — **${row.score}** poin${bonusTag}`;
     })
     .join('\n');
 
-  const headerLine = state.winnerId
-    ? `🏆 **Pemenang Quiz Battle:** <@${state.winnerId}> (+5 bonus poin)!`
-    : '🤝 **Quiz Battle berakhir Seri!**';
+  const headerLine = isSolo
+    ? `🏁 **Quiz Selesai!** Skor akhir <@${standings[0]?.userId ?? state.hostId}>: **${standings[0]?.score ?? 0}** poin.`
+    : state.winnerId
+      ? `🏆 **Pemenang Quiz Battle:** <@${state.winnerId}> (+5 bonus poin)!`
+      : '🤝 **Quiz Battle berakhir Seri!**';
 
   const embed = applyMidwaveBranding(
     new EmbedBuilder()
       .setColor(COLORS.SUCCESS)
       .setTitle('🏆 Quiz Battle — Hasil Akhir')
       .setDescription(`${headerLine}\n\n**Klasemen Akhir:**\n${leaderboardLines}`),
+    includeThumbnail,
+  );
+
+  return { embeds: [embed], components: [] };
+}
+
+/**
+ * Cancelled Quiz Battle UI when Host stops an active match early.
+ */
+export function buildQuizCancelledMessage({
+  state,
+  cancelledById,
+  includeThumbnail = false,
+}) {
+  const embed = applyMidwaveBranding(
+    new EmbedBuilder()
+      .setColor(COLORS.DANGER)
+      .setTitle('🧠 Quiz Battle — Dihentikan')
+      .setDescription(`❌ Quiz dihentikan oleh Host (<@${cancelledById ?? state?.hostId}>) pada ronde ${state?.round ?? 1}/${state?.totalQuestions ?? QUIZ_TOTAL_QUESTIONS}.`),
     includeThumbnail,
   );
 

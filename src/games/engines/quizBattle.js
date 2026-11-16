@@ -32,6 +32,39 @@ export function createQuizLobbyState({ hostId, category = 'all', difficulty = 'a
 }
 
 /**
+ * Creates a ready-to-play active Quiz state starting immediately at Round 1.
+ * @param {{
+ *   hostId: string,
+ *   category?: string,
+ *   difficulty?: string,
+ *   preparedQuestions: Array<object>,
+ *   nowMs?: number,
+ *   roundDurationMs?: number,
+ * }} params
+ */
+export function createDirectQuizState({
+  hostId,
+  category = 'all',
+  difficulty = 'all',
+  preparedQuestions,
+  nowMs = Date.now(),
+  roundDurationMs = QUIZ_ROUND_SECONDS * 1000,
+}) {
+  if (!Array.isArray(preparedQuestions) || preparedQuestions.length === 0) {
+    throw new Error('Tidak ada soal quiz yang tersedia untuk filter ini.');
+  }
+
+  return {
+    ...createQuizLobbyState({ hostId, category, difficulty }),
+    phase: 'question',
+    round: 1,
+    totalQuestions: preparedQuestions.length,
+    questions: preparedQuestions,
+    roundEndsAt: nowMs + roundDurationMs,
+  };
+}
+
+/**
  * Adds a player to the Quiz Battle lobby.
  * @param {object} state
  * @param {string} userId
@@ -144,31 +177,52 @@ export function startQuizBattle(
 
 /**
  * Submits a player's answer (`0..3`) for the active Quiz round.
- * Rejects unregistered users and duplicate answers in the same round.
+ * Rejects duplicate answers in the same round, and optionally auto-enrolls channel players.
  * @param {object} state
  * @param {string} userId
  * @param {number} optionIndex
+ * @param {{ autoJoin?: boolean }} [options]
  */
-export function submitQuizAnswer(state, userId, optionIndex) {
+export function submitQuizAnswer(state, userId, optionIndex, { autoJoin = false } = {}) {
   if (!state || state.phase !== 'question' || state.roundResolved) {
     return { ok: false, error: 'Ronde pertanyaan ini sudah berakhir.' };
-  }
-  if (!state.players.includes(userId)) {
-    return { ok: false, error: 'Kamu tidak terdaftar dalam Quiz Battle ini.' };
   }
   if (!Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex > 3) {
     return { ok: false, error: 'Pilihan jawaban tidak valid.' };
   }
+
+  let nextPlayers = state.players;
+  let nextScores = state.scores;
+  let joined = false;
+
+  if (!nextPlayers.includes(userId)) {
+    if (!autoJoin) {
+      return { ok: false, error: 'Kamu tidak terdaftar dalam Quiz Battle ini.' };
+    }
+    if (nextPlayers.length >= QUIZ_MAX_PLAYERS) {
+      return { ok: false, error: `Quiz sudah mencapai batas maksimal ${QUIZ_MAX_PLAYERS} pemain.` };
+    }
+    nextPlayers = [...nextPlayers, userId];
+    nextScores = { ...nextScores, [userId]: 0 };
+    joined = true;
+  }
+
   if (Object.hasOwn(state.roundAnswers, userId)) {
     return { ok: false, error: 'Kamu sudah menjawab ronde ini dan tidak dapat mengubah jawaban!' };
   }
 
   const nextAnswers = { ...state.roundAnswers, [userId]: optionIndex };
-  const allAnswered = state.players.every((id) => Object.hasOwn(nextAnswers, id));
+  const allAnswered = nextPlayers.every((id) => Object.hasOwn(nextAnswers, id));
 
   return {
     ok: true,
-    state: { ...state, roundAnswers: nextAnswers },
+    joined,
+    state: {
+      ...state,
+      players: nextPlayers,
+      scores: nextScores,
+      roundAnswers: nextAnswers,
+    },
     allAnswered,
   };
 }
@@ -267,7 +321,9 @@ export function advanceQuizRound(
   let winnerId = null;
   let isDraw = false;
 
-  if (maxScore > 0 && topPlayers.length === 1) {
+  if (state.players.length === 1) {
+    winnerId = maxScore > 0 ? state.players[0] : null;
+  } else if (maxScore > 0 && topPlayers.length === 1) {
     winnerId = topPlayers[0];
     finalScores[winnerId] += QUIZ_WINNER_BONUS;
   } else {

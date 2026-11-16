@@ -2,8 +2,6 @@ import { PermissionFlagsBits } from 'discord.js';
 import {
   DICE_CONFIG,
   GAME_TYPES,
-  TRIVIA_CATEGORIES,
-  TRIVIA_CATEGORY_LABELS,
   TTT_POSITIONS,
 } from '../utils/constants.js';
 import { AI_MAX_QUESTION_LENGTH } from '../services/gemini.js';
@@ -23,7 +21,6 @@ const GAME_CHOICES = [
   { name: 'Number Guessing', value: GAME_TYPES.GUESS },
   { name: 'Rock Paper Scissors', value: GAME_TYPES.RPS },
   { name: 'Tic Tac Toe', value: GAME_TYPES.TICTACTOE },
-  { name: 'Trivia Quiz', value: GAME_TYPES.TRIVIA },
 ];
 
 const DIFFICULTY_CHOICES = [
@@ -31,11 +28,6 @@ const DIFFICULTY_CHOICES = [
   { name: 'Normal', value: 'normal' },
   { name: 'Hard', value: 'hard' },
 ];
-
-const TRIVIA_CATEGORY_CHOICES = TRIVIA_CATEGORIES.map((cat) => ({
-  name: TRIVIA_CATEGORY_LABELS[cat],
-  value: cat,
-}));
 
 /**
  * Centralized Discord Application Command configuration for Midwave.
@@ -122,7 +114,8 @@ export const commandStructure = {
       help: {
         category: 'general',
         usage: 'help',
-        prefixUsage: '{prefix}help',
+        prefixName: 'menu',
+        prefixUsage: '{prefix}menu',
         description: 'Tampilkan panduan command Midwave',
       },
     },
@@ -159,7 +152,7 @@ export const commandStructure = {
         category: 'mini_games',
         usage: 'game action:<solo|challenge|choose|drop|move|answer|status|cancel|list>',
         prefixUsage: '{prefix}<game> [aksi]',
-        description: 'Mainkan 7 mini-game (coinflip, connect4, dice, guess, rps, tictactoe, trivia)',
+        description: 'Mainkan 6 mini-game (coinflip, connect4, dice, guess, rps, tictactoe)',
       },
       options: [
         {
@@ -173,7 +166,7 @@ export const commandStructure = {
             { name: 'choose — Pilih gerakan RPS atau sisi Coin Flip', value: 'choose' },
             { name: 'drop — Jatuhkan keping Connect Four (1–7)', value: 'drop' },
             { name: 'move — Letakkan simbol Tic Tac Toe (A1–C3)', value: 'move' },
-            { name: 'answer — Kirim tebakan Guess atau jawaban Trivia (A/B/C/D)', value: 'answer' },
+            { name: 'answer — Kirim tebakan Guess', value: 'answer' },
             { name: 'status — Lihat status sesi game atau undangan aktif', value: 'status' },
             { name: 'cancel — Batalkan sesi game atau undangan aktif', value: 'cancel' },
             { name: 'list — Tampilkan daftar mini-game dan aturan mainnya', value: 'list' },
@@ -222,7 +215,7 @@ export const commandStructure = {
         },
         {
           name: 'answer',
-          description: 'Tebakan angka 1–200 (Guess) atau jawaban A/B/C/D (Trivia)',
+          description: 'Tebakan angka 1–200 (Guess)',
           type: 'string',
           required: false,
         },
@@ -232,13 +225,6 @@ export const commandStructure = {
           type: 'string',
           required: false,
           choices: DIFFICULTY_CHOICES,
-        },
-        {
-          name: 'category',
-          description: 'Kategori soal Trivia (default General Knowledge)',
-          type: 'string',
-          required: false,
-          choices: TRIVIA_CATEGORY_CHOICES,
         },
         {
           name: 'count',

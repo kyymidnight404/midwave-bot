@@ -400,10 +400,10 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     assert.equal(await prisma.gameStats.count({ where: { guildId: TEST_GUILD_1 } }), 0);
   });
 
-  it('runs a full 10-round Quiz Battle via !quiz with lobby, answer hiding, double-answer rejection, timeout, and +5 bonus', async () => {
+  it('starts Quiz Battle immediately on !quiz and accepts direct chat answers (a/b/c/d) without prefix or slash', async () => {
     await cleanupTestGuilds();
     const h = await createGameCenterHarness({ quizRoundDurationMs: 400, quizIntermissionMs: 30 });
-    const [host, p2, outsider] = [...h.users.values()];
+    const [host, p2, p3] = [...h.users.values()];
 
     const msg = createFakeMessage({
       content: '!quiz',
@@ -413,54 +413,43 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     });
     await h.prefixHandler.handle(msg);
     const quizMsg = msg.getReplies()[0];
-    const joinId = quizMsg.payload.components[0].components[0].data.custom_id;
-    const sessionId = joinId.split(':')[2];
+    const stopId = quizMsg.payload.components[0].components[0].data.custom_id;
+    const sessionId = stopId.split(':')[2];
+    assert.equal(quizMsg.payload.components[0].components.length, 1);
+    assert.ok(stopId.endsWith(':cancel'));
 
-    // Cannot start with only 1 player
-    const badStart = createFakeButtonInteraction({
-      customId: buildGameCustomId('quiz', sessionId, 'start'),
-      user: host,
-      message: quizMsg,
-      client: h.client,
-    });
-    await h.interactionHandler.handle(badStart);
-    assert.equal(badStart.getResponses()[0].payload.flags, MessageFlags.Ephemeral);
-
-    // p2 joins
-    await h.interactionHandler.handle(
-      createFakeButtonInteraction({ customId: joinId, user: p2, message: quizMsg, client: h.client }),
-    );
-
-    // Host starts
-    await h.interactionHandler.handle(
-      createFakeButtonInteraction({
-        customId: buildGameCustomId('quiz', sessionId, 'start'),
-        user: host,
-        message: quizMsg,
-        client: h.client,
-      }),
-    );
-
+    // Starts immediately as active Question 1 without needing a lobby or 2 players
     let session = await getPersistedSession(sessionId, prisma);
     assert.equal(session.status, 'active');
+    assert.equal(session.state.phase, 'question');
+    assert.equal(session.state.round, 1);
     assert.equal(session.state.questions.length, 10);
 
-    // Verify answer is NOT exposed in question embed
-    assert.equal(quizMsg.payload.embeds[0].data.description.includes('Jawaban Benar'), false);
+    // Verify answer is NOT exposed in question embed and direct chat instructions appear
+    const q1Desc = quizMsg.payload.embeds[0].data.description;
+    assert.equal(q1Desc.includes('Jawaban Benar'), false);
+    assert.match(q1Desc, /Ketik \*\*a\*\*, \*\*b\*\*, \*\*c\*\*, atau \*\*d\*\* langsung di chat/i);
 
-    // Outsider rejected
-    const outAns = createFakeButtonInteraction({
-      customId: buildGameCustomId('quiz', sessionId, 'ans', 1, 0),
-      user: outsider,
-      message: quizMsg,
+    // Starting a second !quiz in the same channel while active is rejected
+    const dupQuizMsg = createFakeMessage({
+      content: '!quiz',
+      author: p2,
+      channel: h.channel,
       client: h.client,
     });
-    await h.interactionHandler.handle(outAns);
-    assert.equal(outAns.getResponses()[0].payload.flags, MessageFlags.Ephemeral);
+    await h.prefixHandler.handle(dupQuizMsg);
+    assert.match(dupQuizMsg.getReplies()[0].payload.embeds[0].data.description, /sedang berlangsung/i);
 
-    // Play rounds 1..9 with both players answering (host always picks correctIndex, p2 picks wrong)
+    // Normal chat text is ignored by quiz answer handler
+    await h.prefixHandler.handle(
+      createFakeMessage({ content: 'aku mau ikut dong', author: p2, channel: h.channel, client: h.client }),
+    );
+    session = await getPersistedSession(sessionId, prisma);
+    assert.deepEqual(session.state.roundAnswers, {});
+
+    // Play rounds 1..9 using direct chat letters a/b/c/d (p2 auto-joins on round 1!)
+    const letters = ['a', 'b', 'c', 'd'];
     for (let round = 1; round <= 9; round += 1) {
-      // Wait for round to become active
       for (let wait = 0; wait < 30; wait += 1) {
         session = await getPersistedSession(sessionId, prisma);
         if (session.state.phase === 'question' && session.state.round === round) break;
@@ -470,38 +459,40 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
       const correctIdx = session.state.questions[round - 1].correctIndex;
       const wrongIdx = (correctIdx + 1) % 4;
 
-      const hostAns = createFakeButtonInteraction({
-        customId: buildGameCustomId('quiz', sessionId, 'ans', round, correctIdx),
-        user: host,
-        message: quizMsg,
+      // p2 answers first via uppercase chat letter (B/A/C/D) -> auto-joins and waits for host
+      const p2Chat = createFakeMessage({
+        content: letters[wrongIdx].toUpperCase(),
+        author: p2,
+        channel: h.channel,
         client: h.client,
       });
-      await h.interactionHandler.handle(hostAns);
-      assert.equal(hostAns.getResponses()[0].payload.flags, MessageFlags.Ephemeral);
+      await h.prefixHandler.handle(p2Chat);
 
-      // Duplicate answer rejected in round 1
+      // Duplicate answer by p2 in the same round must NOT overwrite p2's first answer
       if (round === 1) {
-        const dupAns = createFakeButtonInteraction({
-          customId: buildGameCustomId('quiz', sessionId, 'ans', round, wrongIdx),
-          user: host,
-          message: quizMsg,
-          client: h.client,
-        });
-        await h.interactionHandler.handle(dupAns);
-        assert.equal(dupAns.getResponses()[0].payload.flags, MessageFlags.Ephemeral);
+        await h.prefixHandler.handle(
+          createFakeMessage({
+            content: letters[correctIdx],
+            author: p2,
+            channel: h.channel,
+            client: h.client,
+          }),
+        );
+        const locked = await getPersistedSession(sessionId, prisma);
+        assert.equal(locked.state.roundAnswers[p2.id], wrongIdx);
       }
 
-      await h.interactionHandler.handle(
-        createFakeButtonInteraction({
-          customId: buildGameCustomId('quiz', sessionId, 'ans', round, wrongIdx),
-          user: p2,
-          message: quizMsg,
-          client: h.client,
-        }),
-      );
+      // Host answers via lowercase chat letter (a/b/c/d) -> resolves round immediately
+      const hostChat = createFakeMessage({
+        content: letters[correctIdx],
+        author: host,
+        channel: h.channel,
+        client: h.client,
+      });
+      await h.prefixHandler.handle(hostChat);
     }
 
-    // Round 10: let timeout resolve automatically (both get 0 on round 10 -> host finishes with 90 + 5 bonus = 95)
+    // Round 10: let timeout resolve automatically (host finishes with 90 + 5 bonus = 95)
     for (let wait = 0; wait < 60; wait += 1) {
       session = await getPersistedSession(sessionId, prisma);
       if (session.status === 'finished') break;
@@ -514,6 +505,38 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     assert.equal(session.state.scores[host.id], 95);
     assert.equal(session.state.scores[p2.id], 0);
     assert.equal(await prisma.gameStats.count({ where: { guildId: TEST_GUILD_1 } }), 0);
+
+    // Quick test: non-host cannot click Stop Quiz, host CAN stop active quiz early
+    const msg2 = createFakeMessage({
+      content: '!quiz science easy',
+      author: p3,
+      channel: h.channel,
+      client: h.client,
+    });
+    await h.prefixHandler.handle(msg2);
+    const quizMsg2 = msg2.getReplies()[0];
+    const stopId2 = quizMsg2.payload.components[0].components[0].data.custom_id;
+    const sessionId2 = stopId2.split(':')[2];
+
+    const nonHostStop = createFakeButtonInteraction({
+      customId: stopId2,
+      user: host,
+      message: quizMsg2,
+      client: h.client,
+    });
+    await h.interactionHandler.handle(nonHostStop);
+    assert.equal(nonHostStop.getResponses()[0].payload.flags, MessageFlags.Ephemeral);
+
+    await h.interactionHandler.handle(
+      createFakeButtonInteraction({
+        customId: stopId2,
+        user: p3,
+        message: quizMsg2,
+        client: h.client,
+      }),
+    );
+    const cancelledSession = await getPersistedSession(sessionId2, prisma);
+    assert.equal(cancelledSession.status, 'cancelled');
   });
 
   it('ignores !lb and !profile commands and never writes GameStats rows', async () => {

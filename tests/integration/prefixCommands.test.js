@@ -284,11 +284,12 @@ describe('Prefix Command System', () => {
       subcommand: null,
       options: {},
     });
-    assert.deepEqual(parsePrefixInvocation('!help'), {
-      commandName: 'help',
+    assert.deepEqual(parsePrefixInvocation('!menu'), {
+      commandName: 'menu',
       subcommand: null,
       options: {},
     });
+    assert.equal(parsePrefixInvocation('!help'), null);
     assert.deepEqual(parsePrefixInvocation('!brat midnight ocean & <test>'), {
       commandName: 'brat',
       subcommand: null,
@@ -337,16 +338,8 @@ describe('Prefix Command System', () => {
     });
     assert.ok(parsePrefixInvocation('!rps')?.error);
 
-    assert.deepEqual(parsePrefixInvocation('!trivia science hard'), {
-      commandName: 'trivia',
-      subcommand: 'solo',
-      options: { category: 'science', difficulty: 'hard' },
-    });
-    assert.deepEqual(parsePrefixInvocation('!trivia b'), {
-      commandName: 'trivia',
-      subcommand: 'answer',
-      options: { option: 'B' },
-    });
+    assert.equal(parsePrefixInvocation('!trivia science hard'), null);
+    assert.equal(parsePrefixInvocation('!trivia b'), null);
 
     assert.deepEqual(parsePrefixInvocation('!coinflip tails'), {
       commandName: 'coinflip',
@@ -426,9 +419,9 @@ describe('Prefix Command System', () => {
     assert.equal(noAttachMsg.getReplies().length, 1);
     assert.match(noAttachMsg.getReplies()[0].payload.embeds[0].toJSON().description, /Attach Files/i);
 
-    // Shared cooldown between prefix (!games) and slash (/games)
+    // Shared cooldown between prefix (!math) and slash (/math)
     const firstPrefix = createFakeMessage({
-      content: '!help',
+      content: '!math 2 + 2',
       author: harness.users.get(U1_ID),
       channel: harness.channel,
       userDirectory: harness.users,
@@ -438,7 +431,7 @@ describe('Prefix Command System', () => {
     assert.equal(firstPrefix.getReplies()[0].payload.embeds.length, 1);
 
     const secondSlash = createMockSlashInteraction({
-      commandName: 'help',
+      commandName: 'math',
       userId: U1_ID,
       channel: harness.channel,
     });
@@ -447,7 +440,7 @@ describe('Prefix Command System', () => {
     assert.match(secondSlash.getReplies()[0].payload.embeds[0].toJSON().description, /Tunggu/i);
   });
 
-  it('executes !brat, !help, solo games, and respects custom PREFIX configuration', async () => {
+  it('executes !brat, !menu, solo games, and respects custom PREFIX configuration', async () => {
     const app = await createBotApp({ prefix: '?' });
     assert.equal(app.prefix, '?');
     const intents = app.client.options.intents;
@@ -460,7 +453,7 @@ describe('Prefix Command System', () => {
     const u1 = harness.users.get(U1_ID);
 
     const helpMsg = createFakeMessage({
-      content: '?help',
+      content: '?menu',
       author: u1,
       channel: harness.channel,
       userDirectory: harness.users,
@@ -606,7 +599,7 @@ describe('Prefix Command System', () => {
     assert.equal(harness.sessionManager.playerSessions.size, 0);
   });
 
-  it('runs real solo Connect4, Guess, Dice, CoinFlip, and Trivia flows via prefix commands', async () => {
+  it('runs real solo Connect4, Guess, Dice, and CoinFlip flows via prefix commands', async () => {
     const harness = await createTestHarness({ prefix: '!' });
     const u1 = harness.users.get(U1_ID);
 
@@ -648,17 +641,7 @@ describe('Prefix Command System', () => {
       );
     }
 
-    // Stateful Trivia
-    await harness.prefixCommandHandler.handle(
-      createFakeMessage({ content: '!trivia science normal', author: u1, channel: harness.channel, userDirectory: harness.users }),
-    );
-    await harness.prefixCommandHandler.handle(
-      createFakeMessage({ content: '!trivia A', author: u1, channel: harness.channel, userDirectory: harness.users }),
-    );
-    assert.equal(harness.sessionManager.getPlayerSession(U1_ID).state.currentRoundIndex, 1);
-    await harness.prefixCommandHandler.handle(
-      createFakeMessage({ content: '!game cancel', author: u1, channel: harness.channel, userDirectory: harness.users }),
-    );
+    assert.equal(parsePrefixInvocation('!trivia science normal'), null);
     assert.equal(harness.sessionManager.activeGames.size, 0);
   });
 });

@@ -17,8 +17,6 @@ import { CoinFlipGame } from './games/CoinFlipGame.js';
 import { DiceGame } from './games/DiceGame.js';
 import { RPSGame } from './games/RPSGame.js';
 import { GuessGame } from './games/GuessGame.js';
-import { TriviaGame } from './games/TriviaGame.js';
-import { loadTriviaBank } from './games/TriviaBank.js';
 import { TicTacToeGame } from './games/TicTacToeGame.js';
 import { ConnectFourGame } from './games/ConnectFourGame.js';
 import readyEvent from './events/ready.js';
@@ -33,12 +31,10 @@ import { prisma as defaultPrisma } from './services/prisma.js';
  * Engines are added incrementally as each phase completes.
  */
 export function registerDefaultGames(gameManager) {
-  loadTriviaBank();
   gameManager.registerGame(GAME_TYPES.COINFLIP, CoinFlipGame);
   gameManager.registerGame(GAME_TYPES.DICE, DiceGame);
   gameManager.registerGame(GAME_TYPES.RPS, RPSGame);
   gameManager.registerGame(GAME_TYPES.GUESS, GuessGame);
-  gameManager.registerGame(GAME_TYPES.TRIVIA, TriviaGame);
   gameManager.registerGame(GAME_TYPES.TICTACTOE, TicTacToeGame);
   gameManager.registerGame(GAME_TYPES.CONNECT4, ConnectFourGame);
 }

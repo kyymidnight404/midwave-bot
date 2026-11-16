@@ -283,7 +283,7 @@ describe('AutoDownloader — MessageCreate Handler & Discord Fallback Flow', () 
     assert.equal(await handler.handle(botMsg), false);
 
     const prefixMsg = createMockMessage({
-      content: '!help https://www.tiktok.com/@a/video/1',
+      content: '!menu https://www.tiktok.com/@a/video/1',
     });
     assert.equal(await handler.handle(prefixMsg), false);
 

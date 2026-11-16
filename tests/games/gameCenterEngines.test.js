@@ -15,6 +15,7 @@ import {
 } from '../../src/games/engines/rockPaperScissors.js';
 import {
   advanceQuizRound,
+  createDirectQuizState,
   createQuizLobbyState,
   joinQuizLobby,
   leaveQuizLobby,
@@ -319,6 +320,42 @@ describe('Game Center: Quiz Battle Engine & Utilities', () => {
     assert.equal(finalRes.finished, true);
     assert.equal(finalRes.winnerId, 'host');
     assert.equal(finalRes.state.scores.host, QUIZ_POINTS_CORRECT + QUIZ_WINNER_BONUS);
+  });
+
+  it('supports direct-start solo and drop-in multiplayer Quiz Battle via autoJoin', () => {
+    const questions = [
+      { id: 1, category: 'science', difficulty: 'easy', question: 'Q1', options: ['A', 'B', 'C', 'D'], correctIndex: 0 },
+      { id: 2, category: 'science', difficulty: 'easy', question: 'Q2', options: ['A', 'B', 'C', 'D'], correctIndex: 3 },
+    ];
+    let state = createDirectQuizState({ hostId: 'host', preparedQuestions: questions });
+    assert.equal(state.phase, 'question');
+    assert.equal(state.round, 1);
+    assert.deepEqual(state.players, ['host']);
+
+    // Drop-in second player answers first in round 1
+    const p2Ans = submitQuizAnswer(state, 'p2', 2, { autoJoin: true });
+    assert.equal(p2Ans.ok, true);
+    assert.equal(p2Ans.joined, true);
+    assert.equal(p2Ans.allAnswered, false);
+    state = p2Ans.state;
+
+    // Host answers round 1 -> allAnswered becomes true
+    const hostAns = submitQuizAnswer(state, 'host', 0, { autoJoin: true });
+    assert.equal(hostAns.ok, true);
+    assert.equal(hostAns.joined, false);
+    assert.equal(hostAns.allAnswered, true);
+    state = resolveQuizRound(hostAns.state).state;
+    assert.equal(state.scores.host, QUIZ_POINTS_CORRECT);
+    assert.equal(state.scores.p2, 0);
+
+    // Solo finish check (1 player finishes without artificial +5 bonus)
+    let solo = createDirectQuizState({ hostId: 'soloUser', preparedQuestions: [questions[0]] });
+    solo = submitQuizAnswer(solo, 'soloUser', 0, { autoJoin: true }).state;
+    solo = resolveQuizRound(solo).state;
+    const soloDone = advanceQuizRound(solo);
+    assert.equal(soloDone.finished, true);
+    assert.equal(soloDone.winnerId, 'soloUser');
+    assert.equal(soloDone.state.scores.soloUser, QUIZ_POINTS_CORRECT);
   });
 
   it('shuffles question options while preserving the exact correct answer and computes win rate safely', () => {

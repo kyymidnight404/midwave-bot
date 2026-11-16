@@ -6,9 +6,9 @@ import {
   GAME_METADATA,
   GAME_TYPES,
   GUESS_CONFIG,
-  TRIVIA_CATEGORY_LABELS,
 } from './constants.js';
 import { updatePublicMessage } from './discordBoard.js';
+import { buildCoinflipSoloPromptPayload } from './coinflipComponents.js';
 import {
   buildErrorEmbed,
   buildInfoEmbed,
@@ -27,8 +27,6 @@ import {
   isValidConnect4Column,
   isValidDifficulty,
   isValidRpsChoice,
-  isValidTriviaCategory,
-  isValidTriviaOption,
   isValidTttPosition,
   validateDiceConfig,
 } from './validators.js';
@@ -51,7 +49,6 @@ export const VALID_ACTIONS_BY_GAME = Object.freeze({
   [GAME_TYPES.GUESS]: new Set(['solo', 'challenge', 'answer', 'status', 'cancel']),
   [GAME_TYPES.RPS]: new Set(['solo', 'challenge', 'choose', 'status', 'cancel']),
   [GAME_TYPES.TICTACTOE]: new Set(['solo', 'challenge', 'move', 'status', 'cancel']),
-  [GAME_TYPES.TRIVIA]: new Set(['solo', 'challenge', 'answer', 'status', 'cancel']),
 });
 
 const SESSION_PLAY_ACTIONS = new Set(['choose', 'drop', 'move', 'answer']);
@@ -188,7 +185,7 @@ async function handleCancelAction(interaction, context, { gameType, gameId }) {
     await updatePublicMessage(
       client,
       session.boardMessageRef,
-      { embeds: [cancelEmbed] },
+      { embeds: [cancelEmbed], components: [] },
       session.channelId,
     );
 
@@ -213,7 +210,7 @@ async function handleCancelAction(interaction, context, { gameType, gameId }) {
     await updatePublicMessage(
       client,
       inv.lobbyMessageRef,
-      { embeds: [cancelEmbed] },
+      { embeds: [cancelEmbed], components: [] },
       inv.channelId,
     );
 
@@ -237,6 +234,12 @@ async function dispatchCoinFlip(interaction, context, actionName) {
 
   const rawChoice = interaction.options.getString?.('choice', false);
   const choice = typeof rawChoice === 'string' ? rawChoice.trim().toLowerCase() : '';
+
+  if (actionName === 'solo' && !choice) {
+    await interaction.reply(buildCoinflipSoloPromptPayload(interaction.user.id));
+    return;
+  }
+
   if (!isValidCoinChoice(choice)) {
     await replyEphemeralError(interaction, 'Pilih `heads` atau `tails` pada parameter `choice` untuk Coin Flip.');
     return;
@@ -374,70 +377,6 @@ async function dispatchGuess(interaction, context, actionName) {
   });
 }
 
-async function dispatchTrivia(interaction, context, actionName) {
-  if (actionName === 'solo' || actionName === 'challenge') {
-    const rawCategory = interaction.options.getString?.('category', false);
-    const rawDiff = interaction.options.getString?.('difficulty', false);
-    const category = rawCategory ? rawCategory.trim().toLowerCase() : 'general';
-    const difficulty = rawDiff ? rawDiff.trim().toLowerCase() : 'normal';
-
-    if (!isValidTriviaCategory(category)) {
-      await replyEphemeralError(interaction, 'Kategori Trivia tidak valid.');
-      return;
-    }
-    if (!isValidDifficulty(difficulty)) {
-      await replyEphemeralError(interaction, 'Tingkat kesulitan tidak valid. Pilih `easy`, `normal`, atau `hard`.');
-      return;
-    }
-
-    if (actionName === 'solo') {
-      await handleSoloSessionStart(interaction, context, {
-        gameType: GAME_TYPES.TRIVIA,
-        config: { category, difficulty },
-      });
-      return;
-    }
-
-    await handleChallengeCommand(interaction, context, {
-      gameType: GAME_TYPES.TRIVIA,
-      config: { category, difficulty },
-      details: `Kategori: **${TRIVIA_CATEGORY_LABELS[category]}** | Difficulty: **${DIFFICULTY_LABELS[difficulty]}** (5 ronde, 20 detik/ronde)`,
-    });
-    return;
-  }
-
-  const rawAnswer =
-    interaction.options.getString?.('answer', false) ??
-    interaction.options.getString?.('option', false);
-  const option = typeof rawAnswer === 'string' ? rawAnswer.trim().toUpperCase() : '';
-
-  if (!isValidTriviaOption(option)) {
-    await replyEphemeralError(interaction, 'Pilih jawaban `A`, `B`, `C`, atau `D` pada parameter `answer` untuk Trivia.');
-    return;
-  }
-
-  await handleSessionActionCommand(interaction, context, {
-    gameType: GAME_TYPES.TRIVIA,
-    action: { option },
-    formatEphemeralMessage: (outcome) => {
-      const fb = outcome.privateView?.feedback;
-      if (!fb) return `Jawaban **${option}** diterima.`;
-      if (fb.correct) {
-        return outcome.finished
-          ? `Jawaban **${option}** benar! (+1 poin) Pertandingan selesai.`
-          : `Jawaban **${option}** benar! (+1 poin) Lanjut ke ronde berikutnya.`;
-      }
-      if (outcome.session.mode === 'solo') {
-        return `Jawaban **${option}** kurang tepat. Jawaban yang benar: **${fb.correctLetter}. ${fb.correctText}**.`;
-      }
-      if (fb.roundSkipped) {
-        return `Jawaban **${option}** salah. Kedua pemain salah sehingga ronde dilewati.`;
-      }
-      return `Jawaban **${option}** salah! Kamu terkunci sampai ronde berikutnya.`;
-    },
-  });
-}
-
 async function dispatchTicTacToe(interaction, context, actionName) {
   if (actionName === 'solo') {
     const rawDiff = interaction.options.getString?.('difficulty', false);
@@ -530,7 +469,6 @@ const GAME_DISPATCHERS = Object.freeze({
   [GAME_TYPES.GUESS]: dispatchGuess,
   [GAME_TYPES.RPS]: dispatchRps,
   [GAME_TYPES.TICTACTOE]: dispatchTicTacToe,
-  [GAME_TYPES.TRIVIA]: dispatchTrivia,
 });
 
 /**

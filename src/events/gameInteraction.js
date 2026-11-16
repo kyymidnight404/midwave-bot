@@ -19,6 +19,7 @@ import { getPreparedQuizQuestions } from '../games/services/questionService.js';
 import {
   addSessionParticipant,
   clearSessionTimers,
+  findActiveChannelQuizSession,
   GAME_INACTIVITY_TTL_MS,
   getPersistedSession,
   hydrateSession,
@@ -31,6 +32,7 @@ import { GAME_CENTER_PREFIX, parseGameCustomId } from '../games/utils/customId.j
 import {
   buildChallengeMessage,
   buildConnectFourMessage,
+  buildQuizCancelledMessage,
   buildQuizFinalMessage,
   buildQuizLobbyMessage,
   buildQuizQuestionMessage,
@@ -42,6 +44,43 @@ import {
 export const GAME_CENTER_CUSTOM_ID_PREFIX = GAME_CENTER_PREFIX;
 export const DEFAULT_QUIZ_ROUND_MS = QUIZ_ROUND_SECONDS * 1000;
 export const DEFAULT_QUIZ_INTERMISSION_MS = 3500;
+
+const QUIZ_LETTER_MAP = Object.freeze({ a: 0, b: 1, c: 2, d: 3 });
+
+/**
+ * Parses a standalone chat message (`a`, `b`, `c`, or `d`, case-insensitive) into a quiz option index `0..3`.
+ * Returns `null` for any other message so regular conversation is untouched.
+ * @param {string} content
+ * @returns {number | null}
+ */
+export function parseDirectQuizAnswerOption(content) {
+  if (typeof content !== 'string') {
+    return null;
+  }
+  const normalized = content.trim().toLowerCase();
+  return Object.hasOwn(QUIZ_LETTER_MAP, normalized) ? QUIZ_LETTER_MAP[normalized] : null;
+}
+
+/**
+ * Registers the round timeout timer for an active Quiz Battle round.
+ * @param {string} sessionId
+ * @param {number} roundNumber
+ * @param {object} [context]
+ */
+export function scheduleQuizRoundTimer(sessionId, roundNumber, context = {}) {
+  const roundDurationMs = context.quizRoundDurationMs ?? DEFAULT_QUIZ_ROUND_MS;
+  const logger = context.logger ?? console;
+  setSessionTimer(
+    sessionId,
+    'round',
+    () => {
+      resolveAndScheduleQuizRound(sessionId, roundNumber, context).catch((err) =>
+        logger.error('[QuizBattle] Round timeout error:', sanitizeError(err)),
+      );
+    },
+    roundDurationMs,
+  );
+}
 
 const IGNORED_DISCORD_CODES = new Set([10008, 10062, 40060, 50001, 50013]);
 const INACCESSIBLE_DISCORD_CODES = new Set([10008, 50001, 50013]);
@@ -544,16 +583,7 @@ export async function advanceQuizStep(sessionId, expectedRound, context = {}) {
   });
 
   if (nextRoundToSchedule !== null) {
-    setSessionTimer(
-      sessionId,
-      'round',
-      () => {
-        resolveAndScheduleQuizRound(sessionId, nextRoundToSchedule, context).catch((err) =>
-          logger.error('[QuizBattle] Failed round timeout resolution:', sanitizeError(err)),
-        );
-      },
-      roundDurationMs,
-    );
+    scheduleQuizRoundTimer(sessionId, nextRoundToSchedule, context);
   }
 }
 
@@ -629,9 +659,10 @@ async function handleQuizInteraction(interaction, parsed, context) {
 
     if (parsed.action === 'cancel') {
       if (userId !== session.state.hostId) {
-        await replyEphemeral(interaction, 'Hanya Host lobby yang dapat membatalkan Quiz Battle.');
+        await replyEphemeral(interaction, 'Hanya Host yang dapat menghentikan Quiz Battle.');
         return;
       }
+      const wasActive = session.status === 'active';
       clearSessionTimers(sessionId);
       const updated = await updatePersistedSession(
         sessionId,
@@ -640,12 +671,14 @@ async function handleQuizInteraction(interaction, parsed, context) {
       );
       await safeUpdateMessage(
         interaction,
-        buildQuizLobbyMessage({
-          sessionId,
-          state: updated.state,
-          disabled: true,
-          cancelledText: `❌ Quiz Battle dibatalkan oleh Host (<@${userId}>).`,
-        }),
+        wasActive
+          ? buildQuizCancelledMessage({ state: updated.state, cancelledById: userId })
+          : buildQuizLobbyMessage({
+              sessionId,
+              state: updated.state,
+              disabled: true,
+              cancelledText: `❌ Quiz Battle dibatalkan oleh Host (<@${userId}>).`,
+            }),
         true,
       );
       return;
@@ -735,17 +768,10 @@ async function handleQuizInteraction(interaction, parsed, context) {
   });
 
   if (roundToSchedule !== null) {
-    setSessionTimer(
-      sessionId,
-      'round',
-      () => {
-        resolveAndScheduleQuizRound(sessionId, roundToSchedule, {
-          ...context,
-          client: interaction.client ?? context.client,
-        }).catch((err) => logger.error('[QuizBattle] Round timeout error:', sanitizeError(err)));
-      },
-      roundDurationMs,
-    );
+    scheduleQuizRoundTimer(sessionId, roundToSchedule, {
+      ...context,
+      client: interaction.client ?? context.client,
+    });
   }
 
   if (roundToResolveImmediately !== null) {
@@ -754,6 +780,98 @@ async function handleQuizInteraction(interaction, parsed, context) {
       client: interaction.client ?? context.client,
     });
   }
+}
+
+/**
+ * Handles direct chat answers (`a`, `b`, `c`, `d` without prefix/slash) for an active Quiz in a channel.
+ * Returns `true` when the message matched an active channel Quiz round.
+ * @param {import('discord.js').Message} message
+ * @param {object} [context]
+ * @returns {Promise<boolean>}
+ */
+export async function handleQuizChatAnswer(message, context = {}) {
+  const optionIndex = parseDirectQuizAnswerOption(message?.content);
+  if (optionIndex === null || !message?.guildId || !message?.channelId) {
+    return false;
+  }
+
+  const prisma = context.prisma ?? defaultPrisma;
+  if (!prisma?.gameSession) {
+    return false;
+  }
+
+  const active = await findActiveChannelQuizSession(message.channelId, prisma);
+  if (!active) {
+    return false;
+  }
+
+  const userId = message.author?.id;
+  if (!userId) {
+    return false;
+  }
+
+  let handled = false;
+  let roundToResolveImmediately = null;
+
+  await withSessionLock(active.id, async () => {
+    const session = await getPersistedSession(active.id, prisma);
+    if (
+      !session ||
+      session.status !== 'active' ||
+      session.gameType !== 'quiz' ||
+      session.state?.phase !== 'question' ||
+      session.state?.roundResolved
+    ) {
+      return;
+    }
+
+    handled = true;
+    const ansRes = submitQuizAnswer(session.state, userId, optionIndex, { autoJoin: true });
+    if (!ansRes.ok) {
+      return;
+    }
+
+    if (ansRes.joined) {
+      await addSessionParticipant(
+        session.id,
+        { userId, username: message.author?.username ?? null, role: 'player' },
+        prisma,
+      );
+    }
+
+    const updated = await updatePersistedSession(
+      session.id,
+      { state: ansRes.state, ttlMs: GAME_INACTIVITY_TTL_MS },
+      prisma,
+    );
+
+    if (typeof message.react === 'function') {
+      await message.react('✅').catch(() => {});
+    }
+
+    if (ansRes.allAnswered) {
+      clearSessionTimers(session.id);
+      roundToResolveImmediately = updated.state.round;
+    } else {
+      const targetMsg = await resolveTargetMessage(updated, message.client ?? context.client);
+      if (targetMsg) {
+        await safeUpdateMessage(
+          targetMsg,
+          buildQuizQuestionMessage({ sessionId: session.id, state: updated.state }),
+          false,
+        );
+      }
+    }
+  });
+
+  if (roundToResolveImmediately !== null) {
+    await resolveAndScheduleQuizRound(active.id, roundToResolveImmediately, {
+      ...context,
+      client: message.client ?? context.client,
+    });
+  }
+
+  return handled;
 }
 
 /**

@@ -43,7 +43,7 @@ export const PREFIX_ONLY_METADATA = Object.freeze({
     name: 'quiz',
     category: 'mini_games',
     usage: 'quiz [kategori] [kesulitan]',
-    description: 'Buka lobby Quiz Battle (2–10 pemain) dengan tombol interaktif',
+    description: 'Mulai Quiz langsung & jawab a/b/c/d di chat',
     visibility: 'public',
   }),
   knowledge: Object.freeze({
@@ -198,10 +198,11 @@ function buildGenericCommandLine(cmd, { prefix, registeredPrefixCommands }) {
   }
 
   const slashUsage = cmd.help?.usage || cmd.name;
-  const hasPrefix = registeredPrefixCommands.has(cmd.name);
+  const prefixName = cmd.help?.prefixName || cmd.name;
+  const hasPrefix = registeredPrefixCommands.has(prefixName);
 
   if (hasPrefix) {
-    const rawPrefixUsage = cmd.help?.prefixUsage || `{prefix}${cmd.name}`;
+    const rawPrefixUsage = cmd.help?.prefixUsage || `{prefix}${prefixName}`;
     const prefixUsage = rawPrefixUsage.replace(/\{prefix\}/g, prefix);
     return `• \`${prefixUsage}\` | \`/${slashUsage}\` — ${description}`;
   }
@@ -399,7 +400,11 @@ export function discoverHelpEntries({
     }
 
     const category = normalizeCategoryKey(cmd.help?.category || 'general');
-    const hasPrefix = registeredPrefixCommands.has(cmd.name);
+    const prefixName = cmd.help?.prefixName || cmd.name;
+    if (cmd.help?.prefixName) {
+      coveredPrefixNames.add(cmd.help.prefixName);
+    }
+    const hasPrefix = registeredPrefixCommands.has(prefixName);
     addEntry({
       id: `command:${cmd.name}`,
       category,

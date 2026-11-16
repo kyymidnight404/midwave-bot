@@ -2,7 +2,7 @@ import {
   DIFFICULTIES,
   DICE_CONFIG,
   GAME_TYPES,
-  TRIVIA_CATEGORIES,
+  QUIZ_CATEGORIES,
   TTT_POSITIONS,
 } from './constants.js';
 import { SOLO_SOCIAL_COMMANDS, TARGETED_SOCIAL_COMMANDS } from '../services/otakuGifsService.js';
@@ -13,7 +13,7 @@ const COMMAND_ALIASES = Object.freeze({
   lyric: 'lyrics',
   lirik: 'lyrics',
   games: 'games',
-  help: 'help',
+  menu: 'menu',
   game: 'game',
   invite: 'invite',
   brat: 'brat',
@@ -38,7 +38,6 @@ const COMMAND_ALIASES = Object.freeze({
   guess: 'guess',
   ng: 'guess',
   rps: 'rps',
-  trivia: 'trivia',
   coinflip: 'coinflip',
   cf: 'coinflip',
   dice: 'dice',
@@ -67,10 +66,9 @@ const COIN_CHOICE_MAP = Object.freeze({
   tail: 'tails',
 });
 
-const TRIVIA_CATEGORY_SET = new Set(TRIVIA_CATEGORIES);
+const QUIZ_CATEGORY_SET = new Set(QUIZ_CATEGORIES);
 const DIFFICULTY_SET = new Set(DIFFICULTIES);
 const TTT_POSITION_SET = new Set(TTT_POSITIONS);
-const TRIVIA_OPTION_SET = new Set(['A', 'B', 'C', 'D']);
 const TARGETED_SOCIAL_SET = new Set(TARGETED_SOCIAL_COMMANDS);
 const SOLO_SOCIAL_SET = new Set(SOLO_SOCIAL_COMMANDS);
 
@@ -142,35 +140,6 @@ function parseDifficulty(token) {
   if (typeof token !== 'string') return null;
   const lower = token.toLowerCase();
   return DIFFICULTY_SET.has(lower) ? lower : null;
-}
-
-function parseTriviaCategory(token) {
-  if (typeof token !== 'string') return null;
-  const lower = token.toLowerCase();
-  return TRIVIA_CATEGORY_SET.has(lower) ? lower : null;
-}
-
-function parseTriviaConfigArgs(args, prefix, usageHint) {
-  let category = 'general';
-  let difficulty = 'normal';
-
-  for (const raw of args) {
-    const cat = parseTriviaCategory(raw);
-    if (cat) {
-      category = cat;
-      continue;
-    }
-    const diff = parseDifficulty(raw);
-    if (diff) {
-      difficulty = diff;
-      continue;
-    }
-    return {
-      error: `Argumen \`${raw}\` tidak valid untuk \`${prefix}trivia\`. ${usageHint}`,
-    };
-  }
-
-  return { category, difficulty };
 }
 
 function parseDiceArgs(args, prefix) {
@@ -381,7 +350,7 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
     for (const token of args) {
       const lower = token.toLowerCase();
       if (lower === 'all') continue;
-      if (TRIVIA_CATEGORY_SET.has(lower)) {
+      if (QUIZ_CATEGORY_SET.has(lower)) {
         category = lower;
       } else if (DIFFICULTY_SET.has(lower)) {
         difficulty = lower;
@@ -398,7 +367,7 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
     return { commandName: 'quiz', subcommand: null, options: { category, difficulty } };
   }
 
-  if (commandName === 'games' || commandName === 'help') {
+  if (commandName === 'games' || commandName === 'menu') {
     return { commandName, subcommand: null, options: {} };
   }
 
@@ -733,91 +702,12 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
     };
   }
 
-  if (commandName === GAME_TYPES.TRIVIA) {
-    const usageHint = `Contoh: \`${prefix}trivia\`, \`${prefix}trivia science hard\`, \`${prefix}trivia A\`, atau \`${prefix}trivia challenge @teman\`.`;
-
-    if (args.length === 0) {
-      return {
-        commandName,
-        subcommand: 'solo',
-        options: { category: 'general', difficulty: 'normal' },
-      };
-    }
-
-    if (firstLower === 'solo') {
-      const parsedCfg = parseTriviaConfigArgs(args.slice(1), prefix, usageHint);
-      if (parsedCfg.error) {
-        return { commandName, subcommand: 'solo', options: {}, error: parsedCfg.error };
-      }
-      return { commandName, subcommand: 'solo', options: parsedCfg };
-    }
-
-    if (firstLower === 'challenge') {
-      const opponentId = extractMentionOrId(args[1]);
-      if (!opponentId) {
-        return {
-          commandName,
-          subcommand: 'challenge',
-          options: {},
-          error: `Mention lawan yang valid. Contoh: \`${prefix}trivia challenge @teman science normal\`.`,
-        };
-      }
-      const parsedCfg = parseTriviaConfigArgs(args.slice(2), prefix, usageHint);
-      if (parsedCfg.error) {
-        return { commandName, subcommand: 'challenge', options: {}, error: parsedCfg.error };
-      }
-      return {
-        commandName,
-        subcommand: 'challenge',
-        options: { opponentId, ...parsedCfg },
-      };
-    }
-
-    const directMentionId = extractMentionOrId(args[0]);
-    if (directMentionId) {
-      const parsedCfg = parseTriviaConfigArgs(args.slice(1), prefix, usageHint);
-      if (parsedCfg.error) {
-        return { commandName, subcommand: 'challenge', options: {}, error: parsedCfg.error };
-      }
-      return {
-        commandName,
-        subcommand: 'challenge',
-        options: { opponentId: directMentionId, ...parsedCfg },
-      };
-    }
-
-    if (firstLower === 'answer') {
-      const opt = args[1]?.toUpperCase() ?? '';
-      if (!TRIVIA_OPTION_SET.has(opt) || args.length > 2) {
-        return {
-          commandName,
-          subcommand: 'answer',
-          options: {},
-          error: `Pilih jawaban A, B, C, atau D. Contoh: \`${prefix}trivia answer A\`.`,
-        };
-      }
-      return { commandName, subcommand: 'answer', options: { option: opt } };
-    }
-
-    const directAnswer = args[0].toUpperCase();
-    if (TRIVIA_OPTION_SET.has(directAnswer) && args.length === 1) {
-      return { commandName, subcommand: 'answer', options: { option: directAnswer } };
-    }
-
-    const parsedCfg = parseTriviaConfigArgs(args, prefix, usageHint);
-    if (parsedCfg.error) {
-      return { commandName, subcommand: null, options: {}, error: parsedCfg.error };
-    }
-    return { commandName, subcommand: 'solo', options: parsedCfg };
-  }
-
   if (commandName === GAME_TYPES.COINFLIP) {
     if (args.length === 0) {
       return {
         commandName,
-        subcommand: null,
+        subcommand: 'solo',
         options: {},
-        error: `Gunakan \`${prefix}coinflip <heads|tails>\`, \`${prefix}coinflip challenge @teman\`, atau \`${prefix}coinflip choose <heads|tails>\`.`,
       };
     }
 

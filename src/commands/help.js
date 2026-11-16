@@ -10,7 +10,7 @@ export const data = new SlashCommandBuilder()
   .setDescription('Tampilkan panduan penggunaan command dan aturan permainan Midwave');
 
 /**
- * Executes the `/help` and `!help` command with dynamic discovery.
+ * Executes the `/help` and `!menu` command with dynamic discovery.
  * @param {import('discord.js').ChatInputCommandInteraction | import('../handlers/MessageCommandAdapter.js').MessageCommandAdapter} interaction
  * @param {object} [context]
  */

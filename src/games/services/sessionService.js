@@ -213,6 +213,38 @@ export async function findActiveUserSession(guildId, userId, prisma = defaultPri
 }
 
 /**
+ * Finds the active Quiz Battle session in a specific channel, automatically expiring stale ones.
+ * @param {string} channelId
+ * @param {import('@prisma/client').PrismaClient} [prisma]
+ */
+export async function findActiveChannelQuizSession(channelId, prisma = defaultPrisma) {
+  if (!channelId || !prisma?.gameSession) {
+    return null;
+  }
+
+  const now = new Date();
+  await prisma.gameSession.updateMany({
+    where: {
+      channelId,
+      gameType: 'quiz',
+      status: { in: ['pending', 'active'] },
+      expiresAt: { lt: now },
+    },
+    data: { status: 'expired' },
+  });
+
+  const active = await prisma.gameSession.findFirst({
+    where: {
+      channelId,
+      gameType: 'quiz',
+      status: 'active',
+    },
+    include: { participants: true },
+  });
+  return hydrateSession(active);
+}
+
+/**
  * Updates `GameSession` state, status, turn, winner, or expiration in SQLite.
  * @param {string} sessionId
  * @param {{

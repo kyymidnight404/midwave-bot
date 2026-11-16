@@ -5,9 +5,8 @@ import {
   isValidCoinChoice,
   isValidConnect4Column,
   isValidDifficulty,
+  isValidQuizCategory,
   isValidRpsChoice,
-  isValidTriviaCategory,
-  isValidTriviaOption,
   isValidTttPosition,
   validateDiceConfig,
   validateOpponent,
@@ -81,14 +80,12 @@ describe('Validators', () => {
   it('validates game choices and coordinates', () => {
     assert.equal(isValidDifficulty('easy'), true);
     assert.equal(isValidDifficulty('extreme'), false);
-    assert.equal(isValidTriviaCategory('science'), true);
-    assert.equal(isValidTriviaCategory('cooking'), false);
+    assert.equal(isValidQuizCategory('science'), true);
+    assert.equal(isValidQuizCategory('cooking'), false);
     assert.equal(isValidRpsChoice('rock'), true);
     assert.equal(isValidRpsChoice('lizard'), false);
     assert.equal(isValidCoinChoice('heads'), true);
     assert.equal(isValidCoinChoice('edge'), false);
-    assert.equal(isValidTriviaOption('a'), true);
-    assert.equal(isValidTriviaOption('E'), false);
     assert.equal(isValidTttPosition('b2'), true);
     assert.equal(isValidTttPosition('D1'), false);
     assert.equal(isValidConnect4Column(7), true);
@@ -153,7 +150,7 @@ describe('Embed Design System', () => {
     assert.equal(err.color, COLORS.DANGER);
 
     const gamesList = buildGamesListEmbed().toJSON();
-    assert.equal(gamesList.fields.length, 7);
+    assert.equal(gamesList.fields.length, 6);
 
     const help = buildHelpEmbed().toJSON();
     assert.equal(help.footer, undefined);

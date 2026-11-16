@@ -1,14 +1,16 @@
 import { MessageFlags } from 'discord.js';
 import { COLORS } from '../config/colors.js';
-import { GAME_METADATA, GAME_MODES, GAME_TYPES } from './constants.js';
+import { GAME_METADATA, GAME_TYPES } from './constants.js';
+import {
+  buildCoinflipChoiceComponents,
+  buildCoinflipInviteComponents,
+} from './coinflipComponents.js';
 import { buildErrorEmbed, buildLobbyEmbed, formatPlayer, getLogoFiles } from './embeds.js';
 import { validateOpponent } from './validators.js';
 import {
   createInviteExpireHandler,
   createSessionTimeoutHandler,
   renderGameOrResultEmbed,
-  scheduleTriviaRoundTimer,
-  startTriviaTimerIfNeeded,
   updatePublicMessage,
 } from './discordBoard.js';
 
@@ -61,6 +63,7 @@ export async function handleChallengeCommand(interaction, context, { gameType, c
   }
 
   const meta = GAME_METADATA[gameType];
+  const isCoinflip = gameType === GAME_TYPES.COINFLIP;
   const lobbyEmbed = buildLobbyEmbed({
     gameTitle: meta?.name ?? gameType,
     gameDescription: meta?.description,
@@ -68,11 +71,15 @@ export async function handleChallengeCommand(interaction, context, { gameType, c
     opponentId: invite.opponentId,
     status: 'Menunggu konfirmasi (60 detik)',
     details,
+    ...(isCoinflip
+      ? { instructions: 'Klik tombol **Accept** untuk menerima atau **Reject** untuk menolak.' }
+      : {}),
   });
 
   await interaction.reply({
     content: `${formatPlayer(opponent.id)}, kamu mendapat tantangan **${meta?.name ?? gameType}**!`,
     embeds: [lobbyEmbed],
+    ...(isCoinflip ? { components: buildCoinflipInviteComponents(invite.inviteId) } : {}),
     files: getLogoFiles(),
   });
 
@@ -125,16 +132,6 @@ export async function handleSoloSessionStart(interaction, context, { gameType, c
   } catch {
     // Non-fatal in test mocks
   }
-
-  if (gameType === GAME_TYPES.TRIVIA && started.session.mode === GAME_MODES.MULTIPLAYER) {
-    scheduleTriviaRoundTimer({
-      client,
-      sessionManager,
-      gameManager,
-      sessionId: started.session.sessionId,
-      expectedRoundIndex: started.session.state.currentRoundIndex,
-    });
-  }
 }
 
 /**
@@ -165,30 +162,25 @@ export async function handleSessionActionCommand(
     outcome.durationMs ?? 0,
   );
 
+  const components =
+    gameType === GAME_TYPES.COINFLIP
+      ? outcome.finished
+        ? []
+        : buildCoinflipChoiceComponents(outcome.session.sessionId)
+      : undefined;
+
   const newRef = await updatePublicMessage(
     client,
     outcome.session.boardMessageRef,
-    { embeds: [embed] },
+    {
+      embeds: [embed],
+      ...(components !== undefined ? { components } : {}),
+    },
     outcome.session.channelId ?? interaction.channelId,
   );
 
   if (!outcome.finished && newRef) {
     sessionManager.setBoardMessageRef(outcome.session.sessionId, newRef);
-  }
-
-  if (
-    !outcome.finished &&
-    gameType === GAME_TYPES.TRIVIA &&
-    outcome.session.mode === GAME_MODES.MULTIPLAYER &&
-    outcome.roundAdvanced
-  ) {
-    scheduleTriviaRoundTimer({
-      client,
-      sessionManager,
-      gameManager,
-      sessionId: outcome.session.sessionId,
-      expectedRoundIndex: outcome.state.currentRoundIndex,
-    });
   }
 
   const ackText = formatEphemeralMessage
@@ -231,4 +223,4 @@ export async function handleInstantSoloCommand(interaction, context, { gameType,
 }
 
 // Re-export helpers so commands need minimal imports
-export { startTriviaTimerIfNeeded, COLORS };
+export { COLORS };

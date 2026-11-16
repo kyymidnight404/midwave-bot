@@ -11,9 +11,9 @@ const CATEGORY_INTENT_PATTERNS = {
     /\b(website|situs|tautan\s+resmi|link\s+resmi|github|repo(sitory)?|dokumentasi|midwave\.ai\.id)\b/i,
   ],
   features_commands: [
-    /\b(fitur\s+midwave|daftar\s+command|command\s+midwave|cara\s+pakai\s+(\/)?(ai|download|lyrics|brat|igf|guess|rps|trivia|tictactoe|connect4|coinflip|dice|games?|help|invite|autorole|quiz|feedback|donate|social)|auto[-\s]?downloader|auto[-\s]?role|game\s*center)\b/i,
-    /\/(ai|download|lyrics|brat|guess|rps|trivia|tictactoe|connect4|coinflip|dice|games?|help|invite|autorole|media|math|social|donate)\b/i,
-    /!(ai|download|lyrics|lirik|brat|igf|guess|rps|trivia|ttt|c4|connect4|quiz|games?|help|knowledge|feedback|say)\b/i,
+    /\b(fitur\s+midwave|daftar\s+command|command\s+midwave|cara\s+pakai\s+(\/)?(ai|download|lyrics|brat|igf|guess|rps|tictactoe|connect4|coinflip|dice|games?|help|invite|autorole|quiz|feedback|donate|social)|auto[-\s]?downloader|auto[-\s]?role|game\s*center)\b/i,
+    /\/(ai|download|lyrics|brat|guess|rps|tictactoe|connect4|coinflip|dice|games?|help|invite|autorole|media|math|social|donate)\b/i,
+    /!(ai|download|lyrics|lirik|brat|igf|guess|rps|ttt|c4|connect4|quiz|games?|menu|knowledge|feedback|say)\b/i,
   ],
   technical_knowledge: [
     /\b(node\.?js|discord\.?js|wispbyte|arsitektur(\s+midwave)?|tech\s*stack|environment\s*variable|deploy[-\s]?commands|troubleshooting\s+midwave)\b/i,

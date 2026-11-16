@@ -19,7 +19,6 @@ export const BOT_PLAYER_ID = 'BOT';
 export const GAME_TYPES = Object.freeze({
   GUESS: 'guess',
   RPS: 'rps',
-  TRIVIA: 'trivia',
   COINFLIP: 'coinflip',
   DICE: 'dice',
   TICTACTOE: 'tictactoe',
@@ -42,14 +41,6 @@ export const GAME_METADATA = Object.freeze({
     description: 'Batu, Gunting, Kertas klasik dengan pilihan rahasia.',
     soloCommands: '`/game action:solo game:rps choice:<rock|paper|scissors>`',
     multiplayerCommands: '`/game action:challenge game:rps opponent:<user>` → `/game action:choose game:rps choice:<...>`',
-  },
-  [GAME_TYPES.TRIVIA]: {
-    id: GAME_TYPES.TRIVIA,
-    name: 'Trivia Quiz',
-    command: '/game action:solo game:trivia',
-    description: 'Kuis pengetahuan umum 5 ronde dengan berbagai kategori dan tingkat kesulitan.',
-    soloCommands: '`/game action:solo game:trivia` lalu `/game action:answer game:trivia answer:<A|B|C|D>`',
-    multiplayerCommands: '`/game action:challenge game:trivia opponent:<user>` → `/game action:answer game:trivia answer:<A|B|C|D>`',
   },
   [GAME_TYPES.COINFLIP]: {
     id: GAME_TYPES.COINFLIP,
@@ -103,7 +94,7 @@ export const RPS_CHOICES = Object.freeze(['rock', 'paper', 'scissors']);
 
 export const COIN_CHOICES = Object.freeze(['heads', 'tails']);
 
-export const TRIVIA_CATEGORIES = Object.freeze([
+export const QUIZ_CATEGORIES = Object.freeze([
   'general',
   'science',
   'technology',
@@ -112,20 +103,13 @@ export const TRIVIA_CATEGORIES = Object.freeze([
   'sports',
 ]);
 
-export const TRIVIA_CATEGORY_LABELS = Object.freeze({
+export const QUIZ_CATEGORY_LABELS = Object.freeze({
   general: 'General Knowledge',
   science: 'Science',
   technology: 'Technology',
   geography: 'Geography',
   history: 'History',
   sports: 'Sports',
-});
-
-export const TRIVIA_CONFIG = Object.freeze({
-  ROUNDS_PER_MATCH: 5,
-  ROUND_DURATION_MS: 20_000,
-  QUESTIONS_PER_BUCKET: 5,
-  OPTION_LETTERS: ['A', 'B', 'C', 'D'],
 });
 
 export const DICE_CONFIG = Object.freeze({

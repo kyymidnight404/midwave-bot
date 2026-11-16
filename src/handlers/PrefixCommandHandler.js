@@ -15,7 +15,8 @@ import { DOWNLOAD_COOLDOWN_MS } from '../services/downloader.js';
 import { AI_COOLDOWN_MS } from '../services/gemini.js';
 import { LYRICS_COOLDOWN_MS } from '../services/lyricsService.js';
 import { SOCIAL_COOLDOWN_MS, SOCIAL_INTERACTIONS } from '../services/otakuGifsService.js';
-import { GAME_MODES, GAME_TYPES } from '../utils/constants.js';
+import { handleQuizChatAnswer } from '../events/gameInteraction.js';
+import { GAME_TYPES } from '../utils/constants.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
 import { sanitizeError } from '../utils/errorSanitizer.js';
 import { executeGameCommand } from '../utils/gameDispatcher.js';
@@ -34,7 +35,7 @@ const PREFIX_EXECUTORS = new Map([
   ['ai', { execute: DEFAULT_HANDLER_REGISTRY.ai }],
   ['math', { execute: DEFAULT_HANDLER_REGISTRY.math }],
   ['games', { execute: DEFAULT_HANDLER_REGISTRY.games }],
-  ['help', { execute: DEFAULT_HANDLER_REGISTRY.help }],
+  ['menu', { execute: DEFAULT_HANDLER_REGISTRY.help }],
   ['invite', { execute: DEFAULT_HANDLER_REGISTRY.invite }],
   ['game', { execute: DEFAULT_HANDLER_REGISTRY.game }],
   ['knowledge', { execute: DEFAULT_HANDLER_REGISTRY.knowledge }],
@@ -86,11 +87,10 @@ const COMMANDS_REQUIRING_ATTACH_FILES = new Set([
   'igf',
   'qc',
   'games',
-  'help',
+  'menu',
   'invite',
   GAME_TYPES.GUESS,
   GAME_TYPES.RPS,
-  GAME_TYPES.TRIVIA,
   GAME_TYPES.COINFLIP,
   GAME_TYPES.DICE,
   GAME_TYPES.TICTACTOE,
@@ -119,7 +119,7 @@ function requiresAttachFiles(commandName, subcommand, isGameCenterChallenge = fa
   if (isGameCenterChallenge) {
     return false;
   }
-  if (commandName === 'brat' || commandName === 'download' || commandName === 'igf' || commandName === 'qc' || commandName === 'games' || commandName === 'help') {
+  if (commandName === 'brat' || commandName === 'download' || commandName === 'igf' || commandName === 'qc' || commandName === 'games' || commandName === 'menu') {
     return true;
   }
   if (commandName === 'invite' && subcommand === 'accept') {
@@ -270,6 +270,10 @@ export class PrefixCommandHandler {
       return;
     }
 
+    if (await handleQuizChatAnswer(message, this.context)) {
+      return;
+    }
+
     const parsed = parsePrefixInvocation(message.content, {
       prefix: this.prefix,
       userId: message.author?.id ?? null,
@@ -342,18 +346,9 @@ export class PrefixCommandHandler {
       resolvedUsers.set(parsed.options.userId, targetUser);
     }
 
-    const status = this.context?.gameManager?.getStatus?.(message.author.id);
-    const isActiveMultiplayerTrivia =
-      status?.type === 'session' &&
-      status.session.gameType === GAME_TYPES.TRIVIA &&
-      status.session.mode === GAME_MODES.MULTIPLAYER;
-
     const isSecretChoice =
       (parsed.commandName === GAME_TYPES.RPS && parsed.subcommand === 'choose') ||
-      (parsed.commandName === GAME_TYPES.COINFLIP && parsed.subcommand === 'choose') ||
-      (parsed.commandName === GAME_TYPES.TRIVIA &&
-        parsed.subcommand === 'answer' &&
-        isActiveMultiplayerTrivia);
+      (parsed.commandName === GAME_TYPES.COINFLIP && parsed.subcommand === 'choose');
 
     const adapter = new MessageCommandAdapter({
       message,

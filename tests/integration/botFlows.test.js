@@ -348,7 +348,7 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     app.shutdown();
   });
 
-  it('executes /help, /game status, /invite decline, and multiplayer Trivia round timer flow', async (t) => {
+  it('executes /help, /game status, /invite decline, and multiplayer Guess session timeout flow', async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout'] });
     const channel = createFakeChannel('ch-3');
     const client = createFakeClient(channel);
@@ -383,9 +383,8 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
         channel,
         options: {
           action: 'challenge',
-          game: 'trivia',
+          game: 'guess',
           opponent: { id: 'p2', bot: false },
-          category: 'science',
           difficulty: 'easy',
         },
       }),
@@ -409,9 +408,8 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
         channel,
         options: {
           action: 'challenge',
-          game: 'trivia',
+          game: 'guess',
           opponent: { id: 'p2', bot: false },
-          category: 'science',
           difficulty: 'easy',
         },
       }),
@@ -435,19 +433,17 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     await app.interactionHandler.handle(statusInt);
     assert.equal(statusInt.getReplies()[0].payload.flags, MessageFlags.Ephemeral);
 
-    // Let all 5 Trivia rounds time out (5 * 20_000 ms)
-    for (let r = 0; r < 5; r += 1) {
-      t.mock.timers.tick(20_000);
-      for (let m = 0; m < 10; m += 1) {
-        await Promise.resolve();
-      }
+    // Let idle session timeout fire cleanly (120_000 ms)
+    t.mock.timers.tick(120_000);
+    for (let m = 0; m < 10; m += 1) {
+      await Promise.resolve();
     }
 
     assert.deepEqual(sessionManager.getStats(), { activeGamesCount: 0, playerSessionsCount: 0 });
     app.shutdown();
   });
 
-  it('validates /game valid combinations across all 7 games and rejects invalid game/action combinations & missing params', async () => {
+  it('validates /game valid combinations across all 6 games and rejects invalid game/action combinations & missing params', async () => {
     const channel = createFakeChannel('ch-4');
     const client = createFakeClient(channel);
     const sessionManager = new SessionManager({ defaultIdleTimeoutMs: 0 });
@@ -493,7 +489,7 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
       { action: 'move', game: 'coinflip', position: 'A1' },
       { action: 'drop', game: 'guess', column: 2 },
       { action: 'answer', game: 'connect4', answer: '5' },
-      { action: 'choose', game: 'trivia', choice: 'rock' },
+      { action: 'choose', game: 'guess', choice: 'rock' },
       { action: 'choose', game: 'tictactoe', choice: 'rock' },
     ];
     for (const pair of invalidPairs) {
@@ -519,7 +515,7 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     assert.equal(validGuessAnswer[0].payload.flags, MessageFlags.Ephemeral);
 
     // Mismatched game vs active session
-    const mismatchAnswer = await runGame({ action: 'answer', game: 'trivia', answer: 'A' });
+    const mismatchAnswer = await runGame({ action: 'answer', game: 'connect4', answer: '5' });
     assert.equal(mismatchAnswer[0].payload.flags, MessageFlags.Ephemeral);
 
     if (sessionManager.getPlayerSession('u-test-1')) {
@@ -538,13 +534,13 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     assert.equal(validDrop[0].payload.flags, MessageFlags.Ephemeral);
     await runGame({ action: 'cancel' });
 
-    // 6. RPS solo + Trivia solo + CoinFlip/Dice solo + in-game choose/answer validation
+    // 6. RPS solo + Guess solo + invalid answer validation
     const rpsSolo = await runGame({ action: 'solo', game: 'rps', choice: 'rock' });
     assert.equal(rpsSolo.length, 1);
 
-    await runGame({ action: 'solo', game: 'trivia', category: 'science', difficulty: 'easy' });
-    const invalidTriviaAns = await runGame({ action: 'answer', game: 'trivia', answer: 'Z' });
-    assert.equal(invalidTriviaAns[0].payload.flags, MessageFlags.Ephemeral);
+    await runGame({ action: 'solo', game: 'guess', difficulty: 'easy' });
+    const invalidGuessAns = await runGame({ action: 'answer', game: 'guess', answer: 'Z' });
+    assert.equal(invalidGuessAns[0].payload.flags, MessageFlags.Ephemeral);
     await runGame({ action: 'cancel' });
 
     // Status when idle

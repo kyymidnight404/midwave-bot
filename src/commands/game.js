@@ -2,8 +2,6 @@ import { SlashCommandBuilder } from 'discord.js';
 import {
   DICE_CONFIG,
   GAME_TYPES,
-  TRIVIA_CATEGORIES,
-  TRIVIA_CATEGORY_LABELS,
   TTT_POSITIONS,
 } from '../utils/constants.js';
 import { executeGameCommand } from '../utils/gameDispatcher.js';
@@ -14,7 +12,7 @@ const ACTION_CHOICES = [
   { name: 'Choose (Pilih RPS / Coin Flip)', value: 'choose' },
   { name: 'Drop (Jatuhkan Keping Connect4)', value: 'drop' },
   { name: 'Move (Langkah Tic Tac Toe)', value: 'move' },
-  { name: 'Answer (Tebak Guess / Jawab Trivia)', value: 'answer' },
+  { name: 'Answer (Tebak Guess)', value: 'answer' },
   { name: 'Status (Lihat Sesi/Undangan Aktif)', value: 'status' },
   { name: 'Cancel (Batalkan Sesi/Undangan)', value: 'cancel' },
 ];
@@ -26,7 +24,6 @@ const GAME_CHOICES = [
   { name: 'Number Guessing', value: GAME_TYPES.GUESS },
   { name: 'Rock Paper Scissors', value: GAME_TYPES.RPS },
   { name: 'Tic Tac Toe', value: GAME_TYPES.TICTACTOE },
-  { name: 'Trivia Quiz', value: GAME_TYPES.TRIVIA },
 ];
 
 const CHOICE_OPTIONS = [
@@ -44,11 +41,6 @@ const DIFFICULTY_OPTIONS = [
   { name: 'Normal', value: 'normal' },
   { name: 'Hard', value: 'hard' },
 ];
-
-const CATEGORY_OPTIONS = TRIVIA_CATEGORIES.map((cat) => ({
-  name: TRIVIA_CATEGORY_LABELS[cat],
-  value: cat,
-}));
 
 export const data = new SlashCommandBuilder()
   .setName('game')
@@ -98,7 +90,7 @@ export const data = new SlashCommandBuilder()
   .addStringOption((opt) =>
     opt
       .setName('answer')
-      .setDescription('Tebakan angka 1–200 (Guess) atau jawaban A/B/C/D (Trivia)')
+      .setDescription('Tebakan angka 1–200 (untuk Guess)')
       .setRequired(false),
   )
   .addStringOption((opt) =>
@@ -113,13 +105,6 @@ export const data = new SlashCommandBuilder()
       .setDescription('Tingkat kesulitan AI/game (default Normal)')
       .setRequired(false)
       .addChoices(...DIFFICULTY_OPTIONS),
-  )
-  .addStringOption((opt) =>
-    opt
-      .setName('category')
-      .setDescription('Kategori soal Trivia (default General Knowledge)')
-      .setRequired(false)
-      .addChoices(...CATEGORY_OPTIONS),
   )
   .addIntegerOption((opt) =>
     opt

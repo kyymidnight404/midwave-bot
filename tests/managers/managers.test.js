@@ -111,7 +111,7 @@ describe('SessionManager', () => {
     // 3. Timeout cleanup
     let timedOutSession = null;
     sm.createSession({
-      gameType: 'trivia',
+      gameType: 'guess',
       mode: GAME_MODES.MULTIPLAYER,
       channelId: 'ch1',
       players: ['u3', 'u4'],

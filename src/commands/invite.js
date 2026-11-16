@@ -1,6 +1,7 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { COLORS } from '../config/colors.js';
-import { GAME_METADATA } from '../utils/constants.js';
+import { GAME_METADATA, GAME_TYPES } from '../utils/constants.js';
+import { buildCoinflipChoiceComponents } from '../utils/coinflipComponents.js';
 import {
   buildErrorEmbed,
   buildLobbyEmbed,
@@ -10,7 +11,6 @@ import {
 import {
   createSessionTimeoutHandler,
   renderGameOrResultEmbed,
-  startTriviaTimerIfNeeded,
   updatePublicMessage,
 } from '../utils/discordBoard.js';
 
@@ -61,7 +61,10 @@ export default {
         instructions: 'Pertandingan dimulai!',
         color: COLORS.SUCCESS,
       });
-      await updatePublicMessage(client, invite.lobbyMessageRef, { embeds: [acceptedLobby] });
+      await updatePublicMessage(client, invite.lobbyMessageRef, {
+        embeds: [acceptedLobby],
+        components: [],
+      });
 
       const boardEmbed = renderGameOrResultEmbed(
         invite.gameType,
@@ -70,8 +73,10 @@ export default {
         0,
       );
 
+      const isCoinflipBoard = !immediateFinished && session && invite.gameType === GAME_TYPES.COINFLIP;
       await interaction.editReply({
         embeds: [boardEmbed],
+        ...(isCoinflipBoard ? { components: buildCoinflipChoiceComponents(session.sessionId) } : {}),
         files: getLogoFiles(),
       });
 
@@ -85,7 +90,6 @@ export default {
         } catch {
           // Safe fallback if message ref fetch fails
         }
-        startTriviaTimerIfNeeded({ client, sessionManager, gameManager, session });
       }
       return;
     }
@@ -113,7 +117,10 @@ export default {
         color: COLORS.ERROR,
       });
 
-      await updatePublicMessage(client, declined.lobbyMessageRef, { embeds: [declinedLobby] });
+      await updatePublicMessage(client, declined.lobbyMessageRef, {
+        embeds: [declinedLobby],
+        components: [],
+      });
 
       await interaction.editReply({
         content: `Undangan dari ${formatPlayer(declined.hostId)} telah kamu tolak.`,

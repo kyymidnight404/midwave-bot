@@ -190,7 +190,7 @@ test('Help Metadata: dynamically includes newly enabled custom command without h
   assert.ok(text.includes('Cek latensi bot Midwave'));
 });
 
-test('Help Content: includes all 10 social actions and all 7 mini-games without duplicates', () => {
+test('Help Content: includes all 10 social actions and all mini-games without duplicates', () => {
   const entries = discoverHelpEntries({ prefix: '!' });
   const ids = entries.map((e) => e.id);
   assert.equal(new Set(ids).size, ids.length);
@@ -199,7 +199,7 @@ test('Help Content: includes all 10 social actions and all 7 mini-games without 
   for (const action of ['hug', 'pat', 'slap', 'bonk', 'poke', 'yeet', 'highfive', 'wave', 'laugh', 'cry']) {
     assert.ok(text.includes(action), `Missing social action: ${action}`);
   }
-  for (const game of ['coinflip', 'connect4', 'dice', 'guess', 'rps', 'tictactoe', 'trivia']) {
+  for (const game of ['coinflip', 'connect4', 'dice', 'guess', 'rps', 'tictactoe', 'quiz']) {
     assert.ok(text.includes(game), `Missing game: ${game}`);
   }
 });
