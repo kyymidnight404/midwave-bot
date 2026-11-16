@@ -23,6 +23,8 @@ import { ConnectFourGame } from './games/ConnectFourGame.js';
 import readyEvent from './events/ready.js';
 import interactionCreateEvent from './events/interactionCreate.js';
 import messageCreateEvent from './events/messageCreate.js';
+import guildMemberAddEvent from './events/guildMemberAdd.js';
+import { prisma as defaultPrisma } from './services/prisma.js';
 
 /**
  * Registers all pure game engines on a GameManager instance.
@@ -48,6 +50,7 @@ export async function createBotApp(options = {}) {
     new Client({
       intents: [
         GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
       ],
@@ -76,6 +79,7 @@ export async function createBotApp(options = {}) {
     inviteManager,
     gameManager,
     aiConversationManager,
+    prisma: options.prisma ?? defaultPrisma,
   };
 
   const interactionHandler = new InteractionHandler({
@@ -101,7 +105,7 @@ export async function createBotApp(options = {}) {
     });
   context.autoDownloaderHandler = autoDownloaderHandler;
 
-  const events = [readyEvent, interactionCreateEvent, messageCreateEvent];
+  const events = [readyEvent, interactionCreateEvent, messageCreateEvent, guildMemberAddEvent];
   for (const event of events) {
     if (event.once) {
       client.once(event.name, (...args) => event.execute(...args, context));
@@ -132,6 +136,7 @@ export async function createBotApp(options = {}) {
       inviteManager.clearAll();
       aiConversationManager.clear();
       cooldowns.clear();
+      if (!options.prisma) defaultPrisma.$disconnect().catch(() => {});
       client.destroy();
     },
   };

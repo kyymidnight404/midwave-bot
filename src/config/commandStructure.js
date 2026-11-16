@@ -71,6 +71,25 @@ export const commandStructure = {
   },
   commands: [
     {
+      name: 'autorole',
+      description: 'Kelola role otomatis untuk member baru MIDWAVE BOT',
+      enabled: true,
+      type: 'subcommand',
+      handler: 'autorole',
+      defaultMemberPermissions: PermissionFlagsBits.Administrator,
+      help: {
+        category: 'general',
+        visibility: 'admin',
+        usage: 'autorole <add|delete|list>',
+        description: 'Kelola Auto Role untuk member baru (Admin)',
+      },
+      subcommands: [
+        { name: 'add', description: 'Tambahkan role Auto Role', handler: 'autorole', options: [{ name: 'role', description: 'Role yang diberikan kepada member baru', type: 'role', required: true }] },
+        { name: 'delete', description: 'Hapus role dari Auto Role', handler: 'autorole', options: [{ name: 'role', description: 'Role yang dihapus dari daftar', type: 'role', required: true }] },
+        { name: 'list', description: 'Tampilkan seluruh role Auto Role', handler: 'autorole' },
+      ],
+    },
+    {
       name: 'ai',
       description: 'Tanya apa saja ke Midwave AI — cerdas, ringkas, dan kontekstual',
       enabled: true,

@@ -477,13 +477,16 @@ describe('Configurable Slash Command Management System', () => {
       logger: { log() {} },
     });
 
+    const expectedEnabledCount = structureWithDisabled.commands.filter((c) => c.enabled !== false).length;
+
     assert.equal(dryRunRes.synced, false);
     assert.equal(dryRunRes.dryRun, true);
     assert.ok(dryRunRes.preview.diff.toDelete.includes('invite'));
     assert.ok(dryRunRes.preview.diff.toDelete.includes('old_legacy_cmd'));
+    assert.ok(dryRunRes.preview.diff.toCreate.includes('autorole'));
     assert.ok(dryRunRes.preview.diff.toCreate.includes('ai'));
     assert.ok(dryRunRes.preview.diff.toUpdate.includes('Generate QC'));
-    assert.match(formatSyncPreview(dryRunRes.preview), /Top-level commands: 9/);
+    assert.match(formatSyncPreview(dryRunRes.preview), new RegExp(`Top-level commands: ${expectedEnabledCount}`));
     assert.equal(restCalls.some((c) => c.method === 'PUT'), false);
 
     // Guild sync
@@ -514,7 +517,9 @@ describe('Configurable Slash Command Management System', () => {
     });
     const globalPut = restCalls.filter((c) => c.method === 'PUT').at(-1);
     assert.match(globalPut.route, /\/applications\/client-123\/commands$/);
-    assert.equal(globalRes.length, 10);
+    const expectedGlobalCount = commandStructure.commands.filter((c) => c.enabled !== false).length;
+    assert.equal(globalRes.length, expectedGlobalCount);
+    assert.ok(globalRes.some((c) => c.name === 'autorole'));
   });
 
   it('15. Keeps all Prefix Commands (!math, !qc, !say, !hug, !connect4, !dice) working independently of Slash Command config', async () => {

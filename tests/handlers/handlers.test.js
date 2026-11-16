@@ -6,6 +6,7 @@ import { InteractionHandler } from '../../src/handlers/InteractionHandler.js';
 import { CooldownManager } from '../../src/utils/cooldown.js';
 import { createBotApp } from '../../src/index.js';
 import { deployCommands } from '../../deploy-commands.js';
+import { commandStructure } from '../../src/config/commandStructure.js';
 
 function createMockInteraction(commandName, userId = '111', subcommand = null) {
   const replies = [];
@@ -92,7 +93,8 @@ describe('CommandHandler & InteractionHandler', () => {
     assert.equal(replies[0].payload.flags, MessageFlags.Ephemeral);
   });
 
-  it('deploys all 10 application commands including /donate, /game, /media, /social and Generate QC for guild and global routes', async () => {
+  it('deploys all enabled application commands including /autorole, /donate, /game, /media, /social and Generate QC for guild and global routes', async () => {
+    const expectedEnabledCount = commandStructure.commands.filter((c) => c.enabled !== false).length;
     const calls = [];
     const mockRest = {
       async put(route, opts) {
@@ -111,7 +113,13 @@ describe('CommandHandler & InteractionHandler', () => {
 
     assert.equal(calls.length, 1);
     assert.equal(calls[0].route, '/applications/123/guilds/456/commands');
-    assert.equal(guildResult.length, 10);
+    assert.equal(guildResult.length, expectedEnabledCount);
+    const autoroleCmd = guildResult.find((c) => c.name === 'autorole');
+    assert.ok(autoroleCmd);
+    assert.deepEqual(
+      autoroleCmd.options.map((o) => o.name),
+      ['add', 'delete', 'list'],
+    );
     assert.ok(guildResult.find((c) => c.name === 'donate'));
     assert.equal(guildResult.find((c) => c.name === 'download'), undefined);
     const mediaCmd = guildResult.find((c) => c.name === 'media');
@@ -140,6 +148,6 @@ describe('CommandHandler & InteractionHandler', () => {
 
     assert.equal(calls.length, 2);
     assert.equal(calls[1].route, '/applications/123/commands');
-    assert.equal(calls[1].body.length, 10);
+    assert.equal(calls[1].body.length, expectedEnabledCount);
   });
 });

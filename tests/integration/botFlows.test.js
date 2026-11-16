@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { ButtonStyle, MessageFlags } from 'discord.js';
 import { COLORS } from '../../src/config/colors.js';
+import { commandStructure } from '../../src/config/commandStructure.js';
 import { createBotApp } from '../../src/index.js';
 import { CooldownManager } from '../../src/utils/cooldown.js';
 import { GameManager } from '../../src/managers/GameManager.js';
@@ -147,23 +148,17 @@ function createMockCommandInteraction({
 }
 
 describe('Integration: Slash Commands & End-to-End Flows', () => {
-  it('registers all 10 Discord commands within API limits (no duplicates or option ordering violations)', async () => {
+  it('registers all enabled Discord commands within API limits (no duplicates or option ordering violations)', async () => {
     const app = await createBotApp();
     const payloads = app.commandHandler.toJSON();
     const names = payloads.map((c) => c.name).sort();
-    assert.deepEqual(names, [
-      'Generate QC',
-      'ai',
-      'donate',
-      'game',
-      'help',
-      'invite',
-      'knowledge',
-      'math',
-      'media',
-      'social',
-    ]);
-    assert.equal(new Set(payloads.map((c) => c.name)).size, 10);
+    const expectedNames = commandStructure.commands
+      .filter((c) => c.enabled !== false)
+      .map((c) => c.name)
+      .sort();
+    assert.deepEqual(names, expectedNames);
+    assert.ok(names.includes('autorole'));
+    assert.equal(new Set(payloads.map((c) => c.name)).size, expectedNames.length);
 
     for (const cmd of payloads) {
       if (cmd.type === 3) {

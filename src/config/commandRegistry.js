@@ -6,6 +6,7 @@ import { execute as executeGenerateQcContext } from '../commands/generateQcConte
 import helpCommand from '../commands/help.js';
 import inviteCommand from '../commands/invite.js';
 import knowledgeCommand from '../commands/knowledge.js';
+import { execute as executeAutorole } from '../commands/autorole.js';
 import { execute as executeMath } from '../commands/math.js';
 import { execute as executeBrat } from '../prefixCommands/brat.js';
 import { execute as executeDownload } from '../prefixCommands/download.js';
@@ -25,6 +26,7 @@ import { executeSocialAction } from '../utils/socialCommand.js';
 export function createDefaultHandlerRegistry() {
   const registry = {
     ai: executeAi,
+    autorole: executeAutorole,
     donate: executeDonate,
     games: (interaction, context) => gamesCommand.execute(interaction, context),
     help: (interaction, context) => helpCommand.execute(interaction, context),
