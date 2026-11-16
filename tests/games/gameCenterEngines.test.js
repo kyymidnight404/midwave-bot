@@ -152,7 +152,9 @@ describe('Game Center: Rock Paper Scissors (Best of 3) Engine', () => {
 });
 
 describe('Game Center: Quiz Battle Engine & Utilities', () => {
-  it('enforces lobby join/leave/bounds (2-10), round scoring, duplicate answer rejection, and +5 winner bonus', () => {
+  it('enforces lobby join/leave/bounds (2-10), round correct-count tally, duplicate answer rejection, and zero bonus points', () => {
+    assert.equal(QUIZ_POINTS_CORRECT, 1);
+    assert.equal(QUIZ_WINNER_BONUS, 0);
     let lobby = createQuizLobbyState({ hostId: 'host' });
 
     // Cannot start with < 2 players

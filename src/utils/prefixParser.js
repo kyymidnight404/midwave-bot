@@ -2,7 +2,6 @@ import {
   DIFFICULTIES,
   GAME_TYPES,
   QUIZ_CATEGORIES,
-  TTT_POSITIONS,
 } from './constants.js';
 import { SOLO_SOCIAL_COMMANDS, TARGETED_SOCIAL_COMMANDS } from '../services/otakuGifsService.js';
 
@@ -39,6 +38,8 @@ const COMMAND_ALIASES = Object.freeze({
   ttt: 'tictactoe',
   quiz: 'quiz',
   knowledge: 'knowledge',
+  weather: 'weather',
+  cuaca: 'weather',
 });
 
 const RPS_CHOICE_MAP = Object.freeze({
@@ -60,7 +61,6 @@ const COIN_CHOICE_MAP = Object.freeze({
 
 const QUIZ_CATEGORY_SET = new Set(QUIZ_CATEGORIES);
 const DIFFICULTY_SET = new Set(DIFFICULTIES);
-const TTT_POSITION_SET = new Set(TTT_POSITIONS);
 const TARGETED_SOCIAL_SET = new Set(TARGETED_SOCIAL_COMMANDS);
 const SOLO_SOCIAL_SET = new Set(SOLO_SOCIAL_COMMANDS);
 
@@ -94,12 +94,6 @@ export function extractMentionOrId(token) {
     return token;
   }
   return null;
-}
-
-function parseDifficulty(token) {
-  if (typeof token !== 'string') return null;
-  const lower = token.toLowerCase();
-  return DIFFICULTY_SET.has(lower) ? lower : null;
 }
 
 /**
@@ -279,6 +273,18 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
 
   if (commandName === 'feedback') {
     return { commandName, subcommand: null, options: {} };
+  }
+
+  if (commandName === 'weather') {
+    if (!rawRest) {
+      return {
+        commandName: 'weather',
+        subcommand: null,
+        options: {},
+        error: `Masukkan nama lokasi di Indonesia. Contoh: \`${prefix}weather Jakarta\` atau \`${prefix}weather Kemayoran, Jakarta\`.`,
+      };
+    }
+    return { commandName: 'weather', subcommand: null, options: { location: rawRest } };
   }
 
   if (commandName === 'igf') {
@@ -541,20 +547,12 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
 
   if (commandName === GAME_TYPES.TICTACTOE) {
     if (args.length === 0) {
-      return { commandName, subcommand: 'solo', options: { difficulty: 'normal' } };
-    }
-
-    if (firstLower === 'solo') {
-      const diff = args[1] ? parseDifficulty(args[1]) : 'normal';
-      if (!diff || args.length > 2) {
-        return {
-          commandName,
-          subcommand: 'solo',
-          options: {},
-          error: `Gunakan \`${prefix}tictactoe solo [easy|normal|hard]\`.`,
-        };
-      }
-      return { commandName, subcommand: 'solo', options: { difficulty: diff } };
+      return {
+        commandName,
+        subcommand: null,
+        options: {},
+        error: `Tic Tac Toe hanya bisa dimainkan bersama teman (bukan bot). Mention lawanmu, contoh: \`${prefix}ttt @teman\`.`,
+      };
     }
 
     if (firstLower === 'challenge') {
@@ -575,34 +573,11 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
       return { commandName, subcommand: 'challenge', options: { opponentId: directMentionId } };
     }
 
-    if (firstLower === 'move') {
-      const pos = args[1]?.toUpperCase() ?? '';
-      if (!TTT_POSITION_SET.has(pos) || args.length > 2) {
-        return {
-          commandName,
-          subcommand: 'move',
-          options: {},
-          error: `Koordinat tidak valid. Pilih A1–C3. Contoh: \`${prefix}tictactoe move B2\`.`,
-        };
-      }
-      return { commandName, subcommand: 'move', options: { position: pos } };
-    }
-
-    const directDiff = parseDifficulty(firstLower);
-    if (directDiff && args.length === 1) {
-      return { commandName, subcommand: 'solo', options: { difficulty: directDiff } };
-    }
-
-    const directPos = args[0].toUpperCase();
-    if (TTT_POSITION_SET.has(directPos) && args.length === 1) {
-      return { commandName, subcommand: 'move', options: { position: directPos } };
-    }
-
     return {
       commandName,
       subcommand: null,
       options: {},
-      error: `Format \`${prefix}tictactoe\` tidak dikenali. Contoh: \`${prefix}tictactoe\`, \`${prefix}tictactoe B2\`, atau \`${prefix}tictactoe @teman\`.`,
+      error: `Tic Tac Toe hanya bisa dimainkan bersama teman (bukan bot). Gunakan \`${prefix}ttt @teman\`.`,
     };
   }
 

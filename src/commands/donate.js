@@ -1,6 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, SlashCommandBuilder } from 'discord.js';
 import { COLORS } from '../config/colors.js';
-import { createBaseEmbed, getLogoFiles } from '../utils/embeds.js';
+import { createBaseEmbed, getIconFiles } from '../utils/embeds.js';
 
 export const DONATE_TITLE = '☕ Buy Me a Coffee?';
 export const DONATE_DESCRIPTION =
@@ -32,6 +32,7 @@ export function buildDonateEmbed() {
     description: DONATE_DESCRIPTION,
     color: COLORS.PRIMARY,
     includeThumbnail: true,
+    iconName: 'donate',
     footer: DONATE_FOOTER,
   });
 }
@@ -59,7 +60,7 @@ export async function execute(interaction) {
   await interaction.reply({
     embeds: [buildDonateEmbed()],
     components: [buildDonateComponents()],
-    files: getLogoFiles(),
+    files: getIconFiles('donate'),
     allowedMentions: { parse: [], repliedUser: false },
   });
 }

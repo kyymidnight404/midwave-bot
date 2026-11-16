@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { getLogoFiles } from '../utils/embeds.js';
+import { getIconFiles } from '../utils/embeds.js';
 import {
   buildDynamicHelpEmbed,
   discoverHelpEntries,
@@ -44,7 +44,7 @@ export async function execute(interaction, context = {}) {
 
   await interaction.reply({
     embeds: [initialEmbed],
-    files: getLogoFiles(),
+    files: getIconFiles('menu'),
     allowedMentions: { parse: [], repliedUser: false },
   });
 }

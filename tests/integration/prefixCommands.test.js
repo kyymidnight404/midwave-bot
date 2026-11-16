@@ -332,12 +332,20 @@ describe('Prefix Command System', () => {
       options: { opponentId: '123456789012345678' },
     });
 
-    assert.deepEqual(parsePrefixInvocation('!ttt b2'), {
+    assert.ok(parsePrefixInvocation('!ttt')?.error);
+    assert.ok(parsePrefixInvocation('!ttt easy')?.error);
+    assert.ok(parsePrefixInvocation('!ttt b2')?.error);
+    assert.deepEqual(parsePrefixInvocation('!ttt <@123456789012345678>'), {
       commandName: 'tictactoe',
-      subcommand: 'move',
-      options: { position: 'B2' },
+      subcommand: 'challenge',
+      options: { opponentId: '123456789012345678' },
     });
-    assert.ok(parsePrefixInvocation('!ttt z9')?.error);
+    assert.deepEqual(parsePrefixInvocation('!weather Kemayoran, Jakarta'), {
+      commandName: 'weather',
+      subcommand: null,
+      options: { location: 'Kemayoran, Jakarta' },
+    });
+    assert.ok(parsePrefixInvocation('!weather')?.error);
   });
 
   it('ignores bot messages, enforces guild channel permissions, and shares cooldown with slash commands', async () => {
@@ -510,22 +518,19 @@ describe('Prefix Command System', () => {
     const sqrtEmbed = mathSqrtMsg.getReplies()[0].payload.embeds[0].toJSON();
     assert.equal(sqrtEmbed.fields[1].value, '`12`');
 
-    // Solo TicTacToe gameplay via prefix commands
-    await harness.prefixCommandHandler.handle(
-      createFakeMessage({ content: '?tictactoe', author: u1, channel: harness.channel, userDirectory: harness.users }),
-    );
-    assert.equal(harness.sessionManager.activeGames.size, 1);
-
-    await harness.prefixCommandHandler.handle(
-      createFakeMessage({ content: '?ttt A1', author: u1, channel: harness.channel, userDirectory: harness.users }),
-    );
-    const session = harness.sessionManager.getPlayerSession(U1_ID);
-    assert.equal(session.state.board[0], 'X');
-    harness.sessionManager.clearAll();
+    // TicTacToe rejects solo/bot play under custom prefix
+    const tttSoloCustom = createFakeMessage({
+      content: '?tictactoe',
+      author: u1,
+      channel: harness.channel,
+      userDirectory: harness.users,
+    });
+    await harness.prefixCommandHandler.handle(tttSoloCustom);
+    assert.match(tttSoloCustom.getReplies()[0].payload.embeds[0].data.description, /bersama teman/i);
     assert.equal(harness.sessionManager.activeGames.size, 0);
   });
 
-  it('runs real solo CoinFlip, RPS, and TicTacToe flows via prefix commands', async () => {
+  it('runs real solo CoinFlip/RPS flows and rejects solo or bot TicTacToe via prefix commands', async () => {
     const harness = await createTestHarness({ prefix: '!' });
     const u1 = harness.users.get(U1_ID);
 
@@ -539,15 +544,20 @@ describe('Prefix Command System', () => {
     assert.equal(rpsMsg.getReplies().length, 1);
     assert.equal(harness.sessionManager.activeGames.size, 0);
 
-    await harness.prefixCommandHandler.handle(
-      createFakeMessage({ content: '!ttt easy', author: u1, channel: harness.channel, userDirectory: harness.users }),
-    );
-    await harness.prefixCommandHandler.handle(
-      createFakeMessage({ content: '!ttt B2', author: u1, channel: harness.channel, userDirectory: harness.users }),
-    );
-    const tttSession = harness.sessionManager.getPlayerSession(U1_ID);
-    assert.equal(tttSession.state.board[4], 'X');
-    harness.sessionManager.clearAll();
+    const tttEasyMsg = createFakeMessage({ content: '!ttt easy', author: u1, channel: harness.channel, userDirectory: harness.users });
+    await harness.prefixCommandHandler.handle(tttEasyMsg);
+    assert.match(tttEasyMsg.getReplies()[0].payload.embeds[0].data.description, /bersama teman/i);
+
+    const bot2 = harness.users.get('bot2');
+    const tttBotMsg = createFakeMessage({
+      content: `!ttt <@${bot2.id}>`,
+      author: u1,
+      channel: harness.channel,
+      mentions: [bot2],
+      userDirectory: harness.users,
+    });
+    await harness.prefixCommandHandler.handle(tttBotMsg);
+    assert.match(tttBotMsg.getReplies()[0].payload.embeds[0].data.description, /bot/i);
     assert.equal(harness.sessionManager.activeGames.size, 0);
   });
 

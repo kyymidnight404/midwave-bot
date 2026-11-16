@@ -1,21 +1,41 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
-import { COLORS, EMBED_FOOTER, LOGO_ATTACHMENT_URL } from '../../utils/constants.js';
+import { COLORS } from '../../config/colors.js';
 import { GAME_CENTER_LABELS } from '../services/scoreService.js';
 import { QUIZ_MAX_PLAYERS, QUIZ_TOTAL_QUESTIONS } from '../engines/quizBattle.js';
+import { getIconAttachmentUrl } from '../../utils/embeds.js';
 import { buildGameCustomId } from './customId.js';
 
 const OPTION_LETTERS = ['A', 'B', 'C', 'D'];
-const OPTION_EMOJIS = ['🇦', '🇧', '🇨', '🇩'];
 
-function applyMidwaveBranding(embed, includeThumbnail = false) {
-  embed.setFooter({
-    text: `${EMBED_FOOTER} • Game Center`,
-    ...(includeThumbnail ? { iconURL: LOGO_ATTACHMENT_URL } : {}),
-  });
+const QUIZ_CATEGORY_LABELS = Object.freeze({
+  all: 'Semua',
+  general: 'Umum',
+  science: 'Sains',
+  technology: 'Teknologi',
+  geography: 'Geografi',
+  history: 'Sejarah',
+  sports: 'Olahraga',
+});
+
+const QUIZ_DIFFICULTY_LABELS = Object.freeze({
+  all: 'Semua',
+  easy: 'Mudah',
+  normal: 'Normal',
+  hard: 'Sulit',
+});
+
+function formatQuizCategory(category) {
+  return QUIZ_CATEGORY_LABELS[category] ?? category ?? 'Umum';
+}
+
+function formatQuizDifficulty(difficulty) {
+  return QUIZ_DIFFICULTY_LABELS[difficulty] ?? difficulty ?? 'Normal';
+}
+
+function applyMidwaveBranding(embed, includeThumbnail = true, iconName = null) {
   if (includeThumbnail) {
-    embed.setThumbnail(LOGO_ATTACHMENT_URL);
+    embed.setThumbnail(getIconAttachmentUrl(iconName));
   }
-  embed.setTimestamp();
   return embed;
 }
 
@@ -30,7 +50,7 @@ export function buildChallengeMessage({
   disabled = false,
   statusText = null,
   color = COLORS.PRIMARY,
-  includeThumbnail = false,
+  includeThumbnail = true,
 }) {
   const gameTitle = GAME_CENTER_LABELS[gameType] ?? gameType;
   const description =
@@ -45,6 +65,7 @@ export function buildChallengeMessage({
       .setTitle(`🎮 Tantangan ${gameTitle}`)
       .setDescription(description),
     includeThumbnail,
+    gameType,
   );
 
   const row = new ActionRowBuilder().addComponents(
@@ -73,7 +94,7 @@ export function buildTicTacToeMessage({
   state,
   status = 'active',
   forfeitedById = null,
-  includeThumbnail = false,
+  includeThumbnail = true,
 }) {
   const pX = state.players.X;
   const pO = state.players.O;
@@ -84,13 +105,13 @@ export function buildTicTacToeMessage({
   let color = COLORS.PRIMARY;
 
   if (forfeitedById) {
-    statusLine = `🏳️ <@${forfeitedById}> menyerah! Pemenang: <@${state.winnerId}> (+25 poin)`;
+    statusLine = `🏳️ <@${forfeitedById}> menyerah! Pemenang: <@${state.winnerId}>`;
     color = COLORS.SUCCESS;
   } else if (state.winnerId) {
-    statusLine = `🏆 Pemenang: <@${state.winnerId}> (${state.winnerSymbol === 'X' ? '❌' : '⭕'})! (+25 poin)`;
+    statusLine = `🏆 Pemenang: <@${state.winnerId}> (${state.winnerSymbol === 'X' ? '❌' : '⭕'})!`;
     color = COLORS.SUCCESS;
   } else if (state.isDraw) {
-    statusLine = '🤝 Pertandingan berakhir **Seri**! (+10 poin masing-masing)';
+    statusLine = '🤝 Pertandingan berakhir **Seri**!';
     color = COLORS.WARNING;
   } else if (status === 'expired') {
     statusLine = '⏱️ Pertandingan berakhir karena tidak ada aktivitas.';
@@ -107,6 +128,7 @@ export function buildTicTacToeMessage({
           `${statusLine}`,
       ),
     includeThumbnail,
+    'tic-tac-toe',
   );
 
   const rows = [];
@@ -168,7 +190,7 @@ export function buildRpsMessage({
   state,
   status = 'active',
   forfeitedById = null,
-  includeThumbnail = false,
+  includeThumbnail = true,
 }) {
   const p1 = state.player1Id;
   const p2 = state.player2Id;
@@ -186,10 +208,10 @@ export function buildRpsMessage({
   let color = COLORS.PRIMARY;
 
   if (forfeitedById) {
-    statusText = `🏳️ <@${forfeitedById}> menyerah! Pemenang: <@${state.winnerId}> (+25 poin)`;
+    statusText = `🏳️ <@${forfeitedById}> menyerah! Pemenang: <@${state.winnerId}>`;
     color = COLORS.SUCCESS;
   } else if (state.winnerId) {
-    statusText = `🏆 Pertandingan Selesai! Pemenang: <@${state.winnerId}> (+25 poin)`;
+    statusText = `🏆 Pertandingan Selesai! Pemenang: <@${state.winnerId}>`;
     color = COLORS.SUCCESS;
   } else if (status === 'expired') {
     statusText = '⏱️ Pertandingan berakhir karena timeout.';
@@ -212,6 +234,7 @@ export function buildRpsMessage({
           `${statusText}${lastRoundLine}`,
       ),
     includeThumbnail,
+    'rps',
   );
 
   const row = new ActionRowBuilder().addComponents(
@@ -252,7 +275,7 @@ export function buildQuizLobbyMessage({
   state,
   disabled = false,
   cancelledText = null,
-  includeThumbnail = false,
+  includeThumbnail = true,
 }) {
   const playerList =
     state.players.length > 0
@@ -262,12 +285,12 @@ export function buildQuizLobbyMessage({
   const embed = applyMidwaveBranding(
     new EmbedBuilder()
       .setColor(cancelledText ? COLORS.ERROR : COLORS.PRIMARY)
-      .setTitle('🧠 Quiz Battle — Lobby')
+      .setTitle('🧠 Quiz Battle — Lobi')
       .setDescription(
         cancelledText ??
           `**Host:** <@${state.hostId}>\n` +
-            `**Kategori:** \`${state.category}\` | **Kesulitan:** \`${state.difficulty}\`\n` +
-            `**Aturan:** ${QUIZ_TOTAL_QUESTIONS} soal • 20 detik/ronde • +10 benar • +5 bonus pemenang\n\n` +
+            `**Kategori:** \`${formatQuizCategory(state.category)}\` | **Kesulitan:** \`${formatQuizDifficulty(state.difficulty)}\`\n` +
+            `**Aturan:** ${QUIZ_TOTAL_QUESTIONS} soal • 20 detik/ronde\n\n` +
             `**Pemain (${state.players.length}/${QUIZ_MAX_PLAYERS}):**\n${playerList}`,
       ),
     includeThumbnail,
@@ -276,25 +299,25 @@ export function buildQuizLobbyMessage({
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(buildGameCustomId('quiz', sessionId, 'join'))
-      .setLabel('Join')
+      .setLabel('Gabung')
       .setEmoji('🎮')
       .setStyle(ButtonStyle.Success)
       .setDisabled(disabled || state.players.length >= QUIZ_MAX_PLAYERS),
     new ButtonBuilder()
       .setCustomId(buildGameCustomId('quiz', sessionId, 'leave'))
-      .setLabel('Leave')
+      .setLabel('Keluar')
       .setEmoji('🚪')
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(disabled),
     new ButtonBuilder()
       .setCustomId(buildGameCustomId('quiz', sessionId, 'start'))
-      .setLabel('Start Game')
+      .setLabel('Mulai')
       .setEmoji('▶️')
       .setStyle(ButtonStyle.Primary)
       .setDisabled(disabled),
     new ButtonBuilder()
       .setCustomId(buildGameCustomId('quiz', sessionId, 'cancel'))
-      .setLabel('Cancel')
+      .setLabel('Batal')
       .setEmoji('❌')
       .setStyle(ButtonStyle.Danger)
       .setDisabled(disabled),
@@ -309,14 +332,14 @@ export function buildQuizLobbyMessage({
 export function buildQuizQuestionMessage({
   sessionId,
   state,
-  includeThumbnail = false,
+  includeThumbnail = true,
 }) {
   const q = state.questions[state.round - 1];
   const endsUnix = Math.floor((state.roundEndsAt ?? Date.now() + 20_000) / 1000);
   const answeredCount = Object.keys(state.roundAnswers ?? {}).length;
 
   const optionsText = q.options
-    .map((opt, idx) => `${OPTION_EMOJIS[idx]} **${OPTION_LETTERS[idx]}.** ${opt}`)
+    .map((opt, idx) => `**${OPTION_LETTERS[idx]}.** ${opt}`)
     .join('\n');
 
   const embed = applyMidwaveBranding(
@@ -324,7 +347,7 @@ export function buildQuizQuestionMessage({
       .setColor(COLORS.PRIMARY)
       .setTitle(`🧠 Quiz Battle — Pertanyaan ${state.round}/${state.totalQuestions}`)
       .setDescription(
-        `📚 **Kategori:** \`${q.category}\` | ⚡ **Kesulitan:** \`${q.difficulty}\`\n` +
+        `📚 **Kategori:** \`${formatQuizCategory(q.category)}\` | ⚡ **Kesulitan:** \`${formatQuizDifficulty(q.difficulty)}\`\n` +
           `⏱️ **Berakhir:** <t:${endsUnix}:R> | 👥 **Sudah menjawab:** ${answeredCount}/${state.players.length}\n\n` +
           `**${q.question}**\n\n` +
           `${optionsText}\n\n` +
@@ -336,7 +359,7 @@ export function buildQuizQuestionMessage({
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(buildGameCustomId('quiz', sessionId, 'cancel'))
-      .setLabel('Stop Quiz')
+      .setLabel('Hentikan Quiz')
       .setEmoji('🛑')
       .setStyle(ButtonStyle.Danger),
   );
@@ -351,7 +374,7 @@ export function buildQuizRoundResultMessage({
   sessionId,
   state,
   summary,
-  includeThumbnail = false,
+  includeThumbnail = true,
 }) {
   const q = state.questions[state.round - 1];
   const correctLetter = OPTION_LETTERS[summary.correctIndex];
@@ -362,7 +385,7 @@ export function buildQuizRoundResultMessage({
 
   const leaderboardLines = summary.standings
     .slice(0, 10)
-    .map((row, idx) => `${idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`} <@${row.userId}> — **${row.score}** poin`)
+    .map((row, idx) => `${idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`} <@${row.userId}> — **${row.score}** benar`)
     .join('\n');
 
   const embed = applyMidwaveBranding(
@@ -372,8 +395,8 @@ export function buildQuizRoundResultMessage({
       .setDescription(
         `**Pertanyaan:** ${q.question}\n` +
           `✅ **Jawaban Benar:** **${correctLetter}.** ${summary.correctOption}\n` +
-          `🎯 **Menjawab Benar (+10):** ${correctList}\n\n` +
-          `**Klasemen Sementara:**\n${leaderboardLines}\n\n` +
+          `🎯 **Menjawab Benar:** ${correctList}\n\n` +
+          `**Hasil Sementara:**\n${leaderboardLines}\n\n` +
           (state.round < state.totalQuestions
             ? '*Pertanyaan berikutnya segera dimulai...*'
             : '*Menghitung hasil akhir...*'),
@@ -390,28 +413,28 @@ export function buildQuizRoundResultMessage({
 export function buildQuizFinalMessage({
   state,
   standings,
-  includeThumbnail = false,
+  includeThumbnail = true,
 }) {
   const isSolo = standings.length <= 1;
+  const totalQuestions = state.totalQuestions ?? QUIZ_TOTAL_QUESTIONS;
   const leaderboardLines = standings
     .map((row, idx) => {
       const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
-      const bonusTag = !isSolo && state.winnerId === row.userId ? ' *(+5 Bonus Juara)*' : '';
-      return `${medal} <@${row.userId}> — **${row.score}** poin${bonusTag}`;
+      return `${medal} <@${row.userId}> — **${row.score}/${totalQuestions}** benar`;
     })
     .join('\n');
 
   const headerLine = isSolo
-    ? `🏁 **Quiz Selesai!** Skor akhir <@${standings[0]?.userId ?? state.hostId}>: **${standings[0]?.score ?? 0}** poin.`
+    ? `🏁 **Quiz Selesai!** Jawaban benar <@${standings[0]?.userId ?? state.hostId}>: **${standings[0]?.score ?? 0}/${totalQuestions}**.`
     : state.winnerId
-      ? `🏆 **Pemenang Quiz Battle:** <@${state.winnerId}> (+5 bonus poin)!`
+      ? `🏆 **Pemenang Quiz Battle:** <@${state.winnerId}>!`
       : '🤝 **Quiz Battle berakhir Seri!**';
 
   const embed = applyMidwaveBranding(
     new EmbedBuilder()
       .setColor(COLORS.SUCCESS)
       .setTitle('🏆 Quiz Battle — Hasil Akhir')
-      .setDescription(`${headerLine}\n\n**Klasemen Akhir:**\n${leaderboardLines}`),
+      .setDescription(`${headerLine}\n\n**Ringkasan Jawaban:**\n${leaderboardLines}`),
     includeThumbnail,
   );
 
@@ -424,7 +447,7 @@ export function buildQuizFinalMessage({
 export function buildQuizCancelledMessage({
   state,
   cancelledById,
-  includeThumbnail = false,
+  includeThumbnail = true,
 }) {
   const embed = applyMidwaveBranding(
     new EmbedBuilder()

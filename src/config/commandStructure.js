@@ -8,6 +8,7 @@ import { SOCIAL_INTERACTIONS } from '../services/otakuGifsService.js';
 import { BRAT_MAX_LENGTH } from '../utils/bratGenerator.js';
 import { MATH_MAX_LENGTH } from '../utils/mathEvaluator.js';
 import { QC_MAX_LENGTH } from '../utils/qcGenerator.js';
+import { WEATHER_MAX_LOCATION_LENGTH } from '../utils/constants.js';
 
 /**
  * Centralized Discord Application Command configuration for Midwave.
@@ -209,6 +210,28 @@ export const commandStructure = {
           type: 'string',
           required: true,
           maxLength: MATH_MAX_LENGTH,
+        },
+      ],
+    },
+    {
+      name: 'weather',
+      description: 'Cek prakiraan cuaca wilayah Indonesia langsung dari BMKG',
+      enabled: true,
+      type: 'standalone',
+      handler: 'weather',
+      help: {
+        category: 'media_utilities',
+        usage: 'weather <lokasi>',
+        prefixUsage: '{prefix}weather <lokasi>',
+        description: 'Cek prakiraan cuaca Indonesia dari BMKG',
+      },
+      options: [
+        {
+          name: 'location',
+          description: `Nama kota, kabupaten, kecamatan, atau kode ADM4 (maks ${WEATHER_MAX_LOCATION_LENGTH} karakter)`,
+          type: 'string',
+          required: true,
+          maxLength: WEATHER_MAX_LOCATION_LENGTH,
         },
       ],
     },

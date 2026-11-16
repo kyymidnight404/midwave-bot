@@ -4,7 +4,7 @@ import { BOT_PLAYER_ID, GAME_TYPES } from './constants.js';
 import {
   buildErrorEmbed,
   createBaseEmbed,
-  getLogoFiles,
+  getIconFiles,
 } from './embeds.js';
 import {
   createSessionTimeoutHandler,
@@ -38,7 +38,7 @@ export function buildCoinflipInviteEmbed({
   opponentId,
   status = 'pending',
   rejectedById = null,
-  includeThumbnail = false,
+  includeThumbnail = true,
 }) {
   let color = COLORS.PRIMARY;
   let description = `🟡 **Menunggu Konfirmasi** (60 detik)\n<@${hostId}> menantang <@${opponentId}> — Klik **Accept** atau **Reject**.`;
@@ -59,6 +59,7 @@ export function buildCoinflipInviteEmbed({
     description,
     color,
     includeThumbnail,
+    iconName: 'coinflip',
   });
 }
 
@@ -67,7 +68,7 @@ export function buildCoinflipInviteEmbed({
  * @param {object} state
  * @param {{ includeThumbnail?: boolean }} [options]
  */
-export function buildCoinflipBoardEmbed(state, { includeThumbnail = false } = {}) {
+export function buildCoinflipBoardEmbed(state, { includeThumbnail = true } = {}) {
   const playerLines = (state?.players ?? [])
     .filter((p) => p !== BOT_PLAYER_ID)
     .map((p) => `• <@${p}>: ${state?.choices?.[p] ? '✅ Sudah memilih (rahasia)' : '⏳ Menunggu pilihan...'}`);
@@ -77,6 +78,7 @@ export function buildCoinflipBoardEmbed(state, { includeThumbnail = false } = {}
     description: `${playerLines.join('\n')}\n\nPilih **Heads** atau **Tails** secara rahasia di bawah.`,
     color: COLORS.PRIMARY,
     includeThumbnail,
+    iconName: 'coinflip',
   });
 }
 
@@ -85,7 +87,7 @@ export function buildCoinflipBoardEmbed(state, { includeThumbnail = false } = {}
  * @param {object} state
  * @param {{ includeThumbnail?: boolean }} [options]
  */
-export function buildCoinflipResultEmbed(state, { includeThumbnail = false } = {}) {
+export function buildCoinflipResultEmbed(state, { includeThumbnail = true } = {}) {
   const coin = formatCoinChoice(state?.coinResult);
   const humanPlayers = (state?.players ?? []).filter((p) => p !== BOT_PLAYER_ID);
 
@@ -102,6 +104,7 @@ export function buildCoinflipResultEmbed(state, { includeThumbnail = false } = {
       description: summary,
       color: won ? COLORS.SUCCESS : COLORS.DANGER,
       includeThumbnail,
+      iconName: 'coinflip',
     });
   }
 
@@ -115,6 +118,7 @@ export function buildCoinflipResultEmbed(state, { includeThumbnail = false } = {
       description: `🤝 **Draw** (<@${p1}> vs <@${p2}>)\n🪙 Hasil Koin: **${coin}** · Kedua pemain memilih **${c1}**`,
       color: COLORS.WARNING,
       includeThumbnail,
+      iconName: 'coinflip',
     });
   }
 
@@ -124,6 +128,7 @@ export function buildCoinflipResultEmbed(state, { includeThumbnail = false } = {
     description: `🏆 **Pemenang:** <@${winnerId}>\n🪙 Hasil Koin: **${coin}** · <@${p1}>: **${c1}** · <@${p2}>: **${c2}**`,
     color: COLORS.SUCCESS,
     includeThumbnail,
+    iconName: 'coinflip',
   });
 }
 
@@ -178,6 +183,7 @@ export function buildCoinflipSoloPromptPayload(userId) {
     title: '🪙 Coin Flip',
     description: 'Pilih **Heads** atau **Tails** untuk melempar koin.',
     color: COLORS.PRIMARY,
+    iconName: 'coinflip',
   });
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -191,7 +197,7 @@ export function buildCoinflipSoloPromptPayload(userId) {
       .setEmoji('🌗')
       .setStyle(ButtonStyle.Secondary),
   );
-  return { embeds: [embed], components: [row], files: getLogoFiles() };
+  return { embeds: [embed], components: [row], files: getIconFiles('coinflip') };
 }
 
 async function replyEphemeralError(interaction, message) {
@@ -266,7 +272,7 @@ async function handleCoinflipInviteButton(interaction, action, inviteId, context
     const boardPayload = {
       embeds: [boardEmbed],
       components: buildCoinflipChoiceComponents(session.sessionId),
-      files: getLogoFiles(),
+      files: getIconFiles('coinflip'),
     };
 
     let boardMsg = null;

@@ -5,6 +5,7 @@ import helpCommand from '../commands/help.js';
 import knowledgeCommand from '../commands/knowledge.js';
 import { execute as executeAutorole } from '../commands/autorole.js';
 import { execute as executeMath } from '../commands/math.js';
+import { execute as executeWeather } from '../commands/weather.js';
 import { execute as executeBrat } from '../prefixCommands/brat.js';
 import { execute as executeDownload } from '../prefixCommands/download.js';
 import { execute as executeLyrics } from '../prefixCommands/lyrics.js';
@@ -27,6 +28,7 @@ export function createDefaultHandlerRegistry() {
     help: (interaction, context) => helpCommand.execute(interaction, context),
     knowledge: (interaction, context) => knowledgeCommand.execute(interaction, context),
     math: executeMath,
+    weather: executeWeather,
     'media.qc': executeQc,
     'media.brat': executeBrat,
     'media.lyrics': executeLyrics,

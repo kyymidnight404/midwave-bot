@@ -10,12 +10,6 @@ export const GAME_CENTER_LABELS = Object.freeze({
   rps: 'Rock Paper Scissors',
 });
 
-export const MATCH_POINTS = Object.freeze({
-  WIN: 25,
-  DRAW: 10,
-  LOSS: 0,
-});
-
 /**
  * Calculates win rate percentage safely without dividing by zero.
  * @param {number} wins

@@ -14,6 +14,7 @@ import { DOWNLOAD_COOLDOWN_MS } from '../services/downloader.js';
 import { AI_COOLDOWN_MS } from '../services/gemini.js';
 import { LYRICS_COOLDOWN_MS } from '../services/lyricsService.js';
 import { SOCIAL_COOLDOWN_MS, SOCIAL_INTERACTIONS } from '../services/otakuGifsService.js';
+import { WEATHER_COOLDOWN_MS } from '../services/weatherService.js';
 import { handleQuizChatAnswer } from '../events/gameInteraction.js';
 import { GAME_TYPES } from '../utils/constants.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
@@ -36,6 +37,7 @@ const PREFIX_EXECUTORS = new Map([
   ['menu', { execute: DEFAULT_HANDLER_REGISTRY.help }],
   ['donate', { execute: DEFAULT_HANDLER_REGISTRY.donate }],
   ['knowledge', { execute: DEFAULT_HANDLER_REGISTRY.knowledge }],
+  ['weather', { execute: DEFAULT_HANDLER_REGISTRY.weather }],
   [lyricsPrefixCommand.name, lyricsPrefixCommand],
   ...Object.keys(SOCIAL_INTERACTIONS).map((cmd) => [
     cmd,
@@ -75,6 +77,7 @@ const COMMAND_COOLDOWNS = Object.freeze({
   download: DOWNLOAD_COOLDOWN_MS,
   lyrics: LYRICS_COOLDOWN_MS,
   say: SAY_COOLDOWN_MS,
+  weather: WEATHER_COOLDOWN_MS,
   ...Object.fromEntries(Object.keys(SOCIAL_INTERACTIONS).map((cmd) => [cmd, SOCIAL_COOLDOWN_MS])),
 });
 
@@ -95,16 +98,11 @@ const GAME_CENTER_CHALLENGE_EXECUTORS = new Map([
   [GAME_TYPES.RPS, rpsCenterCommand],
 ]);
 
-function isGameCenterDirectChallenge(content, prefix, parsed) {
-  if (
-    parsed?.subcommand !== 'challenge' ||
-    !GAME_CENTER_CHALLENGE_EXECUTORS.has(parsed.commandName)
-  ) {
-    return false;
-  }
-  const tokens = content.slice(prefix.length).trim().split(/\s+/);
-  const firstArg = tokens[1]?.toLowerCase() ?? '';
-  return firstArg !== 'challenge';
+function isGameCenterDirectChallenge(parsed) {
+  return (
+    parsed?.subcommand === 'challenge' &&
+    GAME_CENTER_CHALLENGE_EXECUTORS.has(parsed.commandName)
+  );
 }
 
 function requiresAttachFiles(commandName, subcommand, isGameCenterChallenge = false) {
@@ -273,7 +271,7 @@ export class PrefixCommandHandler {
       return;
     }
 
-    const isGcChallenge = isGameCenterDirectChallenge(message.content, this.prefix, parsed);
+    const isGcChallenge = isGameCenterDirectChallenge(parsed);
     const command = isGcChallenge
       ? GAME_CENTER_CHALLENGE_EXECUTORS.get(parsed.commandName)
       : (PREFIX_EXECUTORS.get(parsed.commandName) ?? this.commandHandler.get(parsed.commandName));

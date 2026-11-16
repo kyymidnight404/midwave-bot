@@ -104,12 +104,30 @@ async function replyEphemeral(interaction, message) {
 }
 
 async function safeUpdateMessage(messageOrInteraction, payload, isInteractionUpdate = false) {
+  const existingMsg = isInteractionUpdate ? messageOrInteraction?.message : messageOrInteraction;
+  let finalPayload = payload;
+  if (
+    existingMsg?.attachments != null &&
+    existingMsg.attachments.size === 0 &&
+    Array.isArray(payload?.embeds)
+  ) {
+    finalPayload = {
+      ...payload,
+      embeds: payload.embeds.map((e) => {
+        if (typeof e?.setThumbnail === 'function' && e?.data?.thumbnail?.url?.startsWith('attachment://')) {
+          e.setThumbnail(null);
+        }
+        return e;
+      }),
+    };
+  }
+
   try {
     if (isInteractionUpdate && typeof messageOrInteraction.update === 'function') {
-      return await messageOrInteraction.update(payload);
+      return await messageOrInteraction.update(finalPayload);
     }
     if (typeof messageOrInteraction.edit === 'function') {
-      return await messageOrInteraction.edit(payload);
+      return await messageOrInteraction.edit(finalPayload);
     }
     return null;
   } catch (err) {
@@ -157,6 +175,7 @@ function renderActiveBoard(session, status = session.status, forfeitedById = nul
       state: session.state,
       status,
       forfeitedById,
+      includeThumbnail: true,
     });
   }
   if (session.gameType === 'rps') {
@@ -165,6 +184,7 @@ function renderActiveBoard(session, status = session.status, forfeitedById = nul
       state: session.state,
       status,
       forfeitedById,
+      includeThumbnail: true,
     });
   }
   return null;

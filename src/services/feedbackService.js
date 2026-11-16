@@ -13,7 +13,7 @@ import {
   TextInputStyle,
 } from 'discord.js';
 import { COLORS } from '../config/colors.js';
-import { buildErrorEmbed, createBaseEmbed, getLogoFiles } from '../utils/embeds.js';
+import { buildErrorEmbed, createBaseEmbed, getIconFiles } from '../utils/embeds.js';
 import { sanitizeError } from '../utils/errorSanitizer.js';
 
 export const FEEDBACK_COOLDOWN_MS = 60_000;
@@ -470,7 +470,7 @@ export function buildFeedbackPromptEmbed({ selectedCategory = null, attachmentUr
     description: lines.join('\n'),
     color: COLORS.PRIMARY,
     includeThumbnail,
-    includeFooter: true,
+    iconName: 'feedback',
   });
 }
 
@@ -565,8 +565,7 @@ export function buildFeedbackReportEmbed({
     description,
     color: statusInfo.color,
     includeThumbnail: true,
-    includeFooter: true,
-    timestamp: createdAt,
+    iconName: 'feedback',
   }).addFields(
     { name: 'Kategori', value: categoryInfo.display, inline: true },
     { name: 'Status', value: statusInfo.label, inline: true },
@@ -846,7 +845,7 @@ export async function handleFeedbackInteraction(interaction, context = {}) {
         await channelResolution.channel.send({
           embeds: [reportEmbed],
           components: [staffRow],
-          files: getLogoFiles(),
+          files: getIconFiles('feedback'),
         });
       } catch (err) {
         logger.error?.('[Feedback] Failed to deliver report to staff channel:', sanitizeError(err));
@@ -885,7 +884,6 @@ export async function handleFeedbackInteraction(interaction, context = {}) {
         ].join('\n'),
         color: COLORS.SUCCESS,
         includeThumbnail: false,
-        includeFooter: true,
       });
 
       await interaction.reply({

@@ -8,7 +8,7 @@ import {
   buildCoinflipInviteEmbed,
   buildCoinflipResultEmbed,
 } from './coinflipComponents.js';
-import { buildErrorEmbed, buildLobbyEmbed, formatPlayer, getLogoFiles } from './embeds.js';
+import { buildErrorEmbed, buildLobbyEmbed, formatPlayer, getIconFiles } from './embeds.js';
 import { validateOpponent } from './validators.js';
 import {
   createInviteExpireHandler,
@@ -83,13 +83,22 @@ export async function handleChallengeCommand(interaction, context, { gameType, c
         details,
       });
 
+  const iconName =
+    gameType === GAME_TYPES.COINFLIP
+      ? 'coinflip'
+      : gameType === GAME_TYPES.RPS
+        ? 'rps'
+        : gameType === GAME_TYPES.TICTACTOE
+          ? 'tic-tac-toe'
+          : null;
+
   await interaction.reply({
     content: isCoinflip
       ? `<@${opponent.id}>`
       : `${formatPlayer(opponent.id)}, kamu mendapat tantangan **${meta?.name ?? gameType}**!`,
     embeds: [lobbyEmbed],
     ...(isCoinflip ? { components: buildCoinflipInviteComponents(invite.inviteId) } : {}),
-    files: getLogoFiles(),
+    files: getIconFiles(iconName),
   });
 
   try {
@@ -229,13 +238,22 @@ export async function handleInstantSoloCommand(interaction, context, { gameType,
     return;
   }
 
+  const iconName =
+    gameType === GAME_TYPES.COINFLIP
+      ? 'coinflip'
+      : gameType === GAME_TYPES.RPS
+        ? 'rps'
+        : gameType === GAME_TYPES.TICTACTOE
+          ? 'tic-tac-toe'
+          : null;
+
   const embed =
     gameType === GAME_TYPES.COINFLIP
       ? buildCoinflipResultEmbed(outcome.state, { includeThumbnail: true })
       : renderGameOrResultEmbed(gameType, outcome.publicView, outcome.result, 0);
   await interaction.reply({
     embeds: [embed],
-    files: getLogoFiles(),
+    files: getIconFiles(iconName),
   });
 }
 

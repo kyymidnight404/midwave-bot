@@ -42,10 +42,12 @@ export function shuffleQuestionOptions(options, correctIndex, rng = Math.random)
 }
 
 const inFlightSeeds = new WeakMap();
+const syncedSignatures = new WeakMap();
 
 /**
- * Idempotently seeds the `QuizQuestion` SQLite table from `src/data/trivia.json` if needed.
- * Uses a per-client promise lock and SQLite transaction so concurrent `!quiz` commands never collide.
+ * Idempotently seeds and updates the `QuizQuestion` SQLite table from `src/data/trivia.json`.
+ * Uses a per-client promise lock and SQLite transaction so concurrent `!quiz` commands never collide,
+ * while ensuring translated/updated questions overwrite stale DB rows automatically.
  * @param {import('@prisma/client').PrismaClient} [prisma]
  * @param {string} [dataPath]
  */
@@ -54,33 +56,64 @@ export async function ensureQuizQuestionsSeeded(prisma = defaultPrisma, dataPath
     return inFlightSeeds.get(prisma);
   }
 
+  const raw = fs.readFileSync(dataPath, 'utf8');
+  if (syncedSignatures.get(prisma) === raw) {
+    return JSON.parse(raw).length;
+  }
+
   const seedTask = (async () => {
-    const raw = fs.readFileSync(dataPath, 'utf8');
     const bank = JSON.parse(raw);
 
-    const existingCount = await prisma.quizQuestion.count({ where: { isActive: true } });
-    if (existingCount >= bank.length) {
-      return existingCount;
-    }
+    const existingRows = await prisma.quizQuestion.findMany({
+      select: {
+        externalKey: true,
+        category: true,
+        difficulty: true,
+        question: true,
+        optionsJson: true,
+        correctIndex: true,
+        isActive: true,
+      },
+    });
+    const existingByKey = new Map(existingRows.map((row) => [row.externalKey, row]));
 
-    await prisma.$transaction(async (tx) => {
-      for (const item of bank) {
-        await tx.quizQuestion.upsert({
-          where: { externalKey: item.id },
-          update: {},
-          create: {
-            externalKey: item.id,
+    const pendingItems = bank.filter((item) => {
+      const existing = existingByKey.get(item.id);
+      if (!existing) return true;
+      return (
+        existing.category !== item.category ||
+        existing.difficulty !== item.difficulty ||
+        existing.question !== item.question ||
+        existing.optionsJson !== JSON.stringify(item.options) ||
+        existing.correctIndex !== item.answerIndex ||
+        existing.isActive !== true
+      );
+    });
+
+    if (pendingItems.length > 0) {
+      await prisma.$transaction(async (tx) => {
+        for (const item of pendingItems) {
+          const payload = {
             category: item.category,
             difficulty: item.difficulty,
             question: item.question,
             optionsJson: JSON.stringify(item.options),
             correctIndex: item.answerIndex,
             isActive: true,
-          },
-        });
-      }
-    });
+          };
+          await tx.quizQuestion.upsert({
+            where: { externalKey: item.id },
+            update: payload,
+            create: {
+              externalKey: item.id,
+              ...payload,
+            },
+          });
+        }
+      });
+    }
 
+    syncedSignatures.set(prisma, raw);
     return prisma.quizQuestion.count({ where: { isActive: true } });
   })();
 

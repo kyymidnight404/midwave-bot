@@ -290,16 +290,10 @@ async function dispatchRps(interaction, context, actionName) {
 
 async function dispatchTicTacToe(interaction, context, actionName) {
   if (actionName === 'solo') {
-    const rawDiff = interaction.options.getString?.('difficulty', false);
-    const difficulty = rawDiff ? rawDiff.trim().toLowerCase() : 'normal';
-    if (!isValidDifficulty(difficulty)) {
-      await replyEphemeralError(interaction, 'Tingkat kesulitan tidak valid. Pilih `easy`, `normal`, atau `hard`.');
-      return;
-    }
-    await handleSoloSessionStart(interaction, context, {
-      gameType: GAME_TYPES.TICTACTOE,
-      config: { difficulty },
-    });
+    await replyEphemeralError(
+      interaction,
+      'Tic Tac Toe hanya bisa dimainkan bersama teman (bukan bot). Gunakan `!ttt @teman`.',
+    );
     return;
   }
 

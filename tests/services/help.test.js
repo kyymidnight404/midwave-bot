@@ -22,7 +22,7 @@ test('Help Embed: single embed with Midnight Ocean visual identity & all 5 categ
   assert.ok(json.description.includes('Your multipurpose Discord assistant.'));
   assert.ok(json.description.includes("Discover Midwave's features and commands in one place."));
   assert.equal(json.color, COLORS.PRIMARY);
-  assert.equal(json.thumbnail?.url, LOGO_ATTACHMENT_URL);
+  assert.equal(json.thumbnail?.url, 'attachment://menu.png');
   assert.equal(json.footer, undefined);
 
   const fieldNames = json.fields.map((f) => f.name);

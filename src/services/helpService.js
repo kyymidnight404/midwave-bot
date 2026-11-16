@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import {
   ActionRowBuilder,
   EmbedBuilder,
@@ -13,6 +14,9 @@ import {
   LOGO_ATTACHMENT_URL,
   LOGO_PATH,
 } from '../utils/constants.js';
+
+const MENU_ICON_PATH = path.resolve(process.cwd(), 'assets/icon/menu.png');
+const MENU_ICON_ATTACHMENT_URL = 'attachment://menu.png';
 
 export const HELP_SELECT_CUSTOM_ID = 'midwave:help:category';
 
@@ -55,8 +59,8 @@ export const PREFIX_ONLY_METADATA = Object.freeze({
   tictactoe: Object.freeze({
     name: 'tictactoe',
     category: 'mini_games',
-    usage: 'tictactoe [easy|normal|hard] | ttt @user',
-    description: 'Main Tic Tac Toe vs AI atau pemain lain',
+    usage: 'tictactoe @user',
+    description: 'Main Tic Tac Toe bersama teman',
     visibility: 'public',
   }),
   quiz: Object.freeze({
@@ -429,7 +433,9 @@ export function buildDynamicHelpEmbed({
     .setTitle('MIDWAVE — COMMAND GUIDE')
     .setDescription(description);
 
-  if (fs.existsSync(LOGO_PATH)) {
+  if (fs.existsSync(MENU_ICON_PATH)) {
+    embed.setThumbnail(MENU_ICON_ATTACHMENT_URL);
+  } else if (fs.existsSync(LOGO_PATH)) {
     embed.setThumbnail(LOGO_ATTACHMENT_URL);
   }
 

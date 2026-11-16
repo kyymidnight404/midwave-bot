@@ -271,6 +271,12 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     assert.equal(finished.winnerId, p1.id);
     assert.equal(finished.statsRecorded, false);
     assert.equal(await prisma.gameStats.count({ where: { guildId: TEST_GUILD_1 } }), 0);
+
+    const tttEmbed = challengeMsg.payload.embeds[0].toJSON();
+    assert.equal(tttEmbed.footer, undefined);
+    assert.equal(tttEmbed.timestamp, undefined);
+    assert.equal(tttEmbed.thumbnail?.url, 'attachment://tic-tac-toe.png');
+    assert.doesNotMatch(tttEmbed.description, /poin/i);
   });
 
   it('plays Rock Paper Scissors Best of 3 via !rps @user with hidden choices', async () => {
@@ -349,6 +355,11 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     assert.equal(finished.winnerId, p1.id);
     assert.equal(finished.statsRecorded, false);
     assert.equal(await prisma.gameStats.count({ where: { guildId: TEST_GUILD_1 } }), 0);
+
+    const rpsEmbed = challengeMsg.payload.embeds[0].toJSON();
+    assert.equal(rpsEmbed.footer, undefined);
+    assert.equal(rpsEmbed.timestamp, undefined);
+    assert.doesNotMatch(rpsEmbed.description, /poin/i);
   });
 
   it('starts Quiz Battle immediately on !quiz and accepts direct chat answers (a/b/c/d) without prefix or slash', async () => {
@@ -376,9 +387,14 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     assert.equal(session.state.round, 1);
     assert.equal(session.state.questions.length, 10);
 
-    // Verify answer is NOT exposed in question embed and direct chat instructions appear
-    const q1Desc = quizMsg.payload.embeds[0].data.description;
+    // Verify answer is NOT exposed, A/B/C/D options have no emoji, and footer is omitted
+    const q1Embed = quizMsg.payload.embeds[0].toJSON();
+    const q1Desc = q1Embed.description;
+    assert.equal(q1Embed.footer, undefined);
+    assert.equal(q1Embed.timestamp, undefined);
     assert.equal(q1Desc.includes('Jawaban Benar'), false);
+    assert.doesNotMatch(q1Desc, /[🇦🇧🇨🇩]/u);
+    assert.match(q1Desc, /\*\*A\.\*\* /);
     assert.match(q1Desc, /Ketik \*\*a\*\*, \*\*b\*\*, \*\*c\*\*, atau \*\*d\*\* langsung di chat/i);
 
     // Starting a second !quiz in the same channel while active is rejected
@@ -443,7 +459,7 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
       await h.prefixHandler.handle(hostChat);
     }
 
-    // Round 10: let timeout resolve automatically (host finishes with 90 + 5 bonus = 95)
+    // Round 10: let timeout resolve automatically (host finishes with 9 correct answers, zero bonus)
     for (let wait = 0; wait < 90; wait += 1) {
       session = await getPersistedSession(sessionId, prisma);
       if (session.status === 'finished') break;
@@ -453,9 +469,14 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     assert.equal(session.status, 'finished');
     assert.equal(session.winnerId, host.id);
     assert.equal(session.statsRecorded, false);
-    assert.equal(session.state.scores[host.id], 95);
+    assert.equal(session.state.scores[host.id], 9);
     assert.equal(session.state.scores[p2.id], 0);
     assert.equal(await prisma.gameStats.count({ where: { guildId: TEST_GUILD_1 } }), 0);
+    const quizFinalEmbed = quizMsg.payload.embeds[0].toJSON();
+    assert.equal(quizFinalEmbed.footer, undefined);
+    assert.equal(quizFinalEmbed.timestamp, undefined);
+    assert.equal(quizFinalEmbed.thumbnail?.url, 'attachment://logo.png');
+    assert.doesNotMatch(quizFinalEmbed.description, /poin|bonus/i);
 
     // Quick test: non-host cannot click Stop Quiz, host CAN stop active quiz early
     const msg2 = createFakeMessage({
@@ -488,6 +509,7 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     );
     const cancelledSession = await getPersistedSession(sessionId2, prisma);
     assert.equal(cancelledSession.status, 'cancelled');
+    assert.equal(quizMsg2.payload.embeds[0].toJSON().thumbnail?.url, 'attachment://logo.png');
   });
 
   it('ignores !lb and !profile commands and never writes GameStats rows', async () => {
@@ -521,11 +543,13 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     const h = await createGameCenterHarness();
     const [p1, p2] = [...h.users.values()];
 
-    // Concurrent seed calls must remain idempotent and leave 90 active questions
+    // Concurrent seed calls must remain idempotent, keep 90 active questions, and reflect Indonesian bank
     const seedCounts = await Promise.all(
       Array.from({ length: 5 }, () => ensureQuizQuestionsSeeded(prisma)),
     );
     assert.ok(seedCounts.every((c) => c === 90));
+    const sampleQuestion = await prisma.quizQuestion.findUnique({ where: { externalKey: 'spo-n-5' } });
+    assert.match(sampleQuestion.question, /Berapa menit/i);
 
     // Concurrent RPS button clicks in the same millisecond
     const rpsSid = 'concurrent-rps';
@@ -648,7 +672,7 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
       category: 'general',
       difficulty: 'easy',
       players: [p1.id, p2.id],
-      scores: { [p1.id]: 30, [p2.id]: 10 },
+      scores: { [p1.id]: 3, [p2.id]: 1 },
       round: 1,
       totalQuestions: 1,
       questions: [
@@ -701,7 +725,7 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     assert.equal(recoveredQuiz.status, 'finished');
     assert.equal(recoveredQuiz.statsRecorded, false);
     assert.equal(recoveredQuiz.winnerId, p1.id);
-    assert.equal(recoveredQuiz.state.scores[p1.id], 45);
+    assert.equal(recoveredQuiz.state.scores[p1.id], 4);
     assert.equal(await prisma.gameStats.count({ where: { guildId: TEST_GUILD_1 } }), 0);
   });
 });

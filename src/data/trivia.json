@@ -3,7 +3,7 @@
     "id": "gen-e-1",
     "category": "general",
     "difficulty": "easy",
-    "question": "How many days are there in a standard non-leap year?",
+    "question": "Berapa jumlah hari dalam satu tahun biasa (bukan tahun kabisat)?",
     "options": ["364", "365", "366", "360"],
     "answerIndex": 1
   },
@@ -11,15 +11,15 @@
     "id": "gen-e-2",
     "category": "general",
     "difficulty": "easy",
-    "question": "Which color is formed by mixing red and blue light in RGB color mixing?",
-    "options": ["Green", "Yellow", "Magenta", "Cyan"],
+    "question": "Warna apa yang terbentuk jika cahaya merah dan biru dicampurkan dalam model warna RGB?",
+    "options": ["Hijau", "Kuning", "Magenta", "Sian"],
     "answerIndex": 2
   },
   {
     "id": "gen-e-3",
     "category": "general",
     "difficulty": "easy",
-    "question": "How many minutes are in two hours?",
+    "question": "Berapa menit yang ada dalam dua jam?",
     "options": ["90", "100", "120", "150"],
     "answerIndex": 2
   },
@@ -27,23 +27,23 @@
     "id": "gen-e-4",
     "category": "general",
     "difficulty": "easy",
-    "question": "Which shape has exactly three sides?",
-    "options": ["Square", "Triangle", "Pentagon", "Hexagon"],
+    "question": "Bangun datar apa yang memiliki tepat tiga sisi?",
+    "options": ["Persegi", "Segitiga", "Segi lima", "Segi enam"],
     "answerIndex": 1
   },
   {
     "id": "gen-e-5",
     "category": "general",
     "difficulty": "easy",
-    "question": "What is the primary language spoken in Brazil?",
-    "options": ["Spanish", "Portuguese", "French", "Italian"],
+    "question": "Apa bahasa utama yang digunakan di Brasil?",
+    "options": ["Spanyol", "Portugis", "Prancis", "Italia"],
     "answerIndex": 1
   },
   {
     "id": "gen-n-1",
     "category": "general",
     "difficulty": "normal",
-    "question": "How many keys are on a standard full-size piano?",
+    "question": "Berapa jumlah tuts pada piano standar ukuran penuh?",
     "options": ["76", "84", "88", "92"],
     "answerIndex": 2
   },
@@ -51,7 +51,7 @@
     "id": "gen-n-2",
     "category": "general",
     "difficulty": "normal",
-    "question": "Which currency is used in Japan?",
+    "question": "Apa nama mata uang resmi negara Jepang?",
     "options": ["Won", "Yuan", "Yen", "Baht"],
     "answerIndex": 2
   },
@@ -59,7 +59,7 @@
     "id": "gen-n-3",
     "category": "general",
     "difficulty": "normal",
-    "question": "In the Roman numeral system, what value does the letter 'L' represent?",
+    "question": "Dalam sistem angka Romawi, huruf 'L' melambangkan nilai berapa?",
     "options": ["50", "100", "500", "1000"],
     "answerIndex": 0
   },
@@ -67,15 +67,15 @@
     "id": "gen-n-4",
     "category": "general",
     "difficulty": "normal",
-    "question": "Which chess piece can only move diagonally?",
-    "options": ["Rook", "Knight", "Bishop", "Queen"],
+    "question": "Bidak catur mana yang hanya dapat bergerak secara diagonal?",
+    "options": ["Benteng", "Kuda", "Gajah (Menteri)", "Ratu"],
     "answerIndex": 2
   },
   {
     "id": "gen-n-5",
     "category": "general",
     "difficulty": "normal",
-    "question": "What is the traditional Japanese art of paper folding called?",
+    "question": "Apa nama seni melipat kertas tradisional dari Jepang?",
     "options": ["Ikebana", "Origami", "Bonsai", "Kintsugi"],
     "answerIndex": 1
   },
@@ -83,15 +83,15 @@
     "id": "gen-h-1",
     "category": "general",
     "difficulty": "hard",
-    "question": "In Morse code, which sequence represents the letter 'S'?",
-    "options": ["Three dashes", "Three dots", "Dot-dash-dot", "Dash-dot-dash"],
+    "question": "Dalam sandi Morse, urutan mana yang melambangkan huruf 'S'?",
+    "options": ["Tiga garis", "Tiga titik", "Titik-garis-titik", "Garis-titik-garis"],
     "answerIndex": 1
   },
   {
     "id": "gen-h-2",
     "category": "general",
     "difficulty": "hard",
-    "question": "Which United Nations agency headquartered in Rome uses the Latin motto 'Fiat Panis'?",
+    "question": "Badan PBB yang berkantor pusat di Roma dan memakai semboyan Latin 'Fiat Panis' adalah?",
     "options": ["UNESCO", "WHO", "FAO", "ILO"],
     "answerIndex": 2
   },
@@ -99,15 +99,15 @@
     "id": "gen-h-3",
     "category": "general",
     "difficulty": "hard",
-    "question": "What is the name of the scale used to measure the spiciness of chili peppers?",
-    "options": ["Richter scale", "Beaufort scale", "Scoville scale", "Mohs scale"],
+    "question": "Apa nama skala yang digunakan untuk mengukur tingkat kepedasan cabai?",
+    "options": ["Skala Richter", "Skala Beaufort", "Skala Scoville", "Skala Mohs"],
     "answerIndex": 2
   },
   {
     "id": "gen-h-4",
     "category": "general",
     "difficulty": "hard",
-    "question": "How many dots appear on a standard single Braille cell?",
+    "question": "Berapa banyak titik pada satu sel standar huruf Braille?",
     "options": ["4", "6", "8", "9"],
     "answerIndex": 1
   },
@@ -115,7 +115,7 @@
     "id": "gen-h-5",
     "category": "general",
     "difficulty": "hard",
-    "question": "Which museum in Madrid houses Diego Velázquez's painting 'Las Meninas'?",
+    "question": "Museum di Madrid mana yang menyimpan lukisan terkenal 'Las Meninas' karya Diego Velázquez?",
     "options": ["Reina Sofía", "Thyssen-Bornemisza", "Museo del Prado", "Guggenheim Bilbao"],
     "answerIndex": 2
   },
@@ -124,7 +124,7 @@
     "id": "sci-e-1",
     "category": "science",
     "difficulty": "easy",
-    "question": "What is the chemical symbol for water?",
+    "question": "Apa rumus kimia untuk air?",
     "options": ["CO2", "H2O", "O2", "NaCl"],
     "answerIndex": 1
   },
@@ -132,23 +132,23 @@
     "id": "sci-e-2",
     "category": "science",
     "difficulty": "easy",
-    "question": "Which planet in our solar system is closest to the Sun?",
-    "options": ["Venus", "Earth", "Mercury", "Mars"],
+    "question": "Planet manakah di tata surya kita yang paling dekat dengan Matahari?",
+    "options": ["Venus", "Bumi", "Merkurius", "Mars"],
     "answerIndex": 2
   },
   {
     "id": "sci-e-3",
     "category": "science",
     "difficulty": "easy",
-    "question": "What gas do plants primarily absorb from the atmosphere for photosynthesis?",
-    "options": ["Oxygen", "Nitrogen", "Carbon dioxide", "Hydrogen"],
+    "question": "Gas apa yang terutama diserap tumbuhan dari atmosfer untuk proses fotosintesis?",
+    "options": ["Oksigen", "Nitrogen", "Karbon dioksida", "Hidrogen"],
     "answerIndex": 2
   },
   {
     "id": "sci-e-4",
     "category": "science",
     "difficulty": "easy",
-    "question": "At standard atmospheric pressure, at what temperature in Celsius does pure water freeze?",
+    "question": "Pada tekanan atmosfer standar, pada suhu Celsius berapa air murni membeku?",
     "options": ["-10°C", "0°C", "32°C", "100°C"],
     "answerIndex": 1
   },
@@ -156,15 +156,15 @@
     "id": "sci-e-5",
     "category": "science",
     "difficulty": "easy",
-    "question": "Which organ pumps blood throughout the human body?",
-    "options": ["Lungs", "Liver", "Heart", "Kidney"],
+    "question": "Organ tubuh manusia manakah yang berfungsi memompa darah ke seluruh tubuh?",
+    "options": ["Paru-paru", "Hati", "Jantung", "Ginjal"],
     "answerIndex": 2
   },
   {
     "id": "sci-n-1",
     "category": "science",
     "difficulty": "normal",
-    "question": "What is the chemical symbol for gold?",
+    "question": "Apa lambang kimia untuk unsur emas?",
     "options": ["Ag", "Au", "Gd", "Go"],
     "answerIndex": 1
   },
@@ -172,7 +172,7 @@
     "id": "sci-n-2",
     "category": "science",
     "difficulty": "normal",
-    "question": "What is the SI unit of electrical resistance?",
+    "question": "Apa satuan SI untuk hambatan listrik?",
     "options": ["Volt", "Ampere", "Ohm", "Watt"],
     "answerIndex": 2
   },
@@ -180,23 +180,23 @@
     "id": "sci-n-3",
     "category": "science",
     "difficulty": "normal",
-    "question": "Which subatomic particle carries a negative electric charge?",
-    "options": ["Proton", "Neutron", "Electron", "Positron"],
+    "question": "Partikel subatomik mana yang membawa muatan listrik negatif?",
+    "options": ["Proton", "Neutron", "Elektron", "Positron"],
     "answerIndex": 2
   },
   {
     "id": "sci-n-4",
     "category": "science",
     "difficulty": "normal",
-    "question": "What is the hardest naturally occurring mineral on the Mohs scale?",
-    "options": ["Quartz", "Topaz", "Corundum", "Diamond"],
+    "question": "Apa mineral alami paling keras menurut skala Mohs?",
+    "options": ["Kuarsa", "Topaz", "Korundum", "Berlian (Intan)"],
     "answerIndex": 3
   },
   {
     "id": "sci-n-5",
     "category": "science",
     "difficulty": "normal",
-    "question": "Which vitamin is primarily produced when human skin is exposed to sunlight?",
+    "question": "Vitamin apa yang terutama diproduksi ketika kulit manusia terpapar sinar matahari?",
     "options": ["Vitamin A", "Vitamin C", "Vitamin D", "Vitamin K"],
     "answerIndex": 2
   },
@@ -204,7 +204,7 @@
     "id": "sci-h-1",
     "category": "science",
     "difficulty": "hard",
-    "question": "What is the atomic number of Carbon?",
+    "question": "Berapakah nomor atom dari unsur Karbon?",
     "options": ["4", "6", "8", "12"],
     "answerIndex": 1
   },
@@ -212,32 +212,32 @@
     "id": "sci-h-2",
     "category": "science",
     "difficulty": "hard",
-    "question": "Which organelle is known as the site of cellular respiration and ATP production in eukaryotic cells?",
-    "options": ["Golgi apparatus", "Ribosome", "Mitochondrion", "Lysosome"],
+    "question": "Organel sel mana yang dikenal sebagai tempat respirasi seluler dan produksi ATP pada sel eukariotik?",
+    "options": ["Badan Golgi", "Ribosom", "Mitokondria", "Lisosom"],
     "answerIndex": 2
   },
   {
     "id": "sci-h-3",
     "category": "science",
     "difficulty": "hard",
-    "question": "What is the approximate speed of light in a vacuum?",
-    "options": ["300,000 km/h", "300,000 km/s", "150,000 km/s", "30,000 km/s"],
+    "question": "Berapakah perkiraan kecepatan cahaya di ruang hampa?",
+    "options": ["300.000 km/jam", "300.000 km/detik", "150.000 km/detik", "30.000 km/detik"],
     "answerIndex": 1
   },
   {
     "id": "sci-h-4",
     "category": "science",
     "difficulty": "hard",
-    "question": "Which noble gas has the chemical symbol 'Kr'?",
-    "options": ["Krypton", "Potassium", "Xenon", "Neon"],
+    "question": "Gas mulia manakah yang memiliki lambang kimia 'Kr'?",
+    "options": ["Kripton", "Kalium", "Xenon", "Neon"],
     "answerIndex": 0
   },
   {
     "id": "sci-h-5",
     "category": "science",
     "difficulty": "hard",
-    "question": "Which law states that the pressure of a gas is inversely proportional to its volume at constant temperature?",
-    "options": ["Charles's Law", "Boyle's Law", "Avogadro's Law", "Ohm's Law"],
+    "question": "Hukum fisika mana yang menyatakan tekanan gas berbanding terbalik dengan volumenya pada suhu tetap?",
+    "options": ["Hukum Charles", "Hukum Boyle", "Hukum Avogadro", "Hukum Ohm"],
     "answerIndex": 1
   },
 
@@ -245,7 +245,7 @@
     "id": "tech-e-1",
     "category": "technology",
     "difficulty": "easy",
-    "question": "What does 'CPU' stand for in computing?",
+    "question": "Apa kepanjangan dari 'CPU' dalam dunia komputer?",
     "options": ["Central Processing Unit", "Computer Personal Unit", "Central Power Utility", "Core Program Unit"],
     "answerIndex": 0
   },
@@ -253,7 +253,7 @@
     "id": "tech-e-2",
     "category": "technology",
     "difficulty": "easy",
-    "question": "How many bits make up one byte?",
+    "question": "Berapa bit yang menyusun satu byte?",
     "options": ["4", "8", "16", "32"],
     "answerIndex": 1
   },
@@ -261,7 +261,7 @@
     "id": "tech-e-3",
     "category": "technology",
     "difficulty": "easy",
-    "question": "Which company created the Windows operating system?",
+    "question": "Perusahaan manakah yang menciptakan sistem operasi Windows?",
     "options": ["Apple", "IBM", "Microsoft", "Google"],
     "answerIndex": 2
   },
@@ -269,7 +269,7 @@
     "id": "tech-e-4",
     "category": "technology",
     "difficulty": "easy",
-    "question": "What does 'HTML' stand for?",
+    "question": "Apa kepanjangan dari 'HTML'?",
     "options": [
       "HyperText Markup Language",
       "High Transfer Machine Language",
@@ -282,15 +282,15 @@
     "id": "tech-e-5",
     "category": "technology",
     "difficulty": "easy",
-    "question": "Which number system uses only the digits 0 and 1?",
-    "options": ["Decimal", "Octal", "Binary", "Hexadecimal"],
+    "question": "Sistem bilangan mana yang hanya menggunakan angka 0 dan 1?",
+    "options": ["Desimal", "Oktal", "Biner", "Heksadesimal"],
     "answerIndex": 2
   },
   {
     "id": "tech-n-1",
     "category": "technology",
     "difficulty": "normal",
-    "question": "Which HTTP status code indicates that a requested resource was not found?",
+    "question": "Kode status HTTP manakah yang menandakan bahwa resource yang diminta tidak ditemukan?",
     "options": ["200", "301", "404", "500"],
     "answerIndex": 2
   },
@@ -298,7 +298,7 @@
     "id": "tech-n-2",
     "category": "technology",
     "difficulty": "normal",
-    "question": "Who is credited with creating the Linux kernel in 1991?",
+    "question": "Siapa pencipta kernel Linux pada tahun 1991?",
     "options": ["Richard Stallman", "Linus Torvalds", "Ken Thompson", "Dennis Ritchie"],
     "answerIndex": 1
   },
@@ -306,7 +306,7 @@
     "id": "tech-n-3",
     "category": "technology",
     "difficulty": "normal",
-    "question": "Which protocol is used to secure web traffic with encryption over HTTP?",
+    "question": "Protokol mana yang digunakan untuk mengamankan lalu lintas web dengan enkripsi di atas HTTP?",
     "options": ["FTP", "TLS", "SMTP", "DHCP"],
     "answerIndex": 1
   },
@@ -314,7 +314,7 @@
     "id": "tech-n-4",
     "category": "technology",
     "difficulty": "normal",
-    "question": "In Git, which command creates a local copy of a remote repository?",
+    "question": "Dalam Git, perintah mana yang digunakan untuk membuat salinan lokal dari repositori jarak jauh?",
     "options": ["git fork", "git clone", "git init", "git merge"],
     "answerIndex": 1
   },
@@ -322,7 +322,7 @@
     "id": "tech-n-5",
     "category": "technology",
     "difficulty": "normal",
-    "question": "What does 'DNS' stand for on the internet?",
+    "question": "Apa kepanjangan dari 'DNS' di internet?",
     "options": [
       "Dynamic Network Service",
       "Domain Name System",
@@ -335,7 +335,7 @@
     "id": "tech-h-1",
     "category": "technology",
     "difficulty": "hard",
-    "question": "What is the default TCP port for SSH?",
+    "question": "Berapa port TCP default untuk protokol SSH?",
     "options": ["21", "22", "23", "25"],
     "answerIndex": 1
   },
@@ -343,7 +343,7 @@
     "id": "tech-h-2",
     "category": "technology",
     "difficulty": "hard",
-    "question": "What is the average-case time complexity of binary search on a sorted array of n elements?",
+    "question": "Berapakah kompleksitas waktu rata-rata algoritma binary search pada array terurut berukuran n?",
     "options": ["O(1)", "O(log n)", "O(n)", "O(n log n)"],
     "answerIndex": 1
   },
@@ -351,7 +351,7 @@
     "id": "tech-h-3",
     "category": "technology",
     "difficulty": "hard",
-    "question": "Which JavaScript runtime engine powers Node.js?",
+    "question": "Mesin (engine) JavaScript mana yang menggerakkan Node.js?",
     "options": ["SpiderMonkey", "JavaScriptCore", "V8", "Chakra"],
     "answerIndex": 2
   },
@@ -359,7 +359,7 @@
     "id": "tech-h-4",
     "category": "technology",
     "difficulty": "hard",
-    "question": "Which data structure follows the Last-In, First-Out (LIFO) principle?",
+    "question": "Struktur data manakah yang mengikuti prinsip Last-In, First-Out (LIFO)?",
     "options": ["Queue", "Stack", "Linked List", "Hash Table"],
     "answerIndex": 1
   },
@@ -367,7 +367,7 @@
     "id": "tech-h-5",
     "category": "technology",
     "difficulty": "hard",
-    "question": "In IPv4 addressing, how many bits long is a standard IPv4 address?",
+    "question": "Dalam pengalamatan IPv4, berapa panjang bit dari sebuah alamat IPv4 standar?",
     "options": ["16", "32", "64", "128"],
     "answerIndex": 1
   },
@@ -376,15 +376,15 @@
     "id": "geo-e-1",
     "category": "geography",
     "difficulty": "easy",
-    "question": "Which is the largest ocean on Earth?",
-    "options": ["Atlantic Ocean", "Indian Ocean", "Pacific Ocean", "Arctic Ocean"],
+    "question": "Samudra manakah yang paling luas di Bumi?",
+    "options": ["Samudra Atlantik", "Samudra Hindia", "Samudra Pasifik", "Samudra Arktik"],
     "answerIndex": 2
   },
   {
     "id": "geo-e-2",
     "category": "geography",
     "difficulty": "easy",
-    "question": "What is the capital city of France?",
+    "question": "Apa ibu kota negara Prancis?",
     "options": ["Lyon", "Marseille", "Paris", "Nice"],
     "answerIndex": 2
   },
@@ -392,31 +392,31 @@
     "id": "geo-e-3",
     "category": "geography",
     "difficulty": "easy",
-    "question": "On which continent is Egypt primarily located?",
-    "options": ["Asia", "Africa", "Europe", "South America"],
+    "question": "Di benua manakah negara Mesir terutama berada?",
+    "options": ["Asia", "Afrika", "Eropa", "Amerika Selatan"],
     "answerIndex": 1
   },
   {
     "id": "geo-e-4",
     "category": "geography",
     "difficulty": "easy",
-    "question": "Which mountain is the tallest above sea level on Earth?",
-    "options": ["K2", "Mount Kilimanjaro", "Mount Everest", "Mont Blanc"],
+    "question": "Gunung manakah yang tertinggi di atas permukaan laut di Bumi?",
+    "options": ["K2", "Gunung Kilimanjaro", "Gunung Everest", "Mont Blanc"],
     "answerIndex": 2
   },
   {
     "id": "geo-e-5",
     "category": "geography",
     "difficulty": "easy",
-    "question": "Which country is known as the Land of the Rising Sun?",
-    "options": ["South Korea", "Thailand", "Japan", "China"],
+    "question": "Negara manakah yang dijuluki sebagai Negeri Matahari Terbit?",
+    "options": ["Korea Selatan", "Thailand", "Jepang", "Tiongkok"],
     "answerIndex": 2
   },
   {
     "id": "geo-n-1",
     "category": "geography",
     "difficulty": "normal",
-    "question": "What is the capital city of Australia?",
+    "question": "Apa ibu kota negara Australia?",
     "options": ["Sydney", "Melbourne", "Canberra", "Brisbane"],
     "answerIndex": 2
   },
@@ -424,39 +424,39 @@
     "id": "geo-n-2",
     "category": "geography",
     "difficulty": "normal",
-    "question": "Which river flows through Cairo?",
-    "options": ["Amazon", "Nile", "Danube", "Tigris"],
+    "question": "Sungai manakah yang mengalir melintasi kota Kairo?",
+    "options": ["Amazon", "Nil", "Danube", "Tigris"],
     "answerIndex": 1
   },
   {
     "id": "geo-n-3",
     "category": "geography",
     "difficulty": "normal",
-    "question": "Which country has the longest coastline in the world?",
-    "options": ["Russia", "Indonesia", "Canada", "Australia"],
+    "question": "Negara manakah yang memiliki garis pantai terpanjang di dunia?",
+    "options": ["Rusia", "Indonesia", "Kanada", "Australia"],
     "answerIndex": 2
   },
   {
     "id": "geo-n-4",
     "category": "geography",
     "difficulty": "normal",
-    "question": "In which South American country is the Atacama Desert primarily located?",
-    "options": ["Peru", "Chile", "Bolivia", "Argentina"],
+    "question": "Di negara Amerika Selatan manakah Gurun Atacama sebagian besar berada?",
+    "options": ["Peru", "Chili", "Bolivia", "Argentina"],
     "answerIndex": 1
   },
   {
     "id": "geo-n-5",
     "category": "geography",
     "difficulty": "normal",
-    "question": "Which strait separates Asia from North America?",
-    "options": ["Strait of Malacca", "Bering Strait", "Strait of Gibraltar", "Strait of Hormuz"],
+    "question": "Selat manakah yang memisahkan benua Asia dan Amerika Utara?",
+    "options": ["Selat Malaka", "Selat Bering", "Selat Gibraltar", "Selat Hormuz"],
     "answerIndex": 1
   },
   {
     "id": "geo-h-1",
     "category": "geography",
     "difficulty": "hard",
-    "question": "What is the capital city of Kazakhstan?",
+    "question": "Apa ibu kota negara Kazakhstan?",
     "options": ["Almaty", "Astana", "Tashkent", "Bishkek"],
     "answerIndex": 1
   },
@@ -464,32 +464,32 @@
     "id": "geo-h-2",
     "category": "geography",
     "difficulty": "hard",
-    "question": "Which landlocked country in Europe is completely surrounded by Italy?",
-    "options": ["Andorra", "Monaco", "San Marino", "Liechtenstein"],
+    "question": "Negara mikro di Eropa yang wilayahnya terkurung sepenuhnya oleh Italia adalah?",
+    "options": ["Andorra", "Monako", "San Marino", "Liechtenstein"],
     "answerIndex": 2
   },
   {
     "id": "geo-h-3",
     "category": "geography",
     "difficulty": "hard",
-    "question": "Which African lake is the deepest on the continent and second deepest in the world?",
-    "options": ["Lake Victoria", "Lake Tanganyika", "Lake Malawi", "Lake Chad"],
+    "question": "Danau di Afrika manakah yang terdalam di benua tersebut dan terdalam kedua di dunia?",
+    "options": ["Danau Victoria", "Danau Tanganyika", "Danau Malawi", "Danau Chad"],
     "answerIndex": 1
   },
   {
     "id": "geo-h-4",
     "category": "geography",
     "difficulty": "hard",
-    "question": "Which sea has no coastlines and is bounded only by ocean currents in the North Atlantic?",
-    "options": ["Sargasso Sea", "Adriatic Sea", "Tasman Sea", "Bering Sea"],
+    "question": "Laut manakah yang tidak memiliki garis pantai dan hanya dibatasi oleh arus samudra di Atlantik Utara?",
+    "options": ["Laut Sargasso", "Laut Adriatik", "Laut Tasman", "Laut Bering"],
     "answerIndex": 0
   },
   {
     "id": "geo-h-5",
     "category": "geography",
     "difficulty": "hard",
-    "question": "Which country is home to the world's southernmost capital city, Wellington?",
-    "options": ["Australia", "Argentina", "New Zealand", "Chile"],
+    "question": "Negara manakah yang memiliki ibu kota paling selatan di dunia, yaitu Wellington?",
+    "options": ["Australia", "Argentina", "Selandia Baru", "Chili"],
     "answerIndex": 2
   },
 
@@ -497,7 +497,7 @@
     "id": "his-e-1",
     "category": "history",
     "difficulty": "easy",
-    "question": "In which year did humans first land on the Moon during the Apollo 11 mission?",
+    "question": "Pada tahun berapa manusia pertama kali mendarat di Bulan dalam misi Apollo 11?",
     "options": ["1965", "1969", "1972", "1975"],
     "answerIndex": 1
   },
@@ -505,7 +505,7 @@
     "id": "his-e-2",
     "category": "history",
     "difficulty": "easy",
-    "question": "Who was the first President of the United States?",
+    "question": "Siapa Presiden pertama Amerika Serikat?",
     "options": ["Thomas Jefferson", "Abraham Lincoln", "George Washington", "John Adams"],
     "answerIndex": 2
   },
@@ -513,7 +513,7 @@
     "id": "his-e-3",
     "category": "history",
     "difficulty": "easy",
-    "question": "In which year did Indonesia proclaim its independence?",
+    "question": "Pada tahun berapa Indonesia memproklamasikan kemerdekaannya?",
     "options": ["1942", "1945", "1949", "1950"],
     "answerIndex": 1
   },
@@ -521,15 +521,15 @@
     "id": "his-e-4",
     "category": "history",
     "difficulty": "easy",
-    "question": "Which ancient civilization built the pyramids of Giza?",
-    "options": ["Roman", "Greek", "Egyptian", "Mesopotamian"],
+    "question": "Peradaban kuno manakah yang membangun Piramida Giza?",
+    "options": ["Romawi", "Yunani", "Mesir Kuno", "Mesopotamia"],
     "answerIndex": 2
   },
   {
     "id": "his-e-5",
     "category": "history",
     "difficulty": "easy",
-    "question": "Which famous ship sank on its maiden voyage in April 1912?",
+    "question": "Kapal terkenal manakah yang tenggelam pada pelayaran perdananya di bulan April 1912?",
     "options": ["RMS Lusitania", "RMS Titanic", "HMHS Britannic", "SS Andrea Doria"],
     "answerIndex": 1
   },
@@ -537,7 +537,7 @@
     "id": "his-n-1",
     "category": "history",
     "difficulty": "normal",
-    "question": "In which year did World War II end?",
+    "question": "Pada tahun berapa Perang Dunia II berakhir?",
     "options": ["1943", "1944", "1945", "1946"],
     "answerIndex": 2
   },
@@ -545,23 +545,23 @@
     "id": "his-n-2",
     "category": "history",
     "difficulty": "normal",
-    "question": "Which state was ruled by Julius Caesar as dictator in 44 BCE?",
-    "options": ["Greek Empire", "Roman Republic", "Persian Empire", "Ottoman Empire"],
+    "question": "Negara mana yang dipimpin oleh Julius Caesar sebagai diktator pada tahun 44 SM?",
+    "options": ["Kekaisaran Yunani", "Republik Romawi", "Kekaisaran Persia", "Kekaisaran Ottoman"],
     "answerIndex": 1
   },
   {
     "id": "his-n-3",
     "category": "history",
     "difficulty": "normal",
-    "question": "Which wall in Germany fell in November 1989?",
-    "options": ["Hadrian's Wall", "Berlin Wall", "Munich Wall", "Rhine Wall"],
+    "question": "Tembok di Jerman manakah yang diruntuhkan pada November 1989?",
+    "options": ["Tembok Hadrian", "Tembok Berlin", "Tembok Munich", "Tembok Rhine"],
     "answerIndex": 1
   },
   {
     "id": "his-n-4",
     "category": "history",
     "difficulty": "normal",
-    "question": "Who invented the movable-type printing press in Europe around 1440?",
+    "question": "Siapakah penemu mesin cetak huruf lepas di Eropa sekitar tahun 1440?",
     "options": ["Johannes Gutenberg", "Galileo Galilei", "Leonardo da Vinci", "Martin Luther"],
     "answerIndex": 0
   },
@@ -569,15 +569,15 @@
     "id": "his-n-5",
     "category": "history",
     "difficulty": "normal",
-    "question": "Which ancient trade route connected East Asia with the Mediterranean world?",
-    "options": ["Amber Road", "Silk Road", "Spice Strait", "Incense Path"],
+    "question": "Jalur perdagangan kuno manakah yang menghubungkan Asia Timur dengan kawasan Mediterania?",
+    "options": ["Jalur Ambar", "Jalur Sutra", "Selat Rempah", "Jalur Dupa"],
     "answerIndex": 1
   },
   {
     "id": "his-h-1",
     "category": "history",
     "difficulty": "hard",
-    "question": "In which year was the Magna Carta signed at Runnymede?",
+    "question": "Pada tahun berapa piagam Magna Carta ditandatangani di Runnymede?",
     "options": ["1066", "1215", "1348", "1492"],
     "answerIndex": 1
   },
@@ -585,15 +585,15 @@
     "id": "his-h-2",
     "category": "history",
     "difficulty": "hard",
-    "question": "Which treaty ended the Thirty Years' War in 1648?",
-    "options": ["Treaty of Versailles", "Peace of Westphalia", "Treaty of Utrecht", "Treaty of Tordesillas"],
+    "question": "Perjanjian mana yang mengakhiri Perang Tiga Puluh Tahun pada 1648?",
+    "options": ["Perjanjian Versailles", "Perdamaian Westphalia", "Perjanjian Utrecht", "Perjanjian Tordesillas"],
     "answerIndex": 1
   },
   {
     "id": "his-h-3",
     "category": "history",
     "difficulty": "hard",
-    "question": "Who was the first woman to win a Nobel Prize, awarded in Physics in 1903?",
+    "question": "Siapa perempuan pertama yang meraih Hadiah Nobel (Fisika pada 1903)?",
     "options": ["Rosalind Franklin", "Marie Curie", "Ada Lovelace", "Lise Meitner"],
     "answerIndex": 1
   },
@@ -601,15 +601,15 @@
     "id": "his-h-4",
     "category": "history",
     "difficulty": "hard",
-    "question": "Which Mesopotamian king is famous for establishing one of the earliest written legal codes?",
-    "options": ["Nebuchadnezzar II", "Hammurabi", "Cyrus the Great", "Ashurbanipal"],
+    "question": "Raja Mesopotamia mana yang terkenal menyusun salah satu kitab hukum tertulis tertua di dunia?",
+    "options": ["Nebukadnezar II", "Hammurabi", "Koresh Agung", "Ashurbanipal"],
     "answerIndex": 1
   },
   {
     "id": "his-h-5",
     "category": "history",
     "difficulty": "hard",
-    "question": "In which year did the Byzantine Empire fall when Constantinople was captured by the Ottomans?",
+    "question": "Pada tahun berapa Kekaisaran Bizantium runtuh saat Konstantinopel ditaklukkan oleh Kesultanan Utsmaniyah?",
     "options": ["1204", "1389", "1453", "1517"],
     "answerIndex": 2
   },
@@ -618,7 +618,7 @@
     "id": "spo-e-1",
     "category": "sports",
     "difficulty": "easy",
-    "question": "How many players are on the field for one football (soccer) team during a standard match?",
+    "question": "Berapa jumlah pemain satu tim sepak bola yang berada di lapangan dalam pertandingan standar?",
     "options": ["9", "10", "11", "12"],
     "answerIndex": 2
   },
@@ -626,15 +626,15 @@
     "id": "spo-e-2",
     "category": "sports",
     "difficulty": "easy",
-    "question": "In which sport is a shuttlecock used?",
-    "options": ["Tennis", "Squash", "Badminton", "Table Tennis"],
+    "question": "Dalam olahraga apa kok (shuttlecock) digunakan?",
+    "options": ["Tenis", "Squash", "Bulu tangkis", "Tenis meja"],
     "answerIndex": 2
   },
   {
     "id": "spo-e-3",
     "category": "sports",
     "difficulty": "easy",
-    "question": "How many rings are on the Olympic flag?",
+    "question": "Berapa jumlah cincin pada bendera Olimpiade?",
     "options": ["4", "5", "6", "7"],
     "answerIndex": 1
   },
@@ -642,7 +642,7 @@
     "id": "spo-e-4",
     "category": "sports",
     "difficulty": "easy",
-    "question": "In basketball, how many points is a standard free throw worth?",
+    "question": "Dalam bola basket, berapa nilai poin dari satu lemparan bebas (free throw) yang masuk?",
     "options": ["1", "2", "3", "4"],
     "answerIndex": 0
   },
@@ -650,15 +650,15 @@
     "id": "spo-e-5",
     "category": "sports",
     "difficulty": "easy",
-    "question": "Which country hosted the 2022 FIFA World Cup?",
-    "options": ["Russia", "Brazil", "Qatar", "Germany"],
+    "question": "Negara manakah yang menjadi tuan rumah Piala Dunia FIFA 2022?",
+    "options": ["Rusia", "Brasil", "Qatar", "Jerman"],
     "answerIndex": 2
   },
   {
     "id": "spo-n-1",
     "category": "sports",
     "difficulty": "normal",
-    "question": "How many points are required to win a standard game of table tennis (since 2001)?",
+    "question": "Berapa poin yang dibutuhkan untuk memenangkan satu set standar tenis meja (sejak aturan 2001)?",
     "options": ["11", "15", "21", "25"],
     "answerIndex": 0
   },
@@ -666,7 +666,7 @@
     "id": "spo-n-2",
     "category": "sports",
     "difficulty": "normal",
-    "question": "In tennis, what term is used for a score of zero?",
+    "question": "Dalam olahraga tenis, istilah apa yang digunakan untuk skor nol?",
     "options": ["Nil", "Love", "Duck", "Blank"],
     "answerIndex": 1
   },
@@ -674,15 +674,15 @@
     "id": "spo-n-3",
     "category": "sports",
     "difficulty": "normal",
-    "question": "What is the standard length of a marathon race in kilometers (approximately)?",
-    "options": ["21.1 km", "35.5 km", "42.195 km", "50.0 km"],
+    "question": "Berapa jarak standar lomba lari maraton dalam kilometer (kurang lebih)?",
+    "options": ["21,1 km", "35,5 km", "42,195 km", "50,0 km"],
     "answerIndex": 2
   },
   {
     "id": "spo-n-4",
     "category": "sports",
     "difficulty": "normal",
-    "question": "Which Grand Slam tennis tournament is played on grass courts?",
+    "question": "Turnamen tenis Grand Slam manakah yang dimainkan di lapangan rumput?",
     "options": ["Australian Open", "French Open", "Wimbledon", "US Open"],
     "answerIndex": 2
   },
@@ -690,23 +690,23 @@
     "id": "spo-n-5",
     "category": "sports",
     "difficulty": "normal",
-    "question": "How many minutes is a standard regulation NBA basketball quarter?",
-    "options": ["10 minutes", "12 minutes", "15 minutes", "20 minutes"],
+    "question": "Berapa menit durasi satu kuarter standar dalam pertandingan bola basket NBA?",
+    "options": ["10 menit", "12 menit", "15 menit", "20 menit"],
     "answerIndex": 1
   },
   {
     "id": "spo-h-1",
     "category": "sports",
     "difficulty": "hard",
-    "question": "Which country won the first ever FIFA World Cup in 1930?",
-    "options": ["Brazil", "Argentina", "Uruguay", "Italy"],
+    "question": "Negara manakah yang memenangkan Piala Dunia FIFA pertama kali pada tahun 1930?",
+    "options": ["Brasil", "Argentina", "Uruguay", "Italia"],
     "answerIndex": 2
   },
   {
     "id": "spo-h-2",
     "category": "sports",
     "difficulty": "hard",
-    "question": "What is the maximum possible break in a standard game of snooker without fouls?",
+    "question": "Berapakah skor break maksimum yang mungkin dicapai dalam permainan snooker standar tanpa pelanggaran?",
     "options": ["137", "147", "155", "167"],
     "answerIndex": 1
   },
@@ -714,7 +714,7 @@
     "id": "spo-h-3",
     "category": "sports",
     "difficulty": "hard",
-    "question": "In bowling, what is the maximum achievable score in a single standard ten-pin game?",
+    "question": "Dalam olahraga boling sepuluh pin, berapakah skor tertinggi dalam satu permainan standar?",
     "options": ["200", "250", "300", "350"],
     "answerIndex": 2
   },
@@ -722,7 +722,7 @@
     "id": "spo-h-4",
     "category": "sports",
     "difficulty": "hard",
-    "question": "Which Formula 1 driver holds the record for the most consecutive World Drivers' Championships (five from 2000 to 2004)?",
+    "question": "Pembalap Formula 1 manakah yang memegang rekor gelar Juara Dunia berturut-turut terbanyak (lima kali dari 2000 hingga 2004)?",
     "options": ["Ayrton Senna", "Michael Schumacher", "Lewis Hamilton", "Sebastian Vettel"],
     "answerIndex": 1
   },
@@ -730,7 +730,7 @@
     "id": "spo-h-5",
     "category": "sports",
     "difficulty": "hard",
-    "question": "In which year were women's boxing events first included in the Summer Olympic Games?",
+    "question": "Pada Olimpiade tahun berapa cabang tinju putri pertama kali dipertandingkan?",
     "options": ["2004", "2008", "2012", "2016"],
     "answerIndex": 2
   }

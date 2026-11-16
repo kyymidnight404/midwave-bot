@@ -2,9 +2,9 @@ export const QUIZ_MIN_PLAYERS = 2;
 export const QUIZ_MAX_PLAYERS = 10;
 export const QUIZ_TOTAL_QUESTIONS = 10;
 export const QUIZ_ROUND_SECONDS = 20;
-export const QUIZ_POINTS_CORRECT = 10;
+export const QUIZ_POINTS_CORRECT = 1;
 export const QUIZ_POINTS_WRONG = 0;
-export const QUIZ_WINNER_BONUS = 5;
+export const QUIZ_WINNER_BONUS = 0;
 
 /**
  * Creates the initial serializable lobby state for Quiz Battle.
@@ -228,7 +228,7 @@ export function submitQuizAnswer(state, userId, optionIndex, { autoJoin = false 
 }
 
 /**
- * Resolves the current Quiz round, awarding +10 for correct answers and 0 for wrong/timeout.
+ * Resolves the current Quiz round, tallying +1 per correct answer without awarding global/bonus points.
  * @param {object} state
  */
 export function resolveQuizRound(state) {
@@ -285,7 +285,7 @@ export function resolveQuizRound(state) {
 }
 
 /**
- * Advances to the next round or finishes the Quiz Battle and awards +5 bonus to the winner.
+ * Advances to the next round or finishes the Quiz Battle without awarding bonus points.
  * @param {object} state
  * @param {number} [nowMs]
  * @param {number} [roundDurationMs]
@@ -325,7 +325,6 @@ export function advanceQuizRound(
     winnerId = maxScore > 0 ? state.players[0] : null;
   } else if (maxScore > 0 && topPlayers.length === 1) {
     winnerId = topPlayers[0];
-    finalScores[winnerId] += QUIZ_WINNER_BONUS;
   } else {
     isDraw = true;
   }

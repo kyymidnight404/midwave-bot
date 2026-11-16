@@ -20,6 +20,7 @@ import readyEvent from './events/ready.js';
 import interactionCreateEvent from './events/interactionCreate.js';
 import messageCreateEvent from './events/messageCreate.js';
 import guildMemberAddEvent from './events/guildMemberAdd.js';
+import guildCreateEvent from './events/guildCreate.js';
 import { clearAllGameCenterTimers } from './games/services/sessionService.js';
 import { prisma as defaultPrisma } from './services/prisma.js';
 
@@ -97,7 +98,7 @@ export async function createBotApp(options = {}) {
     });
   context.autoDownloaderHandler = autoDownloaderHandler;
 
-  const events = [readyEvent, interactionCreateEvent, messageCreateEvent, guildMemberAddEvent];
+  const events = [readyEvent, interactionCreateEvent, messageCreateEvent, guildMemberAddEvent, guildCreateEvent];
   for (const event of events) {
     if (event.once) {
       client.once(event.name, (...args) => event.execute(...args, context));

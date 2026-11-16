@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
 import { COLORS } from '../config/colors.js';
 import { buildDynamicHelpEmbed, discoverHelpEntries } from '../services/helpService.js';
@@ -12,7 +13,23 @@ import {
   LOGO_PATH,
 } from './constants.js';
 
+const ICON_DIR = path.resolve(process.cwd(), 'assets/icon');
+
+export const FEATURE_ICONS = Object.freeze({
+  coinflip: 'coinflip.png',
+  donate: 'donate.png',
+  feedback: 'feedback.png',
+  join: 'join.png',
+  menu: 'menu.png',
+  rps: 'rps.png',
+  tictactoe: 'tic-tac-toe.png',
+  'tic-tac-toe': 'tic-tac-toe.png',
+  ttt: 'tic-tac-toe.png',
+  weather: 'weather.png',
+});
+
 let logoAvailableCache = null;
+const iconAvailableCache = new Map();
 
 /**
  * Checks once whether the local logo asset exists on disk.
@@ -23,6 +40,59 @@ export function hasLogoAsset() {
     logoAvailableCache = fs.existsSync(LOGO_PATH);
   }
   return logoAvailableCache;
+}
+
+function resolveFeatureIconInfo(iconName) {
+  const filename = iconName ? FEATURE_ICONS[String(iconName).toLowerCase()] : null;
+  if (filename) {
+    if (!iconAvailableCache.has(filename)) {
+      iconAvailableCache.set(filename, fs.existsSync(path.join(ICON_DIR, filename)));
+    }
+    if (iconAvailableCache.get(filename)) {
+      return {
+        filename,
+        filePath: path.join(ICON_DIR, filename),
+        attachmentUrl: `attachment://${filename}`,
+      };
+    }
+  }
+  if (hasLogoAsset()) {
+    return {
+      filename: LOGO_FILENAME,
+      filePath: LOGO_PATH,
+      attachmentUrl: LOGO_ATTACHMENT_URL,
+    };
+  }
+  return null;
+}
+
+/**
+ * Checks whether a named feature icon (or fallback logo) exists on disk.
+ * @param {string} iconName
+ * @returns {boolean}
+ */
+export function hasIconAsset(iconName) {
+  return resolveFeatureIconInfo(iconName) !== null;
+}
+
+/**
+ * Returns the Discord `attachment://` URL for a feature icon (with logo fallback).
+ * @param {string} [iconName]
+ * @returns {string}
+ */
+export function getIconAttachmentUrl(iconName) {
+  return resolveFeatureIconInfo(iconName)?.attachmentUrl ?? LOGO_ATTACHMENT_URL;
+}
+
+/**
+ * Creates a fresh AttachmentBuilder for a feature icon (with logo fallback).
+ * @param {string} [iconName]
+ * @returns {AttachmentBuilder[]}
+ */
+export function getIconFiles(iconName) {
+  const info = resolveFeatureIconInfo(iconName);
+  if (!info) return [];
+  return [new AttachmentBuilder(info.filePath, { name: info.filename })];
 }
 
 /**
@@ -75,6 +145,7 @@ export function createBaseEmbed({
   description,
   color = COLORS.PRIMARY,
   includeThumbnail = true,
+  iconName = null,
   includeFooter = false,
   footer = null,
   timestamp = false,
@@ -84,8 +155,11 @@ export function createBaseEmbed({
 
   if (title) embed.setTitle(title);
   if (description) embed.setDescription(description);
-  if (includeThumbnail && hasLogoAsset()) {
-    embed.setThumbnail(LOGO_ATTACHMENT_URL);
+  if (includeThumbnail) {
+    const thumbUrl = iconName ? resolveFeatureIconInfo(iconName)?.attachmentUrl : hasLogoAsset() ? LOGO_ATTACHMENT_URL : null;
+    if (thumbUrl) {
+      embed.setThumbnail(thumbUrl);
+    }
   }
   if (footer) {
     embed.setFooter(typeof footer === 'string' ? { text: footer } : footer);
@@ -235,6 +309,7 @@ export function buildGameEmbed({
   boardOrInfo,
   instructions,
   finalResult,
+  iconName = null,
   color = COLORS.PRIMARY,
 }) {
   const modeLabel = mode === GAME_MODES.SOLO ? 'Solo' : 'Multiplayer';
@@ -244,6 +319,7 @@ export function buildGameEmbed({
     title: gameTitle,
     description: gameDescription,
     color,
+    iconName,
   });
 
   embed.addFields(
@@ -297,6 +373,7 @@ export function buildResultEmbed({
   durationMs = 0,
   resultDescription,
   boardOrDetails = null,
+  iconName = null,
   color,
 }) {
   const resolvedColor = color ?? (isDraw ? COLORS.WARNING : COLORS.SUCCESS);
@@ -306,6 +383,7 @@ export function buildResultEmbed({
     title: `${gameTitle} — Hasil Akhir`,
     description: resultDescription,
     color: resolvedColor,
+    iconName,
   });
 
   embed.addFields(

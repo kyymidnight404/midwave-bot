@@ -8,7 +8,7 @@ import {
   resolveFeedbackChannel,
   validateScreenshotUrl,
 } from '../services/feedbackService.js';
-import { buildErrorEmbed, getLogoFiles } from '../utils/embeds.js';
+import { buildErrorEmbed, getIconFiles } from '../utils/embeds.js';
 
 const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif)(\?.*)?$/i;
 
@@ -91,7 +91,7 @@ export default {
     await interaction.reply({
       embeds: [embed],
       components,
-      files: canAttach ? getLogoFiles() : [],
+      files: canAttach ? getIconFiles('feedback') : [],
     });
   },
 };

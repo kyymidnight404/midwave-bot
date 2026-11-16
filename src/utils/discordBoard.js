@@ -8,7 +8,7 @@ import {
   buildResultEmbed,
   createBaseEmbed,
   formatPlayer,
-  getLogoFiles,
+  getIconFiles,
 } from './embeds.js';
 
 /**
@@ -51,7 +51,7 @@ export async function updatePublicMessage(client, messageRef, payload, fallbackC
       const sent = await channel.send({
         embeds: payload.embeds,
         ...(payload.components !== undefined ? { components: payload.components } : {}),
-        files: getLogoFiles(),
+        files: getIconFiles(),
       });
       return { channelId: sent.channelId, messageId: sent.id };
     }
@@ -74,6 +74,15 @@ export function renderGameOrResultEmbed(gameType, publicView, result = null, dur
   const meta = GAME_METADATA[gameType];
   const gameTitle = meta?.name ?? gameType;
 
+  const iconName =
+    gameType === GAME_TYPES.COINFLIP
+      ? 'coinflip'
+      : gameType === GAME_TYPES.RPS
+        ? 'rps'
+        : gameType === GAME_TYPES.TICTACTOE
+          ? 'tic-tac-toe'
+          : null;
+
   if (result) {
     return buildResultEmbed({
       gameTitle,
@@ -86,6 +95,7 @@ export function renderGameOrResultEmbed(gameType, publicView, result = null, dur
       durationMs,
       resultDescription: result.description,
       boardOrDetails: publicView.boardOrInfo,
+      iconName,
     });
   }
 
@@ -98,6 +108,7 @@ export function renderGameOrResultEmbed(gameType, publicView, result = null, dur
     currentTurn: publicView.currentTurn ?? null,
     boardOrInfo: publicView.boardOrInfo,
     instructions: publicView.instructions,
+    iconName,
   });
 }
 
@@ -109,10 +120,19 @@ export function createSessionTimeoutHandler(client) {
   return async (closedSession) => {
     const meta = GAME_METADATA[closedSession.gameType];
     const gameTitle = meta?.name ?? closedSession.gameType;
+    const iconName =
+      closedSession.gameType === GAME_TYPES.COINFLIP
+        ? 'coinflip'
+        : closedSession.gameType === GAME_TYPES.RPS
+          ? 'rps'
+          : closedSession.gameType === GAME_TYPES.TICTACTOE
+            ? 'tic-tac-toe'
+            : null;
     const embed = buildInfoEmbed(
       `${gameTitle} — Timeout`,
       `Pertandingan antara ${closedSession.players.map(formatPlayer).join(' vs ')} berakhir otomatis karena tidak ada aktivitas.`,
       COLORS.WARNING,
+      { iconName },
     );
 
     await updatePublicMessage(
@@ -138,6 +158,7 @@ export function createInviteExpireHandler(client) {
             title: '🪙 Coin Flip',
             description: '⏱️ **Kedaluwarsa** — Tantangan berakhir tanpa jawaban.',
             color: COLORS.WARNING,
+            iconName: 'coinflip',
           })
         : buildLobbyEmbed({
             gameTitle,
