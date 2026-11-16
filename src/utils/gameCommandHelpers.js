@@ -2,8 +2,11 @@ import { MessageFlags } from 'discord.js';
 import { COLORS } from '../config/colors.js';
 import { GAME_METADATA, GAME_TYPES } from './constants.js';
 import {
+  buildCoinflipBoardEmbed,
   buildCoinflipChoiceComponents,
   buildCoinflipInviteComponents,
+  buildCoinflipInviteEmbed,
+  buildCoinflipResultEmbed,
 } from './coinflipComponents.js';
 import { buildErrorEmbed, buildLobbyEmbed, formatPlayer, getLogoFiles } from './embeds.js';
 import { validateOpponent } from './validators.js';
@@ -64,20 +67,26 @@ export async function handleChallengeCommand(interaction, context, { gameType, c
 
   const meta = GAME_METADATA[gameType];
   const isCoinflip = gameType === GAME_TYPES.COINFLIP;
-  const lobbyEmbed = buildLobbyEmbed({
-    gameTitle: meta?.name ?? gameType,
-    gameDescription: meta?.description,
-    hostId: invite.hostId,
-    opponentId: invite.opponentId,
-    status: 'Menunggu konfirmasi (60 detik)',
-    details,
-    ...(isCoinflip
-      ? { instructions: 'Klik tombol **Accept** untuk menerima atau **Reject** untuk menolak.' }
-      : {}),
-  });
+  const lobbyEmbed = isCoinflip
+    ? buildCoinflipInviteEmbed({
+        hostId: invite.hostId,
+        opponentId: invite.opponentId,
+        status: 'pending',
+        includeThumbnail: true,
+      })
+    : buildLobbyEmbed({
+        gameTitle: meta?.name ?? gameType,
+        gameDescription: meta?.description,
+        hostId: invite.hostId,
+        opponentId: invite.opponentId,
+        status: 'Menunggu konfirmasi (60 detik)',
+        details,
+      });
 
   await interaction.reply({
-    content: `${formatPlayer(opponent.id)}, kamu mendapat tantangan **${meta?.name ?? gameType}**!`,
+    content: isCoinflip
+      ? `<@${opponent.id}>`
+      : `${formatPlayer(opponent.id)}, kamu mendapat tantangan **${meta?.name ?? gameType}**!`,
     embeds: [lobbyEmbed],
     ...(isCoinflip ? { components: buildCoinflipInviteComponents(invite.inviteId) } : {}),
     files: getLogoFiles(),
@@ -155,12 +164,17 @@ export async function handleSessionActionCommand(
     return;
   }
 
-  const embed = renderGameOrResultEmbed(
-    gameType,
-    outcome.publicView,
-    outcome.finished ? outcome.result : null,
-    outcome.durationMs ?? 0,
-  );
+  const embed =
+    gameType === GAME_TYPES.COINFLIP
+      ? outcome.finished
+        ? buildCoinflipResultEmbed(outcome.state)
+        : buildCoinflipBoardEmbed(outcome.state)
+      : renderGameOrResultEmbed(
+          gameType,
+          outcome.publicView,
+          outcome.finished ? outcome.result : null,
+          outcome.durationMs ?? 0,
+        );
 
   const components =
     gameType === GAME_TYPES.COINFLIP
@@ -215,7 +229,10 @@ export async function handleInstantSoloCommand(interaction, context, { gameType,
     return;
   }
 
-  const embed = renderGameOrResultEmbed(gameType, outcome.publicView, outcome.result, 0);
+  const embed =
+    gameType === GAME_TYPES.COINFLIP
+      ? buildCoinflipResultEmbed(outcome.state, { includeThumbnail: true })
+      : renderGameOrResultEmbed(gameType, outcome.publicView, outcome.result, 0);
   await interaction.reply({
     embeds: [embed],
     files: getLogoFiles(),

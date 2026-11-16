@@ -54,10 +54,21 @@ test('Help Embed: renders compact category counts and inline command pills for a
   assert.ok(serialized.includes('`download`'));
   assert.ok(serialized.includes('`qc`'));
   assert.ok(serialized.includes('`lyrics`'));
-  assert.ok(serialized.includes('`games`'));
+  assert.ok(serialized.includes('`coinflip`'));
+  assert.ok(serialized.includes('`rps`'));
+  assert.ok(serialized.includes('`tictactoe`'));
+  assert.ok(serialized.includes('`quiz`'));
   assert.ok(serialized.includes('`say`'));
   assert.ok(serialized.includes('`igf`'));
-  assert.ok(serialized.includes('`Generate QC`'));
+  assert.ok(serialized.includes('`menu`'));
+  assert.equal(serialized.includes('`help`'), false);
+  assert.equal(serialized.includes('`Generate QC`'), false);
+  assert.equal(serialized.includes('`game`'), false);
+  assert.equal(serialized.includes('`games`'), false);
+  assert.equal(serialized.includes('`invite`'), false);
+  assert.equal(serialized.includes('`dice`'), false);
+  assert.equal(serialized.includes('`guess`'), false);
+  assert.equal(serialized.includes('`connect4`'), false);
 });
 
 test('Help Discovery: excludes disabled commands and commands without valid handlers', () => {
@@ -199,7 +210,7 @@ test('Help Content: includes all 10 social actions and all mini-games without du
   for (const action of ['hug', 'pat', 'slap', 'bonk', 'poke', 'yeet', 'highfive', 'wave', 'laugh', 'cry']) {
     assert.ok(text.includes(action), `Missing social action: ${action}`);
   }
-  for (const game of ['coinflip', 'connect4', 'dice', 'guess', 'rps', 'tictactoe', 'quiz']) {
+  for (const game of ['coinflip', 'rps', 'tictactoe', 'quiz']) {
     assert.ok(text.includes(game), `Missing game: ${game}`);
   }
 });

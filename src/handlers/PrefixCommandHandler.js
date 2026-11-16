@@ -1,7 +1,6 @@
 import { PermissionFlagsBits } from 'discord.js';
 import { DEFAULT_HANDLER_REGISTRY } from '../config/commandRegistry.js';
 import bratPrefixCommand from '../prefixCommands/brat.js';
-import connect4CenterCommand from '../commands/connect4.js';
 import downloadPrefixCommand from '../prefixCommands/download.js';
 import feedbackPrefixCommand from '../prefixCommands/feedback.js';
 import igfCommand from '../prefixCommands/igf.js';
@@ -34,10 +33,8 @@ const PREFIX_EXECUTORS = new Map([
   [quizCenterCommand.name, quizCenterCommand],
   ['ai', { execute: DEFAULT_HANDLER_REGISTRY.ai }],
   ['math', { execute: DEFAULT_HANDLER_REGISTRY.math }],
-  ['games', { execute: DEFAULT_HANDLER_REGISTRY.games }],
   ['menu', { execute: DEFAULT_HANDLER_REGISTRY.help }],
-  ['invite', { execute: DEFAULT_HANDLER_REGISTRY.invite }],
-  ['game', { execute: DEFAULT_HANDLER_REGISTRY.game }],
+  ['donate', { execute: DEFAULT_HANDLER_REGISTRY.donate }],
   ['knowledge', { execute: DEFAULT_HANDLER_REGISTRY.knowledge }],
   [lyricsPrefixCommand.name, lyricsPrefixCommand],
   ...Object.keys(SOCIAL_INTERACTIONS).map((cmd) => [
@@ -83,23 +80,18 @@ const COMMAND_COOLDOWNS = Object.freeze({
 
 const COMMANDS_REQUIRING_ATTACH_FILES = new Set([
   'brat',
+  'donate',
   'download',
   'igf',
   'qc',
-  'games',
   'menu',
-  'invite',
-  GAME_TYPES.GUESS,
   GAME_TYPES.RPS,
   GAME_TYPES.COINFLIP,
-  GAME_TYPES.DICE,
   GAME_TYPES.TICTACTOE,
-  GAME_TYPES.CONNECT4,
 ]);
 
 const GAME_CENTER_CHALLENGE_EXECUTORS = new Map([
   [GAME_TYPES.TICTACTOE, tttCenterCommand],
-  [GAME_TYPES.CONNECT4, connect4CenterCommand],
   [GAME_TYPES.RPS, rpsCenterCommand],
 ]);
 
@@ -119,10 +111,7 @@ function requiresAttachFiles(commandName, subcommand, isGameCenterChallenge = fa
   if (isGameCenterChallenge) {
     return false;
   }
-  if (commandName === 'brat' || commandName === 'download' || commandName === 'igf' || commandName === 'qc' || commandName === 'games' || commandName === 'menu') {
-    return true;
-  }
-  if (commandName === 'invite' && subcommand === 'accept') {
+  if (commandName === 'brat' || commandName === 'donate' || commandName === 'download' || commandName === 'igf' || commandName === 'qc' || commandName === 'menu') {
     return true;
   }
   if (COMMANDS_REQUIRING_ATTACH_FILES.has(commandName)) {

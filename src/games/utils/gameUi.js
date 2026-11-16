@@ -6,7 +6,6 @@ import { buildGameCustomId } from './customId.js';
 
 const OPTION_LETTERS = ['A', 'B', 'C', 'D'];
 const OPTION_EMOJIS = ['🇦', '🇧', '🇨', '🇩'];
-const COL_NUMBERS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣'];
 
 function applyMidwaveBranding(embed, includeThumbnail = false) {
   embed.setFooter({
@@ -153,89 +152,6 @@ export function buildTicTacToeMessage({
   }
 
   return { embeds: [embed], components: rows };
-}
-
-/**
- * Connect Four 7x6 Visual Board + Column Buttons UI.
- */
-export function buildConnectFourMessage({
-  sessionId,
-  state,
-  status = 'active',
-  forfeitedById = null,
-  includeThumbnail = false,
-}) {
-  const pR = state.players.R;
-  const pY = state.players.Y;
-  const isFinished = status === 'finished' || Boolean(state.winnerId) || state.isDraw;
-
-  let statusLine = `Giliran: <@${state.currentTurnId}> (${state.currentTurn === 'R' ? '🔴' : '🟡'})`;
-  let color = COLORS.PRIMARY;
-
-  if (forfeitedById) {
-    statusLine = `🏳️ <@${forfeitedById}> menyerah! Pemenang: <@${state.winnerId}> (+25 poin)`;
-    color = COLORS.SUCCESS;
-  } else if (state.winnerId) {
-    statusLine = `🏆 Pemenang: <@${state.winnerId}> (${state.winnerSymbol === 'R' ? '🔴' : '🟡'})! (+25 poin)`;
-    color = COLORS.SUCCESS;
-  } else if (state.isDraw) {
-    statusLine = '🤝 Papan penuh — Pertandingan **Seri**! (+10 poin masing-masing)';
-    color = COLORS.WARNING;
-  } else if (status === 'expired') {
-    statusLine = '⏱️ Pertandingan berakhir karena tidak ada aktivitas.';
-    color = COLORS.MUTED;
-  }
-
-  const boardLines = state.board.map((row) =>
-    row.map((cell) => (cell === 'R' ? '🔴' : cell === 'Y' ? '🟡' : '⚪')).join(' '),
-  );
-  boardLines.push(COL_NUMBERS.join(' '));
-
-  const embed = applyMidwaveBranding(
-    new EmbedBuilder()
-      .setColor(color)
-      .setTitle('🔴🟡 Connect Four — Game Center')
-      .setDescription(
-        `🔴 **Merah:** <@${pR}> | 🟡 **Kuning:** <@${pY}>\n` +
-          `${statusLine}\n\n` +
-          `${boardLines.join('\n')}`,
-      ),
-    includeThumbnail,
-  );
-
-  const row1 = new ActionRowBuilder();
-  for (let col = 0; col < 4; col += 1) {
-    const colFull = state.board[0][col] !== null;
-    row1.addComponents(
-      new ButtonBuilder()
-        .setCustomId(buildGameCustomId('c4', sessionId, 'drop', col))
-        .setLabel(`${col + 1}`)
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(isFinished || status === 'expired' || colFull),
-    );
-  }
-
-  const row2 = new ActionRowBuilder();
-  for (let col = 4; col < 7; col += 1) {
-    const colFull = state.board[0][col] !== null;
-    row2.addComponents(
-      new ButtonBuilder()
-        .setCustomId(buildGameCustomId('c4', sessionId, 'drop', col))
-        .setLabel(`${col + 1}`)
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(isFinished || status === 'expired' || colFull),
-    );
-  }
-  row2.addComponents(
-    new ButtonBuilder()
-      .setCustomId(buildGameCustomId('c4', sessionId, 'forfeit'))
-      .setLabel('Menyerah')
-      .setEmoji('🏳️')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(isFinished || status === 'expired'),
-  );
-
-  return { embeds: [embed], components: [row1, row2] };
 }
 
 const RPS_EMOJI = Object.freeze({

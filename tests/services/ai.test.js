@@ -401,10 +401,10 @@ describe('Midwave AI (Gemini) service, formatter, /ai, and !ai', () => {
     assert.equal(slashBlocked.getEvents()[0].payload.flags, MessageFlags.Ephemeral);
     assert.match(slashBlocked.getEvents()[0].payload.embeds[0].toJSON().description, /Tunggu/i);
 
-    // Other commands like !games are NOT blocked by AI cooldown
-    const gamesMsg = createFakePrefixMessage({ content: '!games', userId: 'u-cool-ai' });
-    await app.prefixCommandHandler.handle(gamesMsg);
-    assert.equal(gamesMsg.getReplies()[0].payload.embeds[0].toJSON().title, 'Daftar Permainan Midwave');
+    // Other commands like !menu are NOT blocked by AI cooldown
+    const menuMsg = createFakePrefixMessage({ content: '!menu', userId: 'u-cool-ai' });
+    await app.prefixCommandHandler.handle(menuMsg);
+    assert.equal(menuMsg.getReplies()[0].payload.embeds[0].toJSON().title, 'MIDWAVE — COMMAND GUIDE');
 
     // After AI_COOLDOWN_MS elapses, /ai succeeds again
     now += AI_COOLDOWN_MS;

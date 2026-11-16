@@ -1,11 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { CoinFlipGame } from '../../src/games/CoinFlipGame.js';
-import { DiceGame } from '../../src/games/DiceGame.js';
 import { RPSGame, resolveRpsWinner } from '../../src/games/RPSGame.js';
-import { GuessGame } from '../../src/games/GuessGame.js';
-import { BOT_PLAYER_ID, GAME_MODES, MATCH_STATUS } from '../../src/utils/constants.js';
-import { createSeededRng } from '../../src/utils/random.js';
+import { BOT_PLAYER_ID, GAME_MODES } from '../../src/utils/constants.js';
 
 const fixedPickRng = (val) => ({
   int: () => 1,
@@ -59,48 +56,6 @@ describe('CoinFlipGame', () => {
   });
 });
 
-describe('DiceGame', () => {
-  it('rolls valid dice in solo mode and enforces limits', () => {
-    const rng = createSeededRng(99);
-    const state = DiceGame.create({ mode: GAME_MODES.SOLO, count: 5, sides: 20 }, ['p1', BOT_PLAYER_ID], rng);
-    const out = DiceGame.applyAction(state, 'p1', {}, rng);
-    assert.equal(out.finished, true);
-    const roll = out.state.rollsByPlayer.p1;
-    assert.equal(roll.rolls.length, 5);
-    assert.ok(roll.rolls.every((n) => n >= 1 && n <= 20));
-    assert.equal(
-      roll.total,
-      roll.rolls.reduce((a, b) => a + b, 0),
-    );
-
-    assert.throws(() => DiceGame.create({ count: 11, sides: 6 }, ['p1', BOT_PLAYER_ID]));
-    assert.throws(() => DiceGame.create({ count: 1, sides: 101 }, ['p1', BOT_PLAYER_ID]));
-  });
-
-  it('resolves multiplayer winner and draw immediately on creation', () => {
-    // Sequence returning 6 then 2 -> p1 wins
-    let idx = 0;
-    const seq1 = [6, 2];
-    const winState = DiceGame.create(
-      { mode: GAME_MODES.MULTIPLAYER, count: 1, sides: 6 },
-      ['p1', 'p2'],
-      { int: () => seq1[idx++] },
-    );
-    assert.equal(winState.status, MATCH_STATUS.FINISHED);
-    assert.equal(winState.result.winnerId, 'p1');
-    assert.equal(winState.result.isDraw, false);
-
-    // Equal totals -> draw
-    const drawState = DiceGame.create(
-      { mode: GAME_MODES.MULTIPLAYER, count: 2, sides: 6 },
-      ['p1', 'p2'],
-      { int: () => 4 },
-    );
-    assert.equal(drawState.status, MATCH_STATUS.FINISHED);
-    assert.equal(drawState.result.isDraw, true);
-  });
-});
-
 describe('RPSGame', () => {
   it('resolves all 9 RPS combinations accurately', () => {
     const expected = {
@@ -131,58 +86,5 @@ describe('RPSGame', () => {
     const s2 = RPSGame.applyAction(s1.state, 'p2', { choice: 'scissors' });
     assert.equal(s2.finished, true);
     assert.equal(s2.result.winnerId, 'p1');
-  });
-});
-
-describe('GuessGame', () => {
-  it('configures Easy/Normal/Hard ranges and attempt limits accurately', () => {
-    const rng = { int: (min, max) => max };
-    const easy = GuessGame.create({ difficulty: 'easy', mode: GAME_MODES.SOLO }, ['p1', BOT_PLAYER_ID], rng);
-    assert.deepEqual([easy.min, easy.max, easy.maxAttempts, easy.secret], [1, 50, 8, 50]);
-
-    const normal = GuessGame.create({ difficulty: 'normal', mode: GAME_MODES.SOLO }, ['p1', BOT_PLAYER_ID], rng);
-    assert.deepEqual([normal.min, normal.max, normal.maxAttempts, normal.secret], [1, 100, 10, 100]);
-
-    const hard = GuessGame.create({ difficulty: 'hard', mode: GAME_MODES.SOLO }, ['p1', BOT_PLAYER_ID], rng);
-    assert.deepEqual([hard.min, hard.max, hard.maxAttempts, hard.secret], [1, 200, 12, 200]);
-  });
-
-  it('provides Higher/Lower hints, hides secret, enforces turns, and handles exhaustion', () => {
-    const rng = { int: () => 42 };
-    let state = GuessGame.create({ difficulty: 'easy', mode: GAME_MODES.MULTIPLAYER }, ['p1', 'p2'], rng);
-
-    // Out-of-turn blocked
-    const wrongTurn = GuessGame.applyAction(state, 'p2', { number: 10 });
-    assert.ok(wrongTurn.error);
-
-    // Out-of-range blocked
-    const outRange = GuessGame.applyAction(state, 'p1', { number: 51 });
-    assert.ok(outRange.error);
-
-    // Higher hint
-    const g1 = GuessGame.applyAction(state, 'p1', { number: 20 });
-    assert.equal(g1.state.lastHint, 'Higher');
-    assert.equal(g1.state.currentTurn, 'p2');
-    assert.equal(GuessGame.getPublicView(g1.state).boardOrInfo.includes('42'), false);
-
-    // Lower hint
-    const g2 = GuessGame.applyAction(g1.state, 'p2', { number: 49 });
-    assert.equal(g2.state.lastHint, 'Lower');
-
-    // Correct guess wins
-    const g3 = GuessGame.applyAction(g2.state, 'p1', { number: 42 });
-    assert.equal(g3.finished, true);
-    assert.equal(g3.result.winnerId, 'p1');
-
-    // Exhaustion in solo -> Bot wins; in multiplayer -> Draw
-    let solo = GuessGame.create({ difficulty: 'easy', mode: GAME_MODES.SOLO }, ['p1', BOT_PLAYER_ID], rng);
-    for (let i = 0; i < 8; i += 1) {
-      const res = GuessGame.applyAction(solo, 'p1', { number: 1 });
-      solo = res.state;
-      if (i === 7) {
-        assert.equal(res.finished, true);
-        assert.equal(res.result.winnerId, BOT_PLAYER_ID);
-      }
-    }
   });
 });

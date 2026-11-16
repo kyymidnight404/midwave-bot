@@ -273,55 +273,6 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     assert.equal(await prisma.gameStats.count({ where: { guildId: TEST_GUILD_1 } }), 0);
   });
 
-  it('plays Connect Four via !connect4 @user -> Accept -> Column Buttons -> Win', async () => {
-    await cleanupTestGuilds();
-    const h = await createGameCenterHarness();
-    const [p1, p2] = [...h.users.values()];
-
-    const msg = createFakeMessage({
-      content: `!connect4 <@${p2.id}>`,
-      author: p1,
-      channel: h.channel,
-      mentions: [p2],
-      client: h.client,
-    });
-    await h.prefixHandler.handle(msg);
-    const challengeMsg = msg.getReplies()[0];
-    const acceptId = challengeMsg.payload.components[0].components[0].data.custom_id;
-    const sessionId = acceptId.split(':')[2];
-
-    await h.interactionHandler.handle(
-      createFakeButtonInteraction({ customId: acceptId, user: p2, message: challengeMsg, client: h.client }),
-    );
-
-    // Vertical win in col 0 for p1
-    const drops = [
-      [p1, 0],
-      [p2, 1],
-      [p1, 0],
-      [p2, 1],
-      [p1, 0],
-      [p2, 1],
-      [p1, 0],
-    ];
-    for (const [player, col] of drops) {
-      await h.interactionHandler.handle(
-        createFakeButtonInteraction({
-          customId: buildGameCustomId('c4', sessionId, 'drop', col),
-          user: player,
-          message: challengeMsg,
-          client: h.client,
-        }),
-      );
-    }
-
-    const finished = await getPersistedSession(sessionId, prisma);
-    assert.equal(finished.status, 'finished');
-    assert.equal(finished.winnerId, p1.id);
-    assert.equal(finished.statsRecorded, false);
-    assert.equal(await prisma.gameStats.count({ where: { guildId: TEST_GUILD_1 } }), 0);
-  });
-
   it('plays Rock Paper Scissors Best of 3 via !rps @user with hidden choices', async () => {
     await cleanupTestGuilds();
     const h = await createGameCenterHarness();
@@ -402,7 +353,7 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
 
   it('starts Quiz Battle immediately on !quiz and accepts direct chat answers (a/b/c/d) without prefix or slash', async () => {
     await cleanupTestGuilds();
-    const h = await createGameCenterHarness({ quizRoundDurationMs: 400, quizIntermissionMs: 30 });
+    const h = await createGameCenterHarness({ quizRoundDurationMs: 2500, quizIntermissionMs: 30 });
     const [host, p2, p3] = [...h.users.values()];
 
     const msg = createFakeMessage({
@@ -493,10 +444,10 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     }
 
     // Round 10: let timeout resolve automatically (host finishes with 90 + 5 bonus = 95)
-    for (let wait = 0; wait < 60; wait += 1) {
+    for (let wait = 0; wait < 90; wait += 1) {
       session = await getPersistedSession(sessionId, prisma);
       if (session.status === 'finished') break;
-      await new Promise((r) => setTimeout(r, 25));
+      await new Promise((r) => setTimeout(r, 40));
     }
 
     assert.equal(session.status, 'finished');

@@ -260,7 +260,7 @@ describe('Configurable Slash Command Management System', () => {
           description: 'Should not load',
           enabled: false,
           type: 'standalone',
-          handler: 'games',
+          handler: 'donate',
         },
         {
           name: 'social',
@@ -436,20 +436,19 @@ describe('Configurable Slash Command Management System', () => {
     );
   });
 
-  it('11-14 & 16. Previews, cleans legacy/disabled commands, syncs guild & global scopes safely, and preserves Generate QC context menu', async () => {
+  it('11-14 & 16. Previews, cleans legacy/disabled commands, and syncs guild & global scopes safely', async () => {
     const structureWithDisabled = {
       ...commandStructure,
       commands: commandStructure.commands.map((c) =>
-        c.name === 'invite' ? { ...c, enabled: false } : c,
+        c.name === 'donate' ? { ...c, enabled: false } : c,
       ),
     };
 
     const restCalls = [];
     const remoteGuildCommands = [
       { name: 'math', type: ApplicationCommandType.ChatInput },
-      { name: 'invite', type: ApplicationCommandType.ChatInput },
+      { name: 'donate', type: ApplicationCommandType.ChatInput },
       { name: 'old_legacy_cmd', type: ApplicationCommandType.ChatInput },
-      { name: 'Generate QC', type: ApplicationCommandType.Message },
     ];
 
     const mockRest = {
@@ -481,11 +480,10 @@ describe('Configurable Slash Command Management System', () => {
 
     assert.equal(dryRunRes.synced, false);
     assert.equal(dryRunRes.dryRun, true);
-    assert.ok(dryRunRes.preview.diff.toDelete.includes('invite'));
+    assert.ok(dryRunRes.preview.diff.toDelete.includes('donate'));
     assert.ok(dryRunRes.preview.diff.toDelete.includes('old_legacy_cmd'));
     assert.ok(dryRunRes.preview.diff.toCreate.includes('autorole'));
     assert.ok(dryRunRes.preview.diff.toCreate.includes('ai'));
-    assert.ok(dryRunRes.preview.diff.toUpdate.includes('Generate QC'));
     assert.match(formatSyncPreview(dryRunRes.preview), new RegExp(`Top-level commands: ${expectedEnabledCount}`));
     assert.equal(restCalls.some((c) => c.method === 'PUT'), false);
 
@@ -502,11 +500,8 @@ describe('Configurable Slash Command Management System', () => {
     assert.equal(guildSync.synced, true);
     const guildPut = restCalls.find((c) => c.method === 'PUT');
     assert.match(guildPut.route, /\/guilds\/guild-456\/commands$/);
-    assert.equal(guildPut.body.some((c) => c.name === 'invite'), false);
+    assert.equal(guildPut.body.some((c) => c.name === 'donate'), false);
     assert.equal(guildPut.body.some((c) => c.name === 'old_legacy_cmd'), false);
-    const qcContext = guildPut.body.find((c) => c.name === 'Generate QC');
-    assert.equal(qcContext.type, ApplicationCommandType.Message);
-    assert.equal(qcContext.description, undefined);
 
     // Global sync
     const globalRes = await deployCommands({
@@ -522,7 +517,7 @@ describe('Configurable Slash Command Management System', () => {
     assert.ok(globalRes.some((c) => c.name === 'autorole'));
   });
 
-  it('15. Keeps all Prefix Commands (!math, !qc, !say, !hug, !connect4, !dice) working independently of Slash Command config', async () => {
+  it('15. Keeps all Prefix Commands (!math, !qc, !say, !hug, !coinflip) working independently of Slash Command config', async () => {
     // Even if slash commands in config are minimal/disabled, prefix commands stay operational
     const minimalSlashConfig = {
       commands: [
@@ -574,11 +569,11 @@ describe('Configurable Slash Command Management System', () => {
 
     await app.prefixCommandHandler.handle(makeMsg('!say Halo prefix tetap aman!'));
     await app.prefixCommandHandler.handle(makeMsg('!math 9 + 11'));
-    await app.prefixCommandHandler.handle(makeMsg('!dice 2d6'));
+    await app.prefixCommandHandler.handle(makeMsg('!coinflip heads'));
 
     assert.equal(sent[0].content, 'Halo prefix tetap aman!');
     assert.match(replies[0].embeds[0].toJSON().fields[1].value, /20/);
-    assert.match(replies[1].embeds[0].toJSON().title, /Dice Rolling/i);
+    assert.match(replies[1].embeds[0].toJSON().title, /Coin Flip/i);
 
     app.shutdown();
   });

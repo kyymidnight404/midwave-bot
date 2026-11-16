@@ -1,10 +1,7 @@
 import { MessageFlags } from 'discord.js';
 import { execute as executeAi } from '../commands/ai.js';
 import { execute as executeDonate } from '../commands/donate.js';
-import gamesCommand from '../commands/games.js';
-import { execute as executeGenerateQcContext } from '../commands/generateQcContext.js';
 import helpCommand from '../commands/help.js';
-import inviteCommand from '../commands/invite.js';
 import knowledgeCommand from '../commands/knowledge.js';
 import { execute as executeAutorole } from '../commands/autorole.js';
 import { execute as executeMath } from '../commands/math.js';
@@ -16,7 +13,6 @@ import { execute as executeSay } from '../prefixCommands/say.js';
 import { SOCIAL_INTERACTIONS } from '../services/otakuGifsService.js';
 import { registerDefaultHandlerRegistry } from '../services/helpService.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
-import { executeGameCommand } from '../utils/gameDispatcher.js';
 import { executeSocialAction } from '../utils/socialCommand.js';
 
 /**
@@ -28,14 +24,9 @@ export function createDefaultHandlerRegistry() {
     ai: executeAi,
     autorole: executeAutorole,
     donate: executeDonate,
-    games: (interaction, context) => gamesCommand.execute(interaction, context),
     help: (interaction, context) => helpCommand.execute(interaction, context),
-    invite: (interaction, context) => inviteCommand.execute(interaction, context),
-    'invite.accept': (interaction, context) => inviteCommand.execute(interaction, context),
-    'invite.decline': (interaction, context) => inviteCommand.execute(interaction, context),
     knowledge: (interaction, context) => knowledgeCommand.execute(interaction, context),
     math: executeMath,
-    game: (interaction, context) => executeGameCommand(interaction, context),
     'media.qc': executeQc,
     'media.brat': executeBrat,
     'media.lyrics': executeLyrics,
@@ -67,18 +58,12 @@ export function createDefaultHandlerRegistry() {
       const action = meta.actionValue || interaction.options?.getString?.('action', false) || '';
       return executeSocialAction(interaction, action, context);
     },
-    'context.generate_qc': executeGenerateQcContext,
     say: executeSay,
   };
 
   for (const actionKey of Object.keys(SOCIAL_INTERACTIONS)) {
     registry[`social.${actionKey}`] = (interaction, context) =>
       executeSocialAction(interaction, actionKey, context);
-  }
-
-  for (const gameAction of ['solo', 'challenge', 'choose', 'drop', 'move', 'answer', 'status', 'cancel']) {
-    registry[`game.${gameAction}`] = (interaction, context) =>
-      executeGameCommand(interaction, context, { forcedAction: gameAction });
   }
 
   return Object.freeze(registry);

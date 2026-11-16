@@ -10,7 +10,6 @@ import { COLORS } from '../config/colors.js';
 import defaultCommandStructure from '../config/commandStructure.js';
 import { SOCIAL_INTERACTIONS } from './otakuGifsService.js';
 import {
-  GAME_TYPES,
   LOGO_ATTACHMENT_URL,
   LOGO_PATH,
 } from '../utils/constants.js';
@@ -37,6 +36,27 @@ export const PREFIX_ONLY_METADATA = Object.freeze({
     category: 'general',
     usage: 'feedback',
     description: 'Kirim bug report, saran fitur, atau masukan ke tim staff',
+    visibility: 'public',
+  }),
+  coinflip: Object.freeze({
+    name: 'coinflip',
+    category: 'mini_games',
+    usage: 'coinflip [heads|tails | @user]',
+    description: 'Main Coin Flip solo atau tantang pemain dengan tombol interaktif',
+    visibility: 'public',
+  }),
+  rps: Object.freeze({
+    name: 'rps',
+    category: 'mini_games',
+    usage: 'rps <rock|paper|scissors> | rps @user',
+    description: 'Main Rock Paper Scissors solo atau Best of 3 vs pemain lain',
+    visibility: 'public',
+  }),
+  tictactoe: Object.freeze({
+    name: 'tictactoe',
+    category: 'mini_games',
+    usage: 'tictactoe [easy|normal|hard] | ttt @user',
+    description: 'Main Tic Tac Toe vs AI atau pemain lain',
     visibility: 'public',
   }),
   quiz: Object.freeze({
@@ -248,62 +268,6 @@ function buildMediaEntries(cmd, { prefix, handlerRegistry, registeredPrefixComma
   return entries;
 }
 
-function buildGameEntries(cmd, { prefix, registeredPrefixCommands }) {
-  const category = normalizeCategoryKey(cmd.help?.category || 'mini_games');
-  const isSubcommand = cmd.type === 'subcommand' || Array.isArray(cmd.subcommands);
-  const actionOption = cmd.options?.find((opt) => opt.name === 'action');
-  const gameOption = isSubcommand
-    ? cmd.subcommands?.find((s) => s.name === 'solo')?.options?.find((opt) => opt.name === 'game')
-    : cmd.options?.find((opt) => opt.name === 'game');
-
-  const actions = isSubcommand
-    ? (cmd.subcommands || []).map((s) => s.name)
-    : actionOption?.choices?.map((c) => c.value) || [];
-  const games = gameOption?.choices?.map((c) => c.value) || Object.values(GAME_TYPES);
-  const hasPrefixGames = games.some((game) => registeredPrefixCommands.has(game));
-  const hasPrefixMain = registeredPrefixCommands.has(cmd.name);
-  const slashSyntax = isSubcommand ? '/game <subcommand>' : '/game <action> [game]';
-
-  const primaryLine =
-    hasPrefixMain || hasPrefixGames
-      ? `• \`${prefix}<game> [aksi]\` | \`${slashSyntax}\` — Mainkan mini-game Midwave`
-      : `• \`${slashSyntax}\` *(Slash)* — Mainkan mini-game Midwave`;
-
-  const lines = [primaryLine];
-  if (games.length > 0) {
-    lines.push(`  ◦ **Game:** ${games.map((g) => `\`${g}\``).join(', ')}`);
-  }
-  if (actions.length > 0) {
-    lines.push(`  ◦ **Aksi:** ${actions.map((a) => `\`${a}\``).join(', ')}`);
-  }
-
-  const entries = [
-    {
-      id: 'command:game',
-      category,
-      items: [cmd.name, ...games],
-      line: lines.join('\n'),
-      source: hasPrefixMain || hasPrefixGames ? 'both' : 'slash',
-    },
-  ];
-
-  if (actions.includes('list')) {
-    const hasPrefixGamesList = registeredPrefixCommands.has('games');
-    const listSlashUsage = isSubcommand ? '/game list' : '/game action:list';
-    entries.push({
-      id: 'command:games',
-      category,
-      items: ['games'],
-      line: hasPrefixGamesList
-        ? `• \`${prefix}games\` | \`${listSlashUsage}\` — Lihat daftar permainan & aturan main`
-        : `• \`${listSlashUsage}\` *(Slash)* — Lihat daftar permainan & aturan main`,
-      source: hasPrefixGamesList ? 'both' : 'slash',
-    });
-  }
-
-  return entries;
-}
-
 function buildSocialEntries(cmd, { prefix, registeredPrefixCommands }) {
   const category = normalizeCategoryKey(cmd.help?.category || 'social');
   const interactions = Object.values(SOCIAL_INTERACTIONS);
@@ -382,15 +346,6 @@ export function discoverHelpEntries({
       continue;
     }
 
-    if (cmd.name === 'game') {
-      for (const gameEntry of buildGameEntries(cmd, { prefix, registeredPrefixCommands })) {
-        addEntry(gameEntry);
-      }
-      coveredPrefixNames.add('games');
-      Object.values(GAME_TYPES).forEach((g) => coveredPrefixNames.add(g));
-      continue;
-    }
-
     if (cmd.name === 'social') {
       for (const socialEntry of buildSocialEntries(cmd, { prefix, registeredPrefixCommands })) {
         addEntry(socialEntry);
@@ -408,7 +363,7 @@ export function discoverHelpEntries({
     addEntry({
       id: `command:${cmd.name}`,
       category,
-      items: [cmd.name],
+      items: [prefixName],
       line: buildGenericCommandLine(cmd, { prefix, registeredPrefixCommands }),
       source: hasPrefix ? 'both' : 'slash',
     });

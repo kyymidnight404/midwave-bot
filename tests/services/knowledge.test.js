@@ -521,7 +521,7 @@ describe('Midwave Global Bot Knowledge Memory System', () => {
     await commandHandler.loadCommands();
     const slashNames = commandHandler.toJSON().map((c) => c.name);
     assert.equal(slashNames.includes('knowledge'), false, '/knowledge must NOT be registered as a slash command');
-    for (const kept of ['ai', 'autorole', 'donate', 'game', 'help', 'invite', 'math', 'media', 'social', 'Generate QC']) {
+    for (const kept of ['ai', 'autorole', 'donate', 'help', 'math', 'media', 'social']) {
       assert.ok(slashNames.includes(kept), `Slash command ${kept} must remain registered`);
     }
 

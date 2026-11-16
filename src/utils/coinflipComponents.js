@@ -1,16 +1,13 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
 import { COLORS } from '../config/colors.js';
-import { GAME_METADATA, GAME_TYPES } from './constants.js';
+import { BOT_PLAYER_ID, GAME_TYPES } from './constants.js';
 import {
   buildErrorEmbed,
-  buildInfoEmbed,
-  buildLobbyEmbed,
-  formatPlayer,
+  createBaseEmbed,
   getLogoFiles,
 } from './embeds.js';
 import {
   createSessionTimeoutHandler,
-  renderGameOrResultEmbed,
   updatePublicMessage,
 } from './discordBoard.js';
 import { isValidCoinChoice } from './validators.js';
@@ -21,6 +18,114 @@ const CHOICE_DISPLAY = Object.freeze({
   heads: 'Heads',
   tails: 'Tails',
 });
+
+function formatCoinChoice(choice) {
+  return CHOICE_DISPLAY[choice] ?? choice;
+}
+
+/**
+ * Builds the simplified Coin Flip challenge/invite embed with a compact status badge.
+ * @param {{
+ *   hostId: string,
+ *   opponentId: string,
+ *   status?: 'pending' | 'accepted' | 'rejected' | 'expired',
+ *   rejectedById?: string | null,
+ *   includeThumbnail?: boolean,
+ * }} params
+ */
+export function buildCoinflipInviteEmbed({
+  hostId,
+  opponentId,
+  status = 'pending',
+  rejectedById = null,
+  includeThumbnail = false,
+}) {
+  let color = COLORS.PRIMARY;
+  let description = `🟡 **Menunggu Konfirmasi** (60 detik)\n<@${hostId}> menantang <@${opponentId}> — Klik **Accept** atau **Reject**.`;
+
+  if (status === 'accepted') {
+    color = COLORS.SUCCESS;
+    description = `🟢 **Diterima** — <@${opponentId}> menerima tantangan, pilih **Heads** atau **Tails** di bawah.`;
+  } else if (status === 'rejected') {
+    color = COLORS.ERROR;
+    description = `🔴 **Ditolak** — <@${rejectedById ?? opponentId}> menolak tantangan ini.`;
+  } else if (status === 'expired') {
+    color = COLORS.WARNING;
+    description = '⏱️ **Kedaluwarsa** — Tantangan berakhir tanpa jawaban.';
+  }
+
+  return createBaseEmbed({
+    title: '🪙 Coin Flip',
+    description,
+    color,
+    includeThumbnail,
+  });
+}
+
+/**
+ * Builds the simplified active Coin Flip board embed (no Mode/Status grid, single sentence instruction).
+ * @param {object} state
+ * @param {{ includeThumbnail?: boolean }} [options]
+ */
+export function buildCoinflipBoardEmbed(state, { includeThumbnail = false } = {}) {
+  const playerLines = (state?.players ?? [])
+    .filter((p) => p !== BOT_PLAYER_ID)
+    .map((p) => `• <@${p}>: ${state?.choices?.[p] ? '✅ Sudah memilih (rahasia)' : '⏳ Menunggu pilihan...'}`);
+
+  return createBaseEmbed({
+    title: '🪙 Coin Flip',
+    description: `${playerLines.join('\n')}\n\nPilih **Heads** atau **Tails** secara rahasia di bawah.`,
+    color: COLORS.PRIMARY,
+    includeThumbnail,
+  });
+}
+
+/**
+ * Builds the simplified Coin Flip result embed (one concise summary without Mode/Durasi/Detail fields).
+ * @param {object} state
+ * @param {{ includeThumbnail?: boolean }} [options]
+ */
+export function buildCoinflipResultEmbed(state, { includeThumbnail = false } = {}) {
+  const coin = formatCoinChoice(state?.coinResult);
+  const humanPlayers = (state?.players ?? []).filter((p) => p !== BOT_PLAYER_ID);
+
+  if (humanPlayers.length === 1) {
+    const playerId = humanPlayers[0];
+    const picked = state?.choices?.[playerId];
+    const won = picked === state?.coinResult;
+    const summary = won
+      ? `🎉 **Menang!** <@${playerId}> menebak **${formatCoinChoice(picked)}** — Koin mendarat di **${coin}**.`
+      : `😔 **Kalah!** <@${playerId}> menebak **${formatCoinChoice(picked)}** — Koin mendarat di **${coin}**.`;
+
+    return createBaseEmbed({
+      title: '🪙 Coin Flip — Hasil Akhir',
+      description: summary,
+      color: won ? COLORS.SUCCESS : COLORS.DANGER,
+      includeThumbnail,
+    });
+  }
+
+  const [p1, p2] = humanPlayers;
+  const c1 = formatCoinChoice(state?.choices?.[p1]);
+  const c2 = formatCoinChoice(state?.choices?.[p2]);
+
+  if (state?.result?.isDraw) {
+    return createBaseEmbed({
+      title: '🪙 Coin Flip — Hasil Akhir',
+      description: `🤝 **Draw** (<@${p1}> vs <@${p2}>)\n🪙 Hasil Koin: **${coin}** · Kedua pemain memilih **${c1}**`,
+      color: COLORS.WARNING,
+      includeThumbnail,
+    });
+  }
+
+  const winnerId = state?.result?.winnerId;
+  return createBaseEmbed({
+    title: '🪙 Coin Flip — Hasil Akhir',
+    description: `🏆 **Pemenang:** <@${winnerId}>\n🪙 Hasil Koin: **${coin}** · <@${p1}>: **${c1}** · <@${p2}>: **${c2}**`,
+    color: COLORS.SUCCESS,
+    includeThumbnail,
+  });
+}
 
 /**
  * Builds Accept / Reject buttons for a Coin Flip multiplayer invitation.
@@ -69,12 +174,11 @@ export function buildCoinflipChoiceComponents(sessionId) {
  * @param {string} userId
  */
 export function buildCoinflipSoloPromptPayload(userId) {
-  const meta = GAME_METADATA[GAME_TYPES.COINFLIP];
-  const embed = buildInfoEmbed(
-    meta?.name ?? 'Coin Flip',
-    'Pilih sisi koin yang ingin kamu tebak menggunakan tombol di bawah ini:',
-    COLORS.PRIMARY,
-  );
+  const embed = createBaseEmbed({
+    title: '🪙 Coin Flip',
+    description: 'Pilih **Heads** atau **Tails** untuk melempar koin.',
+    color: COLORS.PRIMARY,
+  });
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`${COINFLIP_CUSTOM_ID_PREFIX}:solo:heads:${userId}`)
@@ -121,9 +225,6 @@ async function handleCoinflipInviteButton(interaction, action, inviteId, context
     return;
   }
 
-  const meta = GAME_METADATA[GAME_TYPES.COINFLIP];
-  const gameTitle = meta?.name ?? 'Coin Flip';
-
   if (action === 'reject') {
     try {
       gameManager.declineChallenge(interaction.user.id);
@@ -132,13 +233,11 @@ async function handleCoinflipInviteButton(interaction, action, inviteId, context
       return;
     }
 
-    const declinedLobby = buildLobbyEmbed({
-      gameTitle,
+    const declinedLobby = buildCoinflipInviteEmbed({
       hostId: invite.hostId,
       opponentId: invite.opponentId,
-      status: 'Ditolak',
-      instructions: `${formatPlayer(interaction.user.id)} menolak undangan ini.`,
-      color: COLORS.ERROR,
+      status: 'rejected',
+      rejectedById: interaction.user.id,
     });
     await interaction.update({ embeds: [declinedLobby], components: [] });
     return;
@@ -155,18 +254,15 @@ async function handleCoinflipInviteButton(interaction, action, inviteId, context
       return;
     }
 
-    const { session, publicView } = accepted;
-    const acceptedLobby = buildLobbyEmbed({
-      gameTitle,
+    const { session } = accepted;
+    const acceptedLobby = buildCoinflipInviteEmbed({
       hostId: invite.hostId,
       opponentId: invite.opponentId,
-      status: 'Diterima',
-      instructions: 'Pertandingan dimulai! Pilih Heads atau Tails pada papan di bawah.',
-      color: COLORS.SUCCESS,
+      status: 'accepted',
     });
     await interaction.update({ embeds: [acceptedLobby], components: [] });
 
-    const boardEmbed = renderGameOrResultEmbed(GAME_TYPES.COINFLIP, publicView, null, 0);
+    const boardEmbed = buildCoinflipBoardEmbed(session.state);
     const boardPayload = {
       embeds: [boardEmbed],
       components: buildCoinflipChoiceComponents(session.sessionId),
@@ -216,12 +312,9 @@ async function handleCoinflipChoiceButton(interaction, choice, sessionId, contex
     return;
   }
 
-  const embed = renderGameOrResultEmbed(
-    GAME_TYPES.COINFLIP,
-    outcome.publicView,
-    outcome.finished ? outcome.result : null,
-    outcome.durationMs ?? 0,
-  );
+  const embed = outcome.finished
+    ? buildCoinflipResultEmbed(outcome.state)
+    : buildCoinflipBoardEmbed(outcome.state);
 
   const fallbackRef =
     outcome.session?.boardMessageRef ??
@@ -272,7 +365,7 @@ async function handleCoinflipSoloButton(interaction, choice, ownerId, context) {
     return;
   }
 
-  const embed = renderGameOrResultEmbed(GAME_TYPES.COINFLIP, outcome.publicView, outcome.result, 0);
+  const embed = buildCoinflipResultEmbed(outcome.state);
   await interaction.update({ embeds: [embed], components: [] });
 }
 

@@ -14,11 +14,8 @@ import { sanitizeError } from './utils/errorSanitizer.js';
 import { GAME_TYPES } from './utils/constants.js';
 import { resolvePrefix } from './utils/prefixParser.js';
 import { CoinFlipGame } from './games/CoinFlipGame.js';
-import { DiceGame } from './games/DiceGame.js';
 import { RPSGame } from './games/RPSGame.js';
-import { GuessGame } from './games/GuessGame.js';
 import { TicTacToeGame } from './games/TicTacToeGame.js';
-import { ConnectFourGame } from './games/ConnectFourGame.js';
 import readyEvent from './events/ready.js';
 import interactionCreateEvent from './events/interactionCreate.js';
 import messageCreateEvent from './events/messageCreate.js';
@@ -32,11 +29,8 @@ import { prisma as defaultPrisma } from './services/prisma.js';
  */
 export function registerDefaultGames(gameManager) {
   gameManager.registerGame(GAME_TYPES.COINFLIP, CoinFlipGame);
-  gameManager.registerGame(GAME_TYPES.DICE, DiceGame);
   gameManager.registerGame(GAME_TYPES.RPS, RPSGame);
-  gameManager.registerGame(GAME_TYPES.GUESS, GuessGame);
   gameManager.registerGame(GAME_TYPES.TICTACTOE, TicTacToeGame);
-  gameManager.registerGame(GAME_TYPES.CONNECT4, ConnectFourGame);
 }
 
 /**

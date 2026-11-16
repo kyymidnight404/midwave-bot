@@ -3,12 +3,10 @@ import assert from 'node:assert/strict';
 import { createSeededRng, defaultRng } from '../../src/utils/random.js';
 import {
   isValidCoinChoice,
-  isValidConnect4Column,
   isValidDifficulty,
   isValidQuizCategory,
   isValidRpsChoice,
   isValidTttPosition,
-  validateDiceConfig,
   validateOpponent,
 } from '../../src/utils/validators.js';
 import { CooldownManager } from '../../src/utils/cooldown.js';
@@ -68,15 +66,6 @@ describe('Validators', () => {
     assert.equal(validateOpponent('111', null).valid, false);
   });
 
-  it('validates dice configuration limits', () => {
-    assert.equal(validateDiceConfig(1, 6).valid, true);
-    assert.equal(validateDiceConfig(10, 100).valid, true);
-    assert.equal(validateDiceConfig(0, 6).valid, false);
-    assert.equal(validateDiceConfig(11, 6).valid, false);
-    assert.equal(validateDiceConfig(1, 1).valid, false);
-    assert.equal(validateDiceConfig(1, 101).valid, false);
-  });
-
   it('validates game choices and coordinates', () => {
     assert.equal(isValidDifficulty('easy'), true);
     assert.equal(isValidDifficulty('extreme'), false);
@@ -88,9 +77,6 @@ describe('Validators', () => {
     assert.equal(isValidCoinChoice('edge'), false);
     assert.equal(isValidTttPosition('b2'), true);
     assert.equal(isValidTttPosition('D1'), false);
-    assert.equal(isValidConnect4Column(7), true);
-    assert.equal(isValidConnect4Column(0), false);
-    assert.equal(isValidConnect4Column(8), false);
   });
 });
 
@@ -150,7 +136,7 @@ describe('Embed Design System', () => {
     assert.equal(err.color, COLORS.DANGER);
 
     const gamesList = buildGamesListEmbed().toJSON();
-    assert.equal(gamesList.fields.length, 6);
+    assert.equal(gamesList.fields.length, 3);
 
     const help = buildHelpEmbed().toJSON();
     assert.equal(help.footer, undefined);

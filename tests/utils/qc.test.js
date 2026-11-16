@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createCanvas } from '@napi-rs/canvas';
-import { ApplicationCommandType, AttachmentBuilder, MessageFlags } from 'discord.js';
+import { AttachmentBuilder, MessageFlags } from 'discord.js';
 import {
   formatQcTimestamp,
   loadQcAssets,
@@ -22,7 +22,6 @@ import qcCommand, {
   extractQcSourceFromMessage,
 } from '../../src/prefixCommands/qc.js';
 import mediaCommand from '../../src/commands/media.js';
-import generateQcContextCommand from '../../src/commands/generateQcContext.js';
 import { CommandHandler } from '../../src/handlers/CommandHandler.js';
 import { InteractionHandler } from '../../src/handlers/InteractionHandler.js';
 import { PrefixCommandHandler } from '../../src/handlers/PrefixCommandHandler.js';
@@ -225,15 +224,14 @@ describe('QC (WhatsApp Chat Screenshot) Generator & Commands', () => {
     assert.throws(() => extractQcSourceFromMessage({ content: '', cleanContent: '' }), /tidak memiliki teks/i);
   });
 
-  it('handles /media action:qc slash command and Generate QC context menu via InteractionHandler', async () => {
+  it('handles /media action:qc slash command via InteractionHandler', async () => {
     const commandHandler = new CommandHandler();
     await commandHandler.loadCommands();
     assert.equal(qcCommand.name, 'qc');
     assert.equal(mediaCommand.data.name, 'media');
     assert.equal(commandHandler.get('qc'), undefined);
     assert.ok(commandHandler.get('media'));
-    assert.equal(generateQcContextCommand.data.name, 'Generate QC');
-    assert.equal(generateQcContextCommand.data.type, ApplicationCommandType.Message);
+    assert.equal(commandHandler.get('Generate QC'), undefined);
 
     const capturedTimestamps = [];
     const handler = new InteractionHandler({
@@ -257,25 +255,6 @@ describe('QC (WhatsApp Chat Screenshot) Generator & Commands', () => {
     assert.ok(slashAttachment instanceof AttachmentBuilder);
     assert.equal(slashAttachment.name, QC_ATTACHMENT_NAME);
     assert.ok(slashAttachment.attachment.subarray(0, 8).equals(PNG_SIGNATURE));
-
-    // Message Context Menu "Generate QC" uses current execution timestamp (not historical createdTimestamp)
-    const targetCreated = new Date('2024-05-01T05:30:00Z').getTime();
-    const ctxInteraction = createMockContextMenuInteraction({
-      content: 'Pesan dari context menu',
-      cleanContent: 'Pesan dari context menu',
-      createdTimestamp: targetCreated,
-    });
-    const beforeCtxMs = Date.now();
-    await handler.handle(ctxInteraction);
-    const afterCtxMs = Date.now();
-    const ctxTimestampMs =
-      capturedTimestamps[1] instanceof Date ? capturedTimestamps[1].getTime() : capturedTimestamps[1];
-    assert.notEqual(ctxTimestampMs, targetCreated);
-    assert.ok(
-      ctxTimestampMs >= beforeCtxMs && ctxTimestampMs <= afterCtxMs,
-      `Expected live timestamp between ${beforeCtxMs} and ${afterCtxMs}, got ${ctxTimestampMs}`,
-    );
-    assert.equal(ctxInteraction.getEvents()[1].payload.files[0].name, QC_ATTACHMENT_NAME);
 
     // Invalid empty slash input and omitted optional text reply ephemerally
     const emptySlash = createMockSlashInteraction('   ');

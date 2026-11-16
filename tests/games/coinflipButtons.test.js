@@ -172,6 +172,9 @@ describe('CoinFlip Interactive Button Flow', () => {
       });
       await app.prefixCommandHandler.handle(challengeMsg);
       const lobbyMsg = challengeMsg.getReplies()[0];
+      const lobbyJson = lobbyMsg.payload.embeds[0].toJSON();
+      assert.equal(lobbyJson.fields, undefined);
+      assert.match(lobbyJson.description, /Menunggu Konfirmasi/);
       const lobbyButtons = lobbyMsg.payload.components[0].components;
       assert.equal(lobbyButtons.length, 2);
       assert.equal(lobbyButtons[0].data.label, 'Accept');
@@ -202,6 +205,9 @@ describe('CoinFlip Interactive Button Flow', () => {
       await app.interactionHandler.handle(rejectInt);
       assert.deepEqual(lobbyMsg.payload.components, []);
       assert.equal(app.inviteManager.getIncomingInvite(p2.id), undefined);
+      const rejectedJson = lobbyMsg.payload.embeds[0].toJSON();
+      assert.equal(rejectedJson.fields, undefined);
+      assert.match(rejectedJson.description, /Ditolak/);
 
       // 3. New challenge -> Opponent clicks Accept -> Heads / Tails buttons posted
       const challengeMsg2 = createPrefixMessage({
@@ -281,6 +287,9 @@ describe('CoinFlip Interactive Button Flow', () => {
       await app.interactionHandler.handle(p2Tails);
       assert.deepEqual(boardMsg.payload.components, []);
       assert.equal(app.sessionManager.activeGames.size, 0);
+      const resultJson = boardMsg.payload.embeds[0].toJSON();
+      assert.equal(resultJson.fields, undefined);
+      assert.match(resultJson.description, /Hasil Koin:/);
     } finally {
       app.shutdown();
     }
@@ -315,6 +324,9 @@ describe('CoinFlip Interactive Button Flow', () => {
       });
       await app.interactionHandler.handle(clickHeads);
       assert.deepEqual(promptMsg.payload.components, []);
+      const soloResultJson = promptMsg.payload.embeds[0].toJSON();
+      assert.equal(soloResultJson.fields, undefined);
+      assert.match(soloResultJson.description, /Menang!|Kalah!/);
     } finally {
       app.shutdown();
     }

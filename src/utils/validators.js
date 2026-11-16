@@ -1,7 +1,5 @@
 import {
   COIN_CHOICES,
-  CONNECT4_CONFIG,
-  DICE_CONFIG,
   DIFFICULTIES,
   QUIZ_CATEGORIES,
   RPS_CHOICES,
@@ -60,22 +58,6 @@ export function validateIntRange(value, min, max, label = 'Nilai') {
 }
 
 /**
- * Validates Dice Rolling configuration.
- * @param {number} count
- * @param {number} sides
- * @returns {{ valid: boolean, error?: string }}
- */
-export function validateDiceConfig(count, sides) {
-  const countCheck = validateIntRange(count, DICE_CONFIG.MIN_COUNT, DICE_CONFIG.MAX_COUNT, 'Jumlah dadu');
-  if (!countCheck.valid) return countCheck;
-
-  const sidesCheck = validateIntRange(sides, DICE_CONFIG.MIN_SIDES, DICE_CONFIG.MAX_SIDES, 'Jumlah sisi');
-  if (!sidesCheck.valid) return sidesCheck;
-
-  return { valid: true };
-}
-
-/**
  * @param {string} choice
  * @returns {boolean}
  */
@@ -98,13 +80,4 @@ export function isValidCoinChoice(choice) {
  */
 export function isValidTttPosition(pos) {
   return TTT_POSITIONS.includes(String(pos).toUpperCase());
-}
-
-/**
- * Validates Connect Four 1-based column (1-7).
- * @param {number} column
- * @returns {boolean}
- */
-export function isValidConnect4Column(column) {
-  return Number.isInteger(column) && column >= 1 && column <= CONNECT4_CONFIG.COLS;
 }

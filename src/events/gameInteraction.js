@@ -2,7 +2,6 @@ import { MessageFlags } from 'discord.js';
 import { prisma as defaultPrisma } from '../services/prisma.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
 import { sanitizeError } from '../utils/errorSanitizer.js';
-import { applyConnectFourDrop } from '../games/engines/connectFour.js';
 import {
   advanceQuizRound,
   joinQuizLobby,
@@ -31,7 +30,6 @@ import {
 import { GAME_CENTER_PREFIX, parseGameCustomId } from '../games/utils/customId.js';
 import {
   buildChallengeMessage,
-  buildConnectFourMessage,
   buildQuizCancelledMessage,
   buildQuizFinalMessage,
   buildQuizLobbyMessage,
@@ -155,14 +153,6 @@ function buildUsernameMap(participants) {
 function renderActiveBoard(session, status = session.status, forfeitedById = null) {
   if (session.gameType === 'ttt') {
     return buildTicTacToeMessage({
-      sessionId: session.id,
-      state: session.state,
-      status,
-      forfeitedById,
-    });
-  }
-  if (session.gameType === 'connect4') {
-    return buildConnectFourMessage({
       sessionId: session.id,
       state: session.state,
       status,
@@ -346,17 +336,6 @@ async function handleBoardOrRpsInteraction(interaction, parsed, context) {
       finished = moveRes.finished;
       winnerId = moveRes.winnerId;
       isDraw = moveRes.isDraw;
-    } else if (parsed.scope === 'c4' && parsed.action === 'drop') {
-      const colIndex = Number(parsed.args[0]);
-      const dropRes = applyConnectFourDrop(session.state, userId, colIndex);
-      if (!dropRes.ok) {
-        await replyEphemeral(interaction, dropRes.error);
-        return;
-      }
-      nextState = dropRes.state;
-      finished = dropRes.finished;
-      winnerId = dropRes.winnerId;
-      isDraw = dropRes.isDraw;
     } else if (parsed.scope === 'rps' && parsed.action === 'pick') {
       const choice = parsed.args[0];
       const pickRes = applyRpsPick(session.state, userId, choice);
@@ -983,7 +962,7 @@ export async function handleGameCenterInteraction(interaction, context = {}) {
       await handleChallengeInteraction(interaction, parsed, context);
       return;
     }
-    if (parsed.scope === 'ttt' || parsed.scope === 'c4' || parsed.scope === 'rps') {
+    if (parsed.scope === 'ttt' || parsed.scope === 'rps') {
       await handleBoardOrRpsInteraction(interaction, parsed, context);
       return;
     }

@@ -1,11 +1,12 @@
 import { COLORS } from '../config/colors.js';
 import { sanitizeError } from './errorSanitizer.js';
-import { GAME_METADATA } from './constants.js';
+import { GAME_METADATA, GAME_TYPES } from './constants.js';
 import {
   buildGameEmbed,
   buildInfoEmbed,
   buildLobbyEmbed,
   buildResultEmbed,
+  createBaseEmbed,
   formatPlayer,
   getLogoFiles,
 } from './embeds.js';
@@ -131,14 +132,21 @@ export function createInviteExpireHandler(client) {
   return async (expiredInvite) => {
     const meta = GAME_METADATA[expiredInvite.gameType];
     const gameTitle = meta?.name ?? expiredInvite.gameType;
-    const embed = buildLobbyEmbed({
-      gameTitle,
-      hostId: expiredInvite.hostId,
-      opponentId: expiredInvite.opponentId,
-      status: 'Kedaluwarsa',
-      instructions: 'Undangan telah melewati batas waktu 60 detik. Buat tantangan baru jika masih ingin bermain.',
-      color: COLORS.WARNING,
-    });
+    const embed =
+      expiredInvite.gameType === GAME_TYPES.COINFLIP
+        ? createBaseEmbed({
+            title: '🪙 Coin Flip',
+            description: '⏱️ **Kedaluwarsa** — Tantangan berakhir tanpa jawaban.',
+            color: COLORS.WARNING,
+          })
+        : buildLobbyEmbed({
+            gameTitle,
+            hostId: expiredInvite.hostId,
+            opponentId: expiredInvite.opponentId,
+            status: 'Kedaluwarsa',
+            instructions: 'Undangan telah melewati batas waktu 60 detik. Buat tantangan baru jika masih ingin bermain.',
+            color: COLORS.WARNING,
+          });
 
     await updatePublicMessage(
       client,

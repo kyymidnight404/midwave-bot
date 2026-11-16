@@ -278,18 +278,23 @@ describe('Prefix Command System', () => {
     assert.equal(parsePrefixInvocation('!unknowncmd arg'), null);
   });
 
-  it('parses all supported commands, shorthands, aliases, and validates invalid arguments', () => {
-    assert.deepEqual(parsePrefixInvocation('!games'), {
-      commandName: 'games',
-      subcommand: null,
-      options: {},
-    });
+  it('parses all supported commands, shorthands, aliases, and ignores removed commands', () => {
+    assert.equal(parsePrefixInvocation('!games'), null);
+    assert.equal(parsePrefixInvocation('!game status'), null);
+    assert.equal(parsePrefixInvocation('!invite accept'), null);
+    assert.equal(parsePrefixInvocation('!dice 2d20'), null);
+    assert.equal(parsePrefixInvocation('!guess'), null);
+    assert.equal(parsePrefixInvocation('!c4 5'), null);
+    assert.equal(parsePrefixInvocation('!connect4'), null);
+    assert.equal(parsePrefixInvocation('!help'), null);
+    assert.equal(parsePrefixInvocation('!trivia science hard'), null);
+    assert.equal(parsePrefixInvocation('!trivia b'), null);
+
     assert.deepEqual(parsePrefixInvocation('!menu'), {
       commandName: 'menu',
       subcommand: null,
       options: {},
     });
-    assert.equal(parsePrefixInvocation('!help'), null);
     assert.deepEqual(parsePrefixInvocation('!brat midnight ocean & <test>'), {
       commandName: 'brat',
       subcommand: null,
@@ -309,37 +314,12 @@ describe('Prefix Command System', () => {
     });
     assert.ok(parsePrefixInvocation('!download')?.error);
 
-    assert.deepEqual(parsePrefixInvocation('!guess'), {
-      commandName: 'guess',
-      subcommand: 'solo',
-      options: { difficulty: 'normal' },
-    });
-    assert.deepEqual(parsePrefixInvocation('!guess hard'), {
-      commandName: 'guess',
-      subcommand: 'solo',
-      options: { difficulty: 'hard' },
-    });
-    assert.deepEqual(parsePrefixInvocation('!guess 42'), {
-      commandName: 'guess',
-      subcommand: 'play',
-      options: { number: 42 },
-    });
-    assert.deepEqual(parsePrefixInvocation('!ng <@123456789012345678> easy'), {
-      commandName: 'guess',
-      subcommand: 'challenge',
-      options: { opponentId: '123456789012345678', difficulty: 'easy' },
-    });
-    assert.ok(parsePrefixInvocation('!guess 999')?.error);
-
     assert.deepEqual(parsePrefixInvocation('!rps batu'), {
       commandName: 'rps',
       subcommand: 'solo',
       options: { choice: 'rock' },
     });
     assert.ok(parsePrefixInvocation('!rps')?.error);
-
-    assert.equal(parsePrefixInvocation('!trivia science hard'), null);
-    assert.equal(parsePrefixInvocation('!trivia b'), null);
 
     assert.deepEqual(parsePrefixInvocation('!coinflip tails'), {
       commandName: 'coinflip',
@@ -352,32 +332,18 @@ describe('Prefix Command System', () => {
       options: { opponentId: '123456789012345678' },
     });
 
-    assert.deepEqual(parsePrefixInvocation('!dice 2d20'), {
-      commandName: 'dice',
-      subcommand: 'solo',
-      options: { count: 2, sides: 20 },
-    });
-    assert.ok(parsePrefixInvocation('!dice 99d6')?.error);
-
     assert.deepEqual(parsePrefixInvocation('!ttt b2'), {
       commandName: 'tictactoe',
       subcommand: 'move',
       options: { position: 'B2' },
     });
     assert.ok(parsePrefixInvocation('!ttt z9')?.error);
-
-    assert.deepEqual(parsePrefixInvocation('!c4 5'), {
-      commandName: 'connect4',
-      subcommand: 'drop',
-      options: { column: 5 },
-    });
-    assert.ok(parsePrefixInvocation('!c4 9')?.error);
   });
 
   it('ignores bot messages, enforces guild channel permissions, and shares cooldown with slash commands', async () => {
     const harness = await createTestHarness({ prefix: '!', cooldownMs: 5000 });
     const botMsg = createFakeMessage({
-      content: '!games',
+      content: '!menu',
       author: harness.users.get('bot2'),
       channel: harness.channel,
       userDirectory: harness.users,
@@ -391,7 +357,7 @@ describe('Prefix Command System', () => {
       new Set([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages]),
     );
     const noEmbedMsg = createFakeMessage({
-      content: '!games',
+      content: '!menu',
       author: harness.users.get(U1_ID),
       channel: noEmbedChannel,
       userDirectory: harness.users,
@@ -462,6 +428,25 @@ describe('Prefix Command System', () => {
     const helpJson = JSON.stringify(helpMsg.getReplies()[0].payload.embeds[0].toJSON());
     assert.ok(helpJson.includes('MIDWAVE — COMMAND GUIDE'));
     assert.ok(helpJson.includes('`brat`'));
+    assert.ok(helpJson.includes('`donate`'));
+
+    assert.deepEqual(parsePrefixInvocation('!donate'), {
+      commandName: 'donate',
+      subcommand: null,
+      options: {},
+    });
+
+    const donateMsg = createFakeMessage({
+      content: '?donate',
+      author: u1,
+      channel: harness.channel,
+      userDirectory: harness.users,
+    });
+    await harness.prefixCommandHandler.handle(donateMsg);
+    assert.equal(donateMsg.getReplies().length, 1);
+    const donatePayload = donateMsg.getReplies()[0].payload;
+    assert.equal(donatePayload.embeds[0].toJSON().title, '☕ Buy Me a Coffee?');
+    assert.equal(donatePayload.components[0].toJSON().components.length, 2);
 
     const bratMsg = createFakeMessage({
       content: '?brat midnight ocean',
@@ -536,112 +521,37 @@ describe('Prefix Command System', () => {
     );
     const session = harness.sessionManager.getPlayerSession(U1_ID);
     assert.equal(session.state.board[0], 'X');
-
-    await harness.prefixCommandHandler.handle(
-      createFakeMessage({ content: '?game cancel', author: u1, channel: harness.channel, userDirectory: harness.users }),
-    );
+    harness.sessionManager.clearAll();
     assert.equal(harness.sessionManager.activeGames.size, 0);
   });
 
-  it('supports mixed Prefix + Slash multiplayer RPS flow with secret DM confirmation and clean teardown', async () => {
+  it('runs real solo CoinFlip, RPS, and TicTacToe flows via prefix commands', async () => {
     const harness = await createTestHarness({ prefix: '!' });
     const u1 = harness.users.get(U1_ID);
-    const u2 = harness.users.get(U2_ID);
-
-    // u1 challenges u2 via prefix command
-    const challengeMsg = createFakeMessage({
-      content: `!rps challenge <@${U2_ID}>`,
-      author: u1,
-      channel: harness.channel,
-      mentions: [u2],
-      userDirectory: harness.users,
-    });
-    await harness.prefixCommandHandler.handle(challengeMsg);
-    assert.equal(harness.inviteManager.pendingInvites.size, 1);
-
-    // u2 accepts via slash command /invite accept
-    await harness.interactionHandler.handle(
-      createMockSlashInteraction({
-        commandName: 'invite',
-        subcommand: 'accept',
-        userId: U2_ID,
-        channel: harness.channel,
-      }),
-    );
-    assert.equal(harness.inviteManager.pendingInvites.size, 0);
-    assert.equal(harness.sessionManager.activeGames.size, 1);
-
-    // u1 sends secret choice via prefix (!rps rock -> smartly maps to choose)
-    const u1ChoiceMsg = createFakeMessage({
-      content: '!rps rock',
-      author: u1,
-      channel: harness.channel,
-      userDirectory: harness.users,
-    });
-    await harness.prefixCommandHandler.handle(u1ChoiceMsg);
-    assert.equal(u1ChoiceMsg.isDeleted(), true);
-    assert.equal(u1.dms.length, 1);
-    assert.match(u1.dms[0].content, /dikunci secara privat/i);
-    assert.equal(u1ChoiceMsg.getReplies().length, 0);
-
-    // u2 sends secret choice via consolidated slash command (/game action:choose game:rps choice:paper)
-    await harness.interactionHandler.handle(
-      createMockSlashInteraction({
-        commandName: 'game',
-        subcommand: 'choose',
-        userId: U2_ID,
-        channel: harness.channel,
-        options: { game: 'rps', choice: 'paper' },
-      }),
-    );
-
-    assert.equal(harness.sessionManager.activeGames.size, 0);
-    assert.equal(harness.sessionManager.playerSessions.size, 0);
-  });
-
-  it('runs real solo Connect4, Guess, Dice, and CoinFlip flows via prefix commands', async () => {
-    const harness = await createTestHarness({ prefix: '!' });
-    const u1 = harness.users.get(U1_ID);
-
-    // Instant solo Dice & CoinFlip
-    const diceMsg = createFakeMessage({ content: '!dice 2d6', author: u1, channel: harness.channel, userDirectory: harness.users });
-    await harness.prefixCommandHandler.handle(diceMsg);
-    assert.equal(diceMsg.getReplies().length, 1);
-    assert.equal(harness.sessionManager.activeGames.size, 0);
 
     const cfMsg = createFakeMessage({ content: '!coinflip heads', author: u1, channel: harness.channel, userDirectory: harness.users });
     await harness.prefixCommandHandler.handle(cfMsg);
     assert.equal(cfMsg.getReplies().length, 1);
     assert.equal(harness.sessionManager.activeGames.size, 0);
 
-    // Stateful Connect4
-    await harness.prefixCommandHandler.handle(
-      createFakeMessage({ content: '!connect4 easy', author: u1, channel: harness.channel, userDirectory: harness.users }),
-    );
-    await harness.prefixCommandHandler.handle(
-      createFakeMessage({ content: '!connect4 4', author: u1, channel: harness.channel, userDirectory: harness.users }),
-    );
-    const c4Session = harness.sessionManager.getPlayerSession(U1_ID);
-    assert.equal(c4Session.state.board[5][3], 1);
-    assert.equal(c4Session.state.board.flat().filter(Boolean).length, 2);
-    await harness.prefixCommandHandler.handle(
-      createFakeMessage({ content: '!game cancel', author: u1, channel: harness.channel, userDirectory: harness.users }),
-    );
-
-    // Stateful Guess
-    await harness.prefixCommandHandler.handle(
-      createFakeMessage({ content: '!guess easy', author: u1, channel: harness.channel, userDirectory: harness.users }),
-    );
-    await harness.prefixCommandHandler.handle(
-      createFakeMessage({ content: '!guess 25', author: u1, channel: harness.channel, userDirectory: harness.users }),
-    );
-    if (harness.sessionManager.activeGames.size > 0) {
-      await harness.prefixCommandHandler.handle(
-        createFakeMessage({ content: '!game cancel', author: u1, channel: harness.channel, userDirectory: harness.users }),
-      );
-    }
-
-    assert.equal(parsePrefixInvocation('!trivia science normal'), null);
+    const rpsMsg = createFakeMessage({ content: '!rps rock', author: u1, channel: harness.channel, userDirectory: harness.users });
+    await harness.prefixCommandHandler.handle(rpsMsg);
+    assert.equal(rpsMsg.getReplies().length, 1);
     assert.equal(harness.sessionManager.activeGames.size, 0);
+
+    await harness.prefixCommandHandler.handle(
+      createFakeMessage({ content: '!ttt easy', author: u1, channel: harness.channel, userDirectory: harness.users }),
+    );
+    await harness.prefixCommandHandler.handle(
+      createFakeMessage({ content: '!ttt B2', author: u1, channel: harness.channel, userDirectory: harness.users }),
+    );
+    const tttSession = harness.sessionManager.getPlayerSession(U1_ID);
+    assert.equal(tttSession.state.board[4], 'X');
+    harness.sessionManager.clearAll();
+    assert.equal(harness.sessionManager.activeGames.size, 0);
+  });
+
+  it('ignores removed !trivia prefix command cleanly', () => {
+    assert.equal(parsePrefixInvocation('!trivia science normal'), null);
   });
 });

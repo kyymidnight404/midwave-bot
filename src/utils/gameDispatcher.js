@@ -1,11 +1,9 @@
 import { MessageFlags } from 'discord.js';
 import { COLORS } from '../config/colors.js';
 import {
-  DICE_CONFIG,
   DIFFICULTY_LABELS,
   GAME_METADATA,
   GAME_TYPES,
-  GUESS_CONFIG,
 } from './constants.js';
 import { updatePublicMessage } from './discordBoard.js';
 import { buildCoinflipSoloPromptPayload } from './coinflipComponents.js';
@@ -24,34 +22,27 @@ import {
 } from './gameCommandHelpers.js';
 import {
   isValidCoinChoice,
-  isValidConnect4Column,
   isValidDifficulty,
   isValidRpsChoice,
   isValidTttPosition,
-  validateDiceConfig,
 } from './validators.js';
 
 export const GAME_ACTION_CHOICES = Object.freeze([
   'solo',
   'challenge',
   'choose',
-  'drop',
   'move',
-  'answer',
   'status',
   'cancel',
 ]);
 
 export const VALID_ACTIONS_BY_GAME = Object.freeze({
   [GAME_TYPES.COINFLIP]: new Set(['solo', 'challenge', 'choose', 'status', 'cancel']),
-  [GAME_TYPES.CONNECT4]: new Set(['solo', 'challenge', 'drop', 'status', 'cancel']),
-  [GAME_TYPES.DICE]: new Set(['solo', 'challenge', 'status', 'cancel']),
-  [GAME_TYPES.GUESS]: new Set(['solo', 'challenge', 'answer', 'status', 'cancel']),
   [GAME_TYPES.RPS]: new Set(['solo', 'challenge', 'choose', 'status', 'cancel']),
   [GAME_TYPES.TICTACTOE]: new Set(['solo', 'challenge', 'move', 'status', 'cancel']),
 });
 
-const SESSION_PLAY_ACTIONS = new Set(['choose', 'drop', 'move', 'answer']);
+const SESSION_PLAY_ACTIONS = new Set(['choose', 'move']);
 
 async function replyEphemeralError(interaction, message) {
   await interaction.reply({
@@ -297,86 +288,6 @@ async function dispatchRps(interaction, context, actionName) {
   });
 }
 
-async function dispatchDice(interaction, context, actionName) {
-  const count = interaction.options.getInteger?.('count', false) ?? DICE_CONFIG.DEFAULT_COUNT;
-  const sides = interaction.options.getInteger?.('sides', false) ?? DICE_CONFIG.DEFAULT_SIDES;
-  const diceCheck = validateDiceConfig(count, sides);
-  if (!diceCheck.valid) {
-    await replyEphemeralError(interaction, diceCheck.error);
-    return;
-  }
-
-  if (actionName === 'solo') {
-    await handleInstantSoloCommand(interaction, context, {
-      gameType: GAME_TYPES.DICE,
-      config: { count, sides },
-      action: {},
-    });
-    return;
-  }
-
-  await handleChallengeCommand(interaction, context, {
-    gameType: GAME_TYPES.DICE,
-    config: { count, sides },
-    details: `Konfigurasi: **${count}d${sides}**`,
-  });
-}
-
-async function dispatchGuess(interaction, context, actionName) {
-  if (actionName === 'solo' || actionName === 'challenge') {
-    const rawDiff = interaction.options.getString?.('difficulty', false);
-    const difficulty = rawDiff ? rawDiff.trim().toLowerCase() : 'normal';
-    if (!isValidDifficulty(difficulty)) {
-      await replyEphemeralError(interaction, 'Tingkat kesulitan tidak valid. Pilih `easy`, `normal`, atau `hard`.');
-      return;
-    }
-
-    if (actionName === 'solo') {
-      await handleSoloSessionStart(interaction, context, {
-        gameType: GAME_TYPES.GUESS,
-        config: { difficulty },
-      });
-      return;
-    }
-
-    const cfg = GUESS_CONFIG[difficulty];
-    await handleChallengeCommand(interaction, context, {
-      gameType: GAME_TYPES.GUESS,
-      config: { difficulty },
-      details: `Difficulty: **${DIFFICULTY_LABELS[difficulty]}** (${cfg.min}–${cfg.max}, ${cfg.maxAttempts} percobaan)`,
-    });
-    return;
-  }
-
-  const numberOpt = interaction.options.getInteger?.('number', false);
-  let number = typeof numberOpt === 'number' ? numberOpt : null;
-  if (number === null) {
-    const answerStr = interaction.options.getString?.('answer', false);
-    if (typeof answerStr === 'string' && /^-?\d+$/.test(answerStr.trim())) {
-      number = Number.parseInt(answerStr.trim(), 10);
-    }
-  }
-
-  if (!Number.isInteger(number) || number < 1 || number > 200) {
-    await replyEphemeralError(
-      interaction,
-      'Masukkan angka tebakan bulat antara 1 sampai 200 pada parameter `answer`.',
-    );
-    return;
-  }
-
-  await handleSessionActionCommand(interaction, context, {
-    gameType: GAME_TYPES.GUESS,
-    action: { number },
-    formatEphemeralMessage: (outcome) => {
-      if (outcome.finished) return `Tebakan **${number}** tercatat. Pertandingan selesai!`;
-      const hint = outcome.privateView?.lastHint;
-      const rem = outcome.privateView?.remainingAttempts;
-      return `Tebakan **${number}** → **${hint}**! (Sisa percobaan: ${rem})`;
-    },
-  });
-}
-
 async function dispatchTicTacToe(interaction, context, actionName) {
   if (actionName === 'solo') {
     const rawDiff = interaction.options.getString?.('difficulty', false);
@@ -420,53 +331,8 @@ async function dispatchTicTacToe(interaction, context, actionName) {
   });
 }
 
-async function dispatchConnect4(interaction, context, actionName) {
-  if (actionName === 'solo') {
-    const rawDiff = interaction.options.getString?.('difficulty', false);
-    const difficulty = rawDiff ? rawDiff.trim().toLowerCase() : 'normal';
-    if (!isValidDifficulty(difficulty)) {
-      await replyEphemeralError(interaction, 'Tingkat kesulitan tidak valid. Pilih `easy`, `normal`, atau `hard`.');
-      return;
-    }
-    await handleSoloSessionStart(interaction, context, {
-      gameType: GAME_TYPES.CONNECT4,
-      config: { difficulty },
-    });
-    return;
-  }
-
-  if (actionName === 'challenge') {
-    await handleChallengeCommand(interaction, context, {
-      gameType: GAME_TYPES.CONNECT4,
-      details: 'Papan 7 kolom × 6 baris',
-    });
-    return;
-  }
-
-  const column = interaction.options.getInteger?.('column', false);
-  if (!isValidConnect4Column(column)) {
-    await replyEphemeralError(
-      interaction,
-      'Masukkan nomor kolom antara `1` sampai `7` pada parameter `column` untuk Connect Four.',
-    );
-    return;
-  }
-
-  await handleSessionActionCommand(interaction, context, {
-    gameType: GAME_TYPES.CONNECT4,
-    action: { column },
-    formatEphemeralMessage: (outcome) =>
-      outcome.finished
-        ? `Keping dijatuhkan di kolom **${column}**. Pertandingan selesai!`
-        : `Keping dijatuhkan di kolom **${column}** dan papan telah diperbarui.`,
-  });
-}
-
 const GAME_DISPATCHERS = Object.freeze({
   [GAME_TYPES.COINFLIP]: dispatchCoinFlip,
-  [GAME_TYPES.CONNECT4]: dispatchConnect4,
-  [GAME_TYPES.DICE]: dispatchDice,
-  [GAME_TYPES.GUESS]: dispatchGuess,
   [GAME_TYPES.RPS]: dispatchRps,
   [GAME_TYPES.TICTACTOE]: dispatchTicTacToe,
 });

@@ -1,9 +1,4 @@
 import { PermissionFlagsBits } from 'discord.js';
-import {
-  DICE_CONFIG,
-  GAME_TYPES,
-  TTT_POSITIONS,
-} from '../utils/constants.js';
 import { AI_MAX_QUESTION_LENGTH } from '../services/gemini.js';
 import {
   LYRICS_MAX_ARTIST_LENGTH,
@@ -13,21 +8,6 @@ import { SOCIAL_INTERACTIONS } from '../services/otakuGifsService.js';
 import { BRAT_MAX_LENGTH } from '../utils/bratGenerator.js';
 import { MATH_MAX_LENGTH } from '../utils/mathEvaluator.js';
 import { QC_MAX_LENGTH } from '../utils/qcGenerator.js';
-
-const GAME_CHOICES = [
-  { name: 'Coin Flip', value: GAME_TYPES.COINFLIP },
-  { name: 'Connect Four', value: GAME_TYPES.CONNECT4 },
-  { name: 'Dice Rolling', value: GAME_TYPES.DICE },
-  { name: 'Number Guessing', value: GAME_TYPES.GUESS },
-  { name: 'Rock Paper Scissors', value: GAME_TYPES.RPS },
-  { name: 'Tic Tac Toe', value: GAME_TYPES.TICTACTOE },
-];
-
-const DIFFICULTY_CHOICES = [
-  { name: 'Easy', value: 'easy' },
-  { name: 'Normal', value: 'normal' },
-  { name: 'Hard', value: 'hard' },
-];
 
 /**
  * Centralized Discord Application Command configuration for Midwave.
@@ -130,154 +110,6 @@ export const commandStructure = {
         usage: 'donate',
         description: 'Dukung pengembangan Midwave',
       },
-    },
-    {
-      name: 'game',
-      description: 'Mainkan mini-game Midwave dan kelola sesi pertandingan',
-      enabled: true,
-      type: 'choice',
-      handler: 'game',
-      actionHandlers: {
-        solo: 'game.solo',
-        challenge: 'game.challenge',
-        choose: 'game.choose',
-        drop: 'game.drop',
-        move: 'game.move',
-        answer: 'game.answer',
-        status: 'game.status',
-        cancel: 'game.cancel',
-        list: 'games',
-      },
-      help: {
-        category: 'mini_games',
-        usage: 'game action:<solo|challenge|choose|drop|move|answer|status|cancel|list>',
-        prefixUsage: '{prefix}<game> [aksi]',
-        description: 'Mainkan 6 mini-game (coinflip, connect4, dice, guess, rps, tictactoe)',
-      },
-      options: [
-        {
-          name: 'action',
-          description: 'Pilih aksi game',
-          type: 'string',
-          required: true,
-          choices: [
-            { name: 'solo — Mainkan mini-game solo melawan Bot/AI', value: 'solo' },
-            { name: 'challenge — Tantang pemain lain untuk bermain multiplayer', value: 'challenge' },
-            { name: 'choose — Pilih gerakan RPS atau sisi Coin Flip', value: 'choose' },
-            { name: 'drop — Jatuhkan keping Connect Four (1–7)', value: 'drop' },
-            { name: 'move — Letakkan simbol Tic Tac Toe (A1–C3)', value: 'move' },
-            { name: 'answer — Kirim tebakan Guess', value: 'answer' },
-            { name: 'status — Lihat status sesi game atau undangan aktif', value: 'status' },
-            { name: 'cancel — Batalkan sesi game atau undangan aktif', value: 'cancel' },
-            { name: 'list — Tampilkan daftar mini-game dan aturan mainnya', value: 'list' },
-          ],
-        },
-        {
-          name: 'game',
-          description: 'Pilih jenis mini-game (untuk solo/challenge/choose)',
-          type: 'string',
-          required: false,
-          choices: GAME_CHOICES,
-        },
-        {
-          name: 'opponent',
-          description: 'Pemain lawan yang ingin ditantang (untuk challenge)',
-          type: 'user',
-          required: false,
-        },
-        {
-          name: 'choice',
-          description: 'Pilihan RPS (rock/paper/scissors) atau Coin Flip (heads/tails)',
-          type: 'string',
-          required: false,
-          choices: [
-            { name: 'Rock (Batu — RPS)', value: 'rock' },
-            { name: 'Paper (Kertas — RPS)', value: 'paper' },
-            { name: 'Scissors (Gunting — RPS)', value: 'scissors' },
-            { name: 'Heads (Coin Flip)', value: 'heads' },
-            { name: 'Tails (Coin Flip)', value: 'tails' },
-          ],
-        },
-        {
-          name: 'column',
-          description: 'Nomor kolom 1–7 (untuk drop di Connect Four)',
-          type: 'integer',
-          required: false,
-          minValue: 1,
-          maxValue: 7,
-        },
-        {
-          name: 'position',
-          description: 'Koordinat papan A1–C3 (untuk move di Tic Tac Toe)',
-          type: 'string',
-          required: false,
-          choices: TTT_POSITIONS.map((pos) => ({ name: pos, value: pos })),
-        },
-        {
-          name: 'answer',
-          description: 'Tebakan angka 1–200 (Guess)',
-          type: 'string',
-          required: false,
-        },
-        {
-          name: 'difficulty',
-          description: 'Tingkat kesulitan AI/game (default Normal)',
-          type: 'string',
-          required: false,
-          choices: DIFFICULTY_CHOICES,
-        },
-        {
-          name: 'count',
-          description: `Jumlah dadu ${DICE_CONFIG.MIN_COUNT}–${DICE_CONFIG.MAX_COUNT} (default 1, untuk Dice)`,
-          type: 'integer',
-          required: false,
-          minValue: DICE_CONFIG.MIN_COUNT,
-          maxValue: DICE_CONFIG.MAX_COUNT,
-        },
-        {
-          name: 'sides',
-          description: `Jumlah sisi dadu ${DICE_CONFIG.MIN_SIDES}–${DICE_CONFIG.MAX_SIDES} (default 6, untuk Dice)`,
-          type: 'integer',
-          required: false,
-          minValue: DICE_CONFIG.MIN_SIDES,
-          maxValue: DICE_CONFIG.MAX_SIDES,
-        },
-        {
-          name: 'game_id',
-          description: 'Opsional ID sesi atau undangan (untuk status/cancel)',
-          type: 'string',
-          required: false,
-        },
-      ],
-    },
-    {
-      name: 'invite',
-      description: 'Terima atau tolak undangan pertandingan multiplayer',
-      enabled: true,
-      type: 'choice',
-      handler: 'invite',
-      actionHandlers: {
-        accept: 'invite.accept',
-        decline: 'invite.decline',
-      },
-      help: {
-        category: 'mini_games',
-        usage: 'invite action:<accept|decline>',
-        prefixUsage: '{prefix}invite <accept|decline>',
-        description: 'Terima atau tolak undangan permainan',
-      },
-      options: [
-        {
-          name: 'action',
-          description: 'Terima atau tolak undangan pertandingan',
-          type: 'string',
-          required: true,
-          choices: [
-            { name: 'accept — Menerima undangan pertandingan terbaru untukmu', value: 'accept' },
-            { name: 'decline — Menolak undangan pertandingan yang masuk', value: 'decline' },
-          ],
-        },
-      ],
     },
     {
       name: 'media',
@@ -410,17 +242,6 @@ export const commandStructure = {
           required: false,
         },
       ],
-    },
-    {
-      name: 'Generate QC',
-      enabled: true,
-      type: 'context_message',
-      handler: 'context.generate_qc',
-      help: {
-        category: 'media_utilities',
-        usage: 'Apps → Generate QC',
-        description: 'Buat QC dari pesan Discord (Context Menu)',
-      },
     },
   ],
 };

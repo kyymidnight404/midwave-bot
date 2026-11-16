@@ -1,13 +1,11 @@
 export const GAME_CENTER_TYPES = Object.freeze({
   TTT: 'ttt',
-  CONNECT4: 'connect4',
   QUIZ: 'quiz',
   RPS: 'rps',
 });
 
 export const GAME_CENTER_LABELS = Object.freeze({
   ttt: 'Tic Tac Toe',
-  connect4: 'Connect Four',
   quiz: 'Quiz Battle',
   rps: 'Rock Paper Scissors',
 });

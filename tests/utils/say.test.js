@@ -280,19 +280,19 @@ describe('Say Prefix Command (!say) — Message Repeater', () => {
     app.shutdown();
   });
 
-  it('14. Remains fully compatible with !math, !hug, !qc, !brat, !games, and custom prefixes', async () => {
+  it('14. Remains fully compatible with !math, !hug, !qc, !brat, !menu, and custom prefixes', async () => {
     const app = await createBotApp({ prefix: '!', cooldowns: new CooldownManager(0) });
     const env = createMockDiscordEnv();
 
-    // !say works alongside !math and !games without interference
+    // !say works alongside !math and !menu without interference
     await app.prefixCommandHandler.handle(env.makeMessage('!say Cek fitur lain:'));
     await app.prefixCommandHandler.handle(env.makeMessage('!math 9 + 11'));
-    await app.prefixCommandHandler.handle(env.makeMessage('!games'));
+    await app.prefixCommandHandler.handle(env.makeMessage('!menu'));
 
     assert.equal(env.sentMessages[0].content, 'Cek fitur lain:');
     assert.equal(env.replies.length, 2);
     assert.match(env.replies[0].embeds[0].toJSON().fields[1].value, /20/);
-    assert.equal(env.replies[1].embeds[0].toJSON().title, 'Daftar Permainan Midwave');
+    assert.equal(env.replies[1].embeds[0].toJSON().title, 'MIDWAVE — COMMAND GUIDE');
 
     // Verify existing prefix parsers are unaffected
     assert.deepEqual(parsePrefixInvocation('!math 9 + 11'), {

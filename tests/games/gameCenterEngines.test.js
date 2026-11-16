@@ -5,10 +5,6 @@ import {
   createTicTacToeState,
 } from '../../src/games/engines/ticTacToe.js';
 import {
-  applyConnectFourDrop,
-  createConnectFourState,
-} from '../../src/games/engines/connectFour.js';
-import {
   applyRpsPick,
   createRpsMatchState,
   resolveRpsRoundPair,
@@ -103,100 +99,6 @@ describe('Game Center: Tic Tac Toe Engine', () => {
     assert.equal(drawRes.finished, true);
     assert.equal(drawRes.isDraw, true);
     assert.equal(drawRes.winnerId, null);
-  });
-});
-
-describe('Game Center: Connect Four Engine', () => {
-  it('applies gravity and detects horizontal, vertical, and both diagonal wins', () => {
-    // Gravity & Horizontal win
-    let s = createConnectFourState({ hostId: 'p1', opponentId: 'p2' });
-    const firstDrop = applyConnectFourDrop(s, 'p1', 0);
-    assert.equal(firstDrop.row, 5);
-    s = firstDrop.state;
-    s = applyConnectFourDrop(s, 'p2', 0).state; // drops to row 4
-    assert.equal(s.board[4][0], 'Y');
-
-    // Finish horizontal win on bottom row cols 0..3 for p1 (col 0 already R at row 5)
-    s = applyConnectFourDrop(s, 'p1', 1).state;
-    s = applyConnectFourDrop(s, 'p2', 1).state;
-    s = applyConnectFourDrop(s, 'p1', 2).state;
-    s = applyConnectFourDrop(s, 'p2', 2).state;
-    const hWin = applyConnectFourDrop(s, 'p1', 3);
-    assert.equal(hWin.finished, true);
-    assert.equal(hWin.winnerId, 'p1');
-
-    // Vertical win in col 0
-    s = createConnectFourState({ hostId: 'p1', opponentId: 'p2' });
-    for (let i = 0; i < 3; i += 1) {
-      s = applyConnectFourDrop(s, 'p1', 0).state;
-      s = applyConnectFourDrop(s, 'p2', 1).state;
-    }
-    const vWin = applyConnectFourDrop(s, 'p1', 0);
-    assert.equal(vWin.finished, true);
-    assert.equal(vWin.winnerId, 'p1');
-
-    // Diagonal / win: (5,0), (4,1), (3,2), (2,3) for R
-    s = createConnectFourState({ hostId: 'p1', opponentId: 'p2' });
-    const seq = [
-      ['p1', 0], // R(5,0)
-      ['p2', 1], // Y(5,1)
-      ['p1', 1], // R(4,1)
-      ['p2', 2], // Y(5,2)
-      ['p1', 2], // R(4,2)
-      ['p2', 3], // Y(5,3)
-      ['p1', 2], // R(3,2)
-      ['p2', 3], // Y(4,3)
-      ['p1', 6], // R filler
-      ['p2', 3], // Y(3,3)
-    ];
-    for (const [p, col] of seq) {
-      s = applyConnectFourDrop(s, p, col).state;
-    }
-    const diagWin = applyConnectFourDrop(s, 'p1', 3); // R(2,3)
-    assert.equal(diagWin.finished, true);
-    assert.equal(diagWin.winnerId, 'p1');
-  });
-
-  it('rejects full columns, invalid turns, and detects full-board draw', () => {
-    let s = createConnectFourState({ hostId: 'p1', opponentId: 'p2' });
-
-    // Invalid turn
-    assert.equal(applyConnectFourDrop(s, 'p2', 0).ok, false);
-
-    // Fill column 0 (6 rows)
-    for (let i = 0; i < 6; i += 1) {
-      const mover = i % 2 === 0 ? 'p1' : 'p2';
-      s = applyConnectFourDrop(s, mover, 0).state;
-    }
-    // 7th drop in col 0 must fail
-    const fullCol = applyConnectFourDrop(s, 'p1', 0);
-    assert.equal(fullCol.ok, false);
-
-    // Construct a draw board with 41 pieces and 1 empty cell at (0, 6) that creates no 4-in-a-row
-    const drawBoard = [
-      ['R', 'R', 'Y', 'R', 'R', 'Y', null],
-      ['Y', 'Y', 'R', 'Y', 'Y', 'R', 'R'],
-      ['R', 'R', 'Y', 'R', 'R', 'Y', 'Y'],
-      ['Y', 'Y', 'R', 'Y', 'Y', 'R', 'R'],
-      ['R', 'R', 'Y', 'R', 'R', 'Y', 'Y'],
-      ['Y', 'Y', 'R', 'Y', 'Y', 'R', 'R'],
-    ];
-    const nearDrawState = {
-      board: drawBoard,
-      players: { R: 'p1', Y: 'p2' },
-      currentTurn: 'Y',
-      currentTurnId: 'p2',
-      moveCount: 41,
-      lastMove: null,
-      winnerSymbol: null,
-      winnerId: null,
-      winningCells: null,
-      isDraw: false,
-    };
-    const drawRes = applyConnectFourDrop(nearDrawState, 'p2', 6);
-    assert.equal(drawRes.ok, true);
-    assert.equal(drawRes.finished, true);
-    assert.equal(drawRes.isDraw, true);
   });
 });
 

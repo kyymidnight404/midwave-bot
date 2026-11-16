@@ -41,32 +41,32 @@ describe('CommandHandler & InteractionHandler', () => {
   it('loads commands and creates bot app cleanly', async () => {
     assert.equal(typeof deployCommands, 'function');
     const app = await createBotApp();
-    assert.ok(app.commandHandler.get('game'));
+    assert.ok(app.commandHandler.get('donate'));
     assert.ok(app.commandHandler.get('help'));
     assert.ok(app.commandHandler.toJSON().length >= 2);
     app.shutdown();
   });
 
-  it('executes loaded /game list command and enforces cooldown', async () => {
+  it('executes loaded /donate command and enforces cooldown', async () => {
     let now = 10_000;
     const commandHandler = new CommandHandler();
     await commandHandler.loadCommands();
     const cooldowns = new CooldownManager(2000, () => now);
     const handler = new InteractionHandler({ commandHandler, cooldowns });
 
-    const i1 = createMockInteraction('game', 'user-1', 'list');
+    const i1 = createMockInteraction('donate', 'user-1');
     await handler.handle(i1);
     assert.equal(i1.getReplies().length, 1);
     assert.equal(i1.getReplies()[0].payload.embeds.length, 1);
 
     // Immediate second call hits cooldown with ephemeral error
-    const i2 = createMockInteraction('game', 'user-1', 'list');
+    const i2 = createMockInteraction('donate', 'user-1');
     await handler.handle(i2);
     assert.equal(i2.getReplies().length, 1);
     assert.equal(i2.getReplies()[0].payload.flags, MessageFlags.Ephemeral);
 
     now += 2500;
-    const i3 = createMockInteraction('game', 'user-1', 'list');
+    const i3 = createMockInteraction('donate', 'user-1');
     await handler.handle(i3);
     assert.equal(i3.getReplies()[0].payload.flags, undefined);
   });
@@ -93,7 +93,7 @@ describe('CommandHandler & InteractionHandler', () => {
     assert.equal(replies[0].payload.flags, MessageFlags.Ephemeral);
   });
 
-  it('deploys all enabled application commands including /autorole, /donate, /game, /media, /social and Generate QC for guild and global routes', async () => {
+  it('deploys all enabled application commands including /autorole, /donate, /media, /social for guild and global routes', async () => {
     const expectedEnabledCount = commandStructure.commands.filter((c) => c.enabled !== false).length;
     const calls = [];
     const mockRest = {
@@ -136,16 +136,13 @@ describe('CommandHandler & InteractionHandler', () => {
       mediaCmd.options[0].choices.map((c) => c.value),
       ['qc', 'brat', 'lyrics', 'download'],
     );
-    const gameCmd = guildResult.find((c) => c.name === 'game');
-    assert.ok(gameCmd);
-    assert.deepEqual(
-      gameCmd.options[0].choices.map((c) => c.value),
-      ['solo', 'challenge', 'choose', 'drop', 'move', 'answer', 'status', 'cancel', 'list'],
-    );
     const socialCmd = guildResult.find((c) => c.name === 'social');
     assert.ok(socialCmd);
     assert.equal(socialCmd.options[0].name, 'action');
     assert.equal(socialCmd.options[0].required, true);
+    assert.equal(guildResult.find((c) => c.name === 'game'), undefined);
+    assert.equal(guildResult.find((c) => c.name === 'invite'), undefined);
+    assert.equal(guildResult.find((c) => c.name === 'Generate QC'), undefined);
 
     await deployCommands({
       global: true,
