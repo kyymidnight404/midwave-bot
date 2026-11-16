@@ -15,13 +15,7 @@ import {
 } from '../games/engines/quizBattle.js';
 import { applyRpsPick } from '../games/engines/rockPaperScissors.js';
 import { applyTicTacToeMove } from '../games/engines/ticTacToe.js';
-import { getGuildLeaderboard } from '../games/services/leaderboardService.js';
 import { getPreparedQuizQuestions } from '../games/services/questionService.js';
-import {
-  buildQuizMatchResults,
-  buildTwoPlayerResults,
-  finalizeSessionAndRecordStats,
-} from '../games/services/scoreService.js';
 import {
   addSessionParticipant,
   clearSessionTimers,
@@ -37,7 +31,6 @@ import { GAME_CENTER_PREFIX, parseGameCustomId } from '../games/utils/customId.j
 import {
   buildChallengeMessage,
   buildConnectFourMessage,
-  buildLeaderboardMessage,
   buildQuizFinalMessage,
   buildQuizLobbyMessage,
   buildQuizQuestionMessage,
@@ -344,22 +337,19 @@ async function handleBoardOrRpsInteraction(interaction, parsed, context) {
 
     let updated;
     if (finished) {
-      const playerIds = session.participants.map((p) => p.userId);
-      const usernames = buildUsernameMap(session.participants);
-      if (interaction.user?.username) {
-        usernames[userId] = interaction.user.username;
-      }
-      const fin = await finalizeSessionAndRecordStats({
-        prisma,
+      updated = await updatePersistedSession(
         sessionId,
-        finishData: {
+        {
+          status: 'finished',
+          currentTurnId: null,
           winnerId,
           isDraw,
           state: nextState,
+          ttlMs: null,
+          finishedAt: new Date(),
         },
-        results: buildTwoPlayerResults(playerIds, { winnerId, isDraw, usernames }),
-      });
-      updated = fin.session ? { ...fin.session, state: nextState } : await getPersistedSession(sessionId, prisma);
+        prisma,
+      );
     } else {
       updated = await updatePersistedSession(
         sessionId,
@@ -493,24 +483,19 @@ export async function advanceQuizStep(sessionId, expectedRound, context = {}) {
 
     if (adv.finished) {
       clearSessionTimers(sessionId);
-      const usernames = buildUsernameMap(session.participants);
-      const fin = await finalizeSessionAndRecordStats({
-        prisma,
+      const finalized = await updatePersistedSession(
         sessionId,
-        finishData: {
+        {
+          status: 'finished',
+          currentTurnId: null,
           winnerId: adv.winnerId,
           isDraw: adv.isDraw,
           state: adv.state,
+          ttlMs: null,
+          finishedAt: new Date(),
         },
-        results: buildQuizMatchResults(adv.state.players, {
-          scores: adv.state.scores,
-          winnerId: adv.winnerId,
-          winnerIds: adv.state.winnerIds,
-          isDraw: adv.isDraw,
-          usernames,
-        }),
-      });
-      const finalized = fin.session ? { ...fin.session, state: adv.state } : await getPersistedSession(sessionId, prisma);
+        prisma,
+      );
 
       const targetMsg = await resolveTargetMessage(finalized, context.client);
       if (targetMsg) {
@@ -771,30 +756,6 @@ async function handleQuizInteraction(interaction, parsed, context) {
   }
 }
 
-async function handleLeaderboardPagination(interaction, parsed, context) {
-  if (!interaction.guildId) {
-    await replyEphemeral(interaction, 'Leaderboard hanya tersedia di dalam server.');
-    return;
-  }
-  const prisma = context.prisma ?? defaultPrisma;
-  const requesterId = parsed.targetId;
-  const gameType = parsed.args[0] ?? 'all';
-  const targetPage = Number(parsed.args[1] ?? 1);
-
-  const leaderboard = await getGuildLeaderboard({
-    prisma,
-    guildId: interaction.guildId,
-    gameType,
-    page: targetPage,
-  });
-
-  await safeUpdateMessage(
-    interaction,
-    buildLeaderboardMessage({ requesterId, leaderboard }),
-    true,
-  );
-}
-
 /**
  * Recovers active Quiz Battle timers and expires stale sessions after a bot restart.
  * @param {{
@@ -912,12 +873,8 @@ export async function handleGameCenterInteraction(interaction, context = {}) {
       await handleQuizInteraction(interaction, parsed, context);
       return;
     }
-    if (parsed.scope === 'lb' && parsed.action === 'page') {
-      await handleLeaderboardPagination(interaction, parsed, context);
-      return;
-    }
   } catch (err) {
-    context.logger?.error?.('[GameCenter] Interaction error:', err);
+    context.logger?.error?.('[GameCenter] Interaction error:', sanitizeError(err));
     await replyEphemeral(interaction, 'Terjadi gangguan saat memproses aksi permainan. Silakan coba lagi.');
   }
 }

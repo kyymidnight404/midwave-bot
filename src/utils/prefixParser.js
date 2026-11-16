@@ -47,9 +47,6 @@ const COMMAND_ALIASES = Object.freeze({
   connect4: 'connect4',
   c4: 'connect4',
   quiz: 'quiz',
-  lb: 'lb',
-  leaderboard: 'lb',
-  profile: 'profile',
   knowledge: 'knowledge',
 });
 
@@ -399,35 +396,6 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
     }
 
     return { commandName: 'quiz', subcommand: null, options: { category, difficulty } };
-  }
-
-  if (commandName === 'lb') {
-    const rawFilter = args[0]?.toLowerCase() ?? 'all';
-    if (args.length > 1) {
-      return {
-        commandName: 'lb',
-        subcommand: null,
-        options: {},
-        error: `Gunakan \`${prefix}lb\`, \`${prefix}lb ttt\`, \`${prefix}lb connect4\`, \`${prefix}lb quiz\`, atau \`${prefix}lb rps\`.`,
-      };
-    }
-    return { commandName: 'lb', subcommand: null, options: { game: rawFilter } };
-  }
-
-  if (commandName === 'profile') {
-    if (args.length === 0) {
-      return { commandName: 'profile', subcommand: null, options: {} };
-    }
-    const targetId = extractMentionOrId(args[0]);
-    if (!targetId || args.length > 1) {
-      return {
-        commandName: 'profile',
-        subcommand: null,
-        options: {},
-        error: `Mention pengguna yang valid. Contoh: \`${prefix}profile\` atau \`${prefix}profile @user\`.`,
-      };
-    }
-    return { commandName: 'profile', subcommand: null, options: { userId: targetId } };
   }
 
   if (commandName === 'games' || commandName === 'help') {

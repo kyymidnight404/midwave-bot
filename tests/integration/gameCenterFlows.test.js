@@ -15,14 +15,6 @@ import {
 import { ensureQuizQuestionsSeeded } from '../../src/games/services/questionService.js';
 import { recoverGameCenterSessions } from '../../src/events/gameInteraction.js';
 import { createRpsMatchState } from '../../src/games/engines/rockPaperScissors.js';
-import {
-  buildTwoPlayerResults,
-  recordMatchStatsOnce,
-} from '../../src/games/services/scoreService.js';
-import {
-  getGuildLeaderboard,
-  getUserProfileStats,
-} from '../../src/games/services/leaderboardService.js';
 import { buildGameCustomId } from '../../src/games/utils/customId.js';
 import { createTicTacToeState } from '../../src/games/engines/ticTacToe.js';
 
@@ -277,23 +269,8 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     const finished = await getPersistedSession(sessionId, prisma);
     assert.equal(finished.status, 'finished');
     assert.equal(finished.winnerId, p1.id);
-    assert.equal(finished.statsRecorded, true);
-
-    // Verify duplicate recordMatchStatsOnce is rejected
-    const dup = await recordMatchStatsOnce({
-      prisma,
-      sessionId,
-      results: buildTwoPlayerResults([p1.id, p2.id], { winnerId: p1.id }),
-    });
-    assert.equal(dup.recorded, false);
-
-    // Verify Profile stats
-    const p1Profile = await getUserProfileStats({ prisma, guildId: TEST_GUILD_1, userId: p1.id });
-    assert.equal(p1Profile.summary.matches, 1);
-    assert.equal(p1Profile.summary.wins, 1);
-    assert.equal(p1Profile.summary.points, 25);
-    assert.equal(p1Profile.summary.winRate, 100);
-    assert.equal(p1Profile.perGame.ttt.wins, 1);
+    assert.equal(finished.statsRecorded, false);
+    assert.equal(await prisma.gameStats.count({ where: { guildId: TEST_GUILD_1 } }), 0);
   });
 
   it('plays Connect Four via !connect4 @user -> Accept -> Column Buttons -> Win', async () => {
@@ -341,10 +318,8 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     const finished = await getPersistedSession(sessionId, prisma);
     assert.equal(finished.status, 'finished');
     assert.equal(finished.winnerId, p1.id);
-
-    const p2Profile = await getUserProfileStats({ prisma, guildId: TEST_GUILD_1, userId: p2.id });
-    assert.equal(p2Profile.perGame.connect4.losses, 1);
-    assert.equal(p2Profile.summary.winRate, 0);
+    assert.equal(finished.statsRecorded, false);
+    assert.equal(await prisma.gameStats.count({ where: { guildId: TEST_GUILD_1 } }), 0);
   });
 
   it('plays Rock Paper Scissors Best of 3 via !rps @user with hidden choices', async () => {
@@ -421,7 +396,8 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     const finished = await getPersistedSession(sessionId, prisma);
     assert.equal(finished.status, 'finished');
     assert.equal(finished.winnerId, p1.id);
-    assert.equal(finished.statsRecorded, true);
+    assert.equal(finished.statsRecorded, false);
+    assert.equal(await prisma.gameStats.count({ where: { guildId: TEST_GUILD_1 } }), 0);
   });
 
   it('runs a full 10-round Quiz Battle via !quiz with lobby, answer hiding, double-answer rejection, timeout, and +5 bonus', async () => {
@@ -534,122 +510,26 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
 
     assert.equal(session.status, 'finished');
     assert.equal(session.winnerId, host.id);
-    assert.equal(session.statsRecorded, true);
+    assert.equal(session.statsRecorded, false);
     assert.equal(session.state.scores[host.id], 95);
     assert.equal(session.state.scores[p2.id], 0);
-
-    const hostStats = await getUserProfileStats({ prisma, guildId: TEST_GUILD_1, userId: host.id });
-    assert.equal(hostStats.perGame.quiz.points, 95);
-    assert.equal(hostStats.perGame.quiz.wins, 1);
+    assert.equal(await prisma.gameStats.count({ where: { guildId: TEST_GUILD_1 } }), 0);
   });
 
-  it('supports leaderboard pagination, guild isolation, !lb/!profile commands, and unfinished match exclusion', async () => {
+  it('ignores !lb and !profile commands and never writes GameStats rows', async () => {
     await cleanupTestGuilds();
     const h = await createGameCenterHarness();
     const allUsers = [...h.users.values()];
 
-    // Seed 12 finished matches in guild 1 (to require 2 pages) and 1 match in guild 2
-    for (let i = 0; i < 12; i += 1) {
-      const winner = allUsers[i];
-      const loser = allUsers[(i + 1) % 12];
-      const sid = `seed-g1-${i}`;
-      await createPersistedSession({
-        prisma,
-        id: sid,
-        guildId: TEST_GUILD_1,
-        channelId: h.channel.id,
-        gameType: 'ttt',
-        status: 'finished',
-        hostId: winner.id,
-        state: createTicTacToeState({ hostId: winner.id, opponentId: loser.id }),
-        participants: [
-          { userId: winner.id, username: winner.username, role: 'X' },
-          { userId: loser.id, username: loser.username, role: 'O' },
-        ],
-      });
-      await recordMatchStatsOnce({
-        prisma,
-        sessionId: sid,
-        results: buildTwoPlayerResults([winner.id, loser.id], {
-          winnerId: winner.id,
-          usernames: { [winner.id]: winner.username, [loser.id]: loser.username },
-        }),
-      });
-    }
-
-    // Unfinished session must NOT be counted
-    const pendingSid = 'seed-unfinished';
-    await createPersistedSession({
-      prisma,
-      id: pendingSid,
-      guildId: TEST_GUILD_1,
-      channelId: h.channel.id,
-      gameType: 'ttt',
-      status: 'active',
-      hostId: allUsers[14].id,
-      state: createTicTacToeState({ hostId: allUsers[14].id, opponentId: allUsers[13].id }),
-      participants: [
-        { userId: allUsers[14].id, username: allUsers[14].username, role: 'X' },
-        { userId: allUsers[13].id, username: allUsers[13].username, role: 'O' },
-      ],
-    });
-    const unfinishedAttempt = await recordMatchStatsOnce({
-      prisma,
-      sessionId: pendingSid,
-      results: buildTwoPlayerResults([allUsers[14].id, allUsers[13].id], { winnerId: allUsers[14].id }),
-    });
-    assert.equal(unfinishedAttempt.recorded, false);
-
-    // Guild 2 isolation check
-    const g2Sid = 'seed-g2-0';
-    await createPersistedSession({
-      prisma,
-      id: g2Sid,
-      guildId: TEST_GUILD_2,
-      channelId: h.channel.id,
-      gameType: 'rps',
-      status: 'finished',
-      hostId: allUsers[14].id,
-      state: {},
-      participants: [
-        { userId: allUsers[14].id, username: allUsers[14].username, role: 'P1' },
-        { userId: allUsers[13].id, username: allUsers[13].username, role: 'P2' },
-      ],
-    });
-    await recordMatchStatsOnce({
-      prisma,
-      sessionId: g2Sid,
-      results: buildTwoPlayerResults([allUsers[14].id, allUsers[13].id], { winnerId: allUsers[14].id }),
-    });
-
-    const g1Lb = await getGuildLeaderboard({ prisma, guildId: TEST_GUILD_1, gameType: 'all', page: 1 });
-    assert.equal(g1Lb.totalPages, 2);
-    assert.equal(g1Lb.entries.length, 10);
-    assert.equal(g1Lb.entries.some((e) => e.userId === allUsers[14].id), false);
-
-    // !lb ttt + Next page button
     const lbMsg = createFakeMessage({
-      content: '!lb ttt',
+      content: '!lb',
       author: allUsers[0],
       channel: h.channel,
       client: h.client,
     });
     await h.prefixHandler.handle(lbMsg);
-    const lbSent = lbMsg.getReplies()[0];
-    assert.ok(lbSent.payload.embeds[0].data.title.includes('Tic Tac Toe'));
-    const nextBtnId = lbSent.payload.components[0].components[2].data.custom_id;
+    assert.equal(lbMsg.getReplies().length, 0);
 
-    await h.interactionHandler.handle(
-      createFakeButtonInteraction({
-        customId: nextBtnId,
-        user: allUsers[0],
-        message: lbSent,
-        client: h.client,
-      }),
-    );
-    assert.ok(lbSent.payload.embeds[0].data.fields[0].value.includes('Halaman **2/2**'));
-
-    // !profile @user
     const profMsg = createFakeMessage({
       content: `!profile <@${allUsers[0].id}>`,
       author: allUsers[1],
@@ -658,9 +538,8 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
       client: h.client,
     });
     await h.prefixHandler.handle(profMsg);
-    const profSent = profMsg.getReplies()[0];
-    assert.ok(profSent.payload.embeds[0].data.title.includes('Profil Game Center'));
-    assert.ok(profSent.payload.embeds[0].data.description.includes('**Total Poin:** **25**'));
+    assert.equal(profMsg.getReplies().length, 0);
+    assert.equal(await prisma.gameStats.count({ where: { guildId: TEST_GUILD_1 } }), 0);
   });
 
   it('handles concurrent quiz seeding, concurrent RPS button clicks, and deleted message gracefully', async () => {
@@ -846,8 +725,9 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
       await new Promise((r) => setTimeout(r, 20));
     }
     assert.equal(recoveredQuiz.status, 'finished');
-    assert.equal(recoveredQuiz.statsRecorded, true);
+    assert.equal(recoveredQuiz.statsRecorded, false);
     assert.equal(recoveredQuiz.winnerId, p1.id);
     assert.equal(recoveredQuiz.state.scores[p1.id], 45);
+    assert.equal(await prisma.gameStats.count({ where: { guildId: TEST_GUILD_1 } }), 0);
   });
 });

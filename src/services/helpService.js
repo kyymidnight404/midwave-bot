@@ -46,20 +46,6 @@ export const PREFIX_ONLY_METADATA = Object.freeze({
     description: 'Buka lobby Quiz Battle (2–10 pemain) dengan tombol interaktif',
     visibility: 'public',
   }),
-  lb: Object.freeze({
-    name: 'lb',
-    category: 'mini_games',
-    usage: 'lb [ttt|connect4|quiz|rps]',
-    description: 'Tampilkan leaderboard Game Center',
-    visibility: 'public',
-  }),
-  profile: Object.freeze({
-    name: 'profile',
-    category: 'mini_games',
-    usage: 'profile [@user]',
-    description: 'Lihat statistik Game Center pemain',
-    visibility: 'public',
-  }),
   knowledge: Object.freeze({
     name: 'knowledge',
     category: 'ai_knowledge',

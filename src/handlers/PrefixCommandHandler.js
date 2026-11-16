@@ -5,9 +5,7 @@ import connect4CenterCommand from '../commands/connect4.js';
 import downloadPrefixCommand from '../prefixCommands/download.js';
 import feedbackPrefixCommand from '../prefixCommands/feedback.js';
 import igfCommand from '../prefixCommands/igf.js';
-import leaderboardCenterCommand from '../commands/leaderboard.js';
 import lyricsPrefixCommand from '../prefixCommands/lyrics.js';
-import profileCenterCommand from '../commands/profile.js';
 import qcPrefixCommand from '../prefixCommands/qc.js';
 import quizCenterCommand from '../commands/quiz.js';
 import rpsCenterCommand from '../commands/rps.js';
@@ -33,8 +31,6 @@ const PREFIX_EXECUTORS = new Map([
   [sayPrefixCommand.name, sayPrefixCommand],
   [feedbackPrefixCommand.name, feedbackPrefixCommand],
   [quizCenterCommand.name, quizCenterCommand],
-  [leaderboardCenterCommand.name, leaderboardCenterCommand],
-  [profileCenterCommand.name, profileCenterCommand],
   ['ai', { execute: DEFAULT_HANDLER_REGISTRY.ai }],
   ['math', { execute: DEFAULT_HANDLER_REGISTRY.math }],
   ['games', { execute: DEFAULT_HANDLER_REGISTRY.games }],
