@@ -110,8 +110,6 @@ export function buildAnimeLoadingEmbed(query) {
  */
 export function buildAnimeEmbed(anime, options = {}) {
   const {
-    candidates = [],
-    selectedIndex = 0,
     synopsisMaxLength = ANIME_SYNOPSIS_MAX_LENGTH,
   } = options;
 
@@ -196,33 +194,6 @@ export function buildAnimeEmbed(anime, options = {}) {
       name: '🗓️ Tanggal Rilis',
       value: formattedStartDate,
       inline: true,
-    });
-  }
-
-  const linkLines = [`🔗 [Halaman AniList](${siteUrl})`];
-  if (anime?.trailer?.url) {
-    linkLines.push(`▶️ [Tonton Trailer (${anime.trailer.site})](${anime.trailer.url})`);
-  } else if (anime?.trailer?.site && anime?.trailer?.id) {
-    linkLines.push(`▶️ Trailer: ${anime.trailer.site} (\`${anime.trailer.id}\`)`);
-  }
-
-  embed.addFields({
-    name: '🌐 Tautan & Trailer',
-    value: linkLines.join(' • '),
-    inline: false,
-  });
-
-  if (Array.isArray(candidates) && candidates.length > 1) {
-    const candidateLines = candidates.slice(0, 5).map((item, idx) => {
-      const marker = idx === selectedIndex ? '🔹' : `${idx + 1}.`;
-      const itemYear = item.seasonYear || item.startDate?.year || '?';
-      const itemFormat = item.format || 'ANIME';
-      return `${marker} **${item.title?.romaji || 'Unknown'}** (${itemFormat}, ${itemYear})`;
-    });
-    embed.addFields({
-      name: `🔎 Hasil Pencarian Terkait (${candidates.length} ditemukan)`,
-      value: candidateLines.join('\n'),
-      inline: false,
     });
   }
 

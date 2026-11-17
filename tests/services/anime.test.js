@@ -338,9 +338,11 @@ describe('Anime Search (/anime & !anime) via AniList GraphQL', () => {
     assert.equal(fieldMap['⏱️ Durasi Episode'], '24 menit / eps');
     assert.equal(fieldMap['🏢 Studio'], 'MADHOUSE');
     assert.equal(fieldMap['🗓️ Tanggal Rilis'], '29 Sep 2023');
-    assert.match(fieldMap['🌐 Tautan & Trailer'], /Halaman AniList/);
-    assert.match(fieldMap['🌐 Tautan & Trailer'], /Tonton Trailer/);
-    assert.match(fieldMap['🔎 Hasil Pencarian Terkait (2 ditemukan)'], /Sousou no Frieren 2nd Season/);
+    assert.equal(fieldMap['🌐 Tautan & Trailer'], undefined);
+    assert.equal(
+      embed.fields.some((f) => f.name.includes('Hasil Pencarian Terkait')),
+      false,
+    );
 
     const rows = buildAnimeComponents({
       anime: parsed1,
