@@ -1,4 +1,5 @@
 import { PermissionFlagsBits } from 'discord.js';
+import { ANIME_MAX_QUERY_LENGTH } from '../services/animeService.js';
 import { AI_MAX_QUESTION_LENGTH } from '../services/gemini.js';
 import {
   LYRICS_MAX_ARTIST_LENGTH,
@@ -232,6 +233,28 @@ export const commandStructure = {
           type: 'string',
           required: true,
           maxLength: WEATHER_MAX_LOCATION_LENGTH,
+        },
+      ],
+    },
+    {
+      name: 'anime',
+      description: 'Cari informasi lengkap anime dari AniList berdasarkan judul',
+      enabled: true,
+      type: 'standalone',
+      handler: 'anime',
+      help: {
+        category: 'media_utilities',
+        usage: 'anime query:<judul>',
+        prefixUsage: '{prefix}anime <judul>',
+        description: 'Cari informasi anime lengkap dari AniList',
+      },
+      options: [
+        {
+          name: 'query',
+          description: `Judul anime yang ingin dicari (maks ${ANIME_MAX_QUERY_LENGTH} karakter)`,
+          type: 'string',
+          required: true,
+          maxLength: ANIME_MAX_QUERY_LENGTH,
         },
       ],
     },

@@ -7,6 +7,7 @@ import { SOLO_SOCIAL_COMMANDS, TARGETED_SOCIAL_COMMANDS } from '../services/otak
 
 const COMMAND_ALIASES = Object.freeze({
   ai: 'ai',
+  anime: 'anime',
   lyrics: 'lyrics',
   lyric: 'lyrics',
   lirik: 'lyrics',
@@ -285,6 +286,18 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
       };
     }
     return { commandName: 'weather', subcommand: null, options: { location: rawRest } };
+  }
+
+  if (commandName === 'anime') {
+    if (!rawRest) {
+      return {
+        commandName: 'anime',
+        subcommand: null,
+        options: {},
+        error: `Judul anime wajib diisi. Contoh: \`${prefix}anime Sousou no Frieren\` atau \`${prefix}anime One Piece\`.`,
+      };
+    }
+    return { commandName: 'anime', subcommand: null, options: { query: rawRest } };
   }
 
   if (commandName === 'igf') {

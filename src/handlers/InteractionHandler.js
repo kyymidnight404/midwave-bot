@@ -1,4 +1,5 @@
 import { MessageFlags } from 'discord.js';
+import { ANIME_COOLDOWN_MS } from '../services/animeService.js';
 import { DOWNLOAD_COOLDOWN_MS } from '../services/downloader.js';
 import { AI_COOLDOWN_MS } from '../services/gemini.js';
 import { LYRICS_COOLDOWN_MS } from '../services/lyricsService.js';
@@ -21,6 +22,7 @@ import { sanitizeError } from '../utils/errorSanitizer.js';
 const IGNORED_DISCORD_ERROR_CODES = new Set([10062, 40060]);
 const COMMAND_COOLDOWNS = Object.freeze({
   ai: AI_COOLDOWN_MS,
+  anime: ANIME_COOLDOWN_MS,
   download: DOWNLOAD_COOLDOWN_MS,
   lyrics: LYRICS_COOLDOWN_MS,
   social: SOCIAL_COOLDOWN_MS,

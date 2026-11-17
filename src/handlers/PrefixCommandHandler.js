@@ -1,5 +1,6 @@
 import { PermissionFlagsBits } from 'discord.js';
 import { DEFAULT_HANDLER_REGISTRY } from '../config/commandRegistry.js';
+import animePrefixCommand from '../commands/prefix/anime.js';
 import bratPrefixCommand from '../prefixCommands/brat.js';
 import downloadPrefixCommand from '../prefixCommands/download.js';
 import feedbackPrefixCommand from '../prefixCommands/feedback.js';
@@ -11,6 +12,7 @@ import rpsCenterCommand from '../commands/rps.js';
 import sayPrefixCommand, { SAY_COOLDOWN_MS } from '../prefixCommands/say.js';
 import tttCenterCommand from '../commands/ttt.js';
 import { DOWNLOAD_COOLDOWN_MS } from '../services/downloader.js';
+import { ANIME_COOLDOWN_MS } from '../services/animeService.js';
 import { AI_COOLDOWN_MS } from '../services/gemini.js';
 import { LYRICS_COOLDOWN_MS } from '../services/lyricsService.js';
 import { SOCIAL_COOLDOWN_MS, SOCIAL_INTERACTIONS } from '../services/otakuGifsService.js';
@@ -38,6 +40,7 @@ const PREFIX_EXECUTORS = new Map([
   ['donate', { execute: DEFAULT_HANDLER_REGISTRY.donate }],
   ['knowledge', { execute: DEFAULT_HANDLER_REGISTRY.knowledge }],
   ['weather', { execute: DEFAULT_HANDLER_REGISTRY.weather }],
+  [animePrefixCommand.name, animePrefixCommand],
   [lyricsPrefixCommand.name, lyricsPrefixCommand],
   ...Object.keys(SOCIAL_INTERACTIONS).map((cmd) => [
     cmd,
@@ -74,6 +77,7 @@ registerPrefixCommandNames(PREFIX_EXECUTORS.keys());
 
 const COMMAND_COOLDOWNS = Object.freeze({
   ai: AI_COOLDOWN_MS,
+  anime: ANIME_COOLDOWN_MS,
   download: DOWNLOAD_COOLDOWN_MS,
   lyrics: LYRICS_COOLDOWN_MS,
   say: SAY_COOLDOWN_MS,

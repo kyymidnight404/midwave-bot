@@ -1,5 +1,6 @@
 import { MessageFlags } from 'discord.js';
 import { execute as executeAi } from '../commands/ai.js';
+import { execute as executeAnime } from '../commands/anime.js';
 import { execute as executeDonate } from '../commands/donate.js';
 import helpCommand from '../commands/help.js';
 import knowledgeCommand from '../commands/knowledge.js';
@@ -23,6 +24,7 @@ import { executeSocialAction } from '../utils/socialCommand.js';
 export function createDefaultHandlerRegistry() {
   const registry = {
     ai: executeAi,
+    anime: executeAnime,
     autorole: executeAutorole,
     donate: executeDonate,
     help: (interaction, context) => helpCommand.execute(interaction, context),
