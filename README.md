@@ -1,6 +1,6 @@
 # Midwave — Discord Game & Utility Bot
 
-**Midwave** is a modular Discord bot built with **Node.js**, **discord.js**, and **Prisma (SQLite)**. It combines interactive mini-games, Game Center leaderboards, AI assistance, and utility tools—keeping active game sessions, invites, and AI conversation context strictly in ephemeral RAM with automatic TTL cleanup, while persisting only Game Center player statistics and Knowledge Base entries in SQLite.
+**Midwave** is a modular Discord bot built with **Node.js**, **discord.js**, and **Prisma (SQLite)**. It combines interactive mini-games, Game Center, AI assistance, and utility tools. AI conversation context and temporary invites are held in RAM, while Game Center session and participant records are persisted in SQLite.
 
 ---
 
@@ -125,12 +125,19 @@ midwave/
 
 ## Privacy & Data Processing
 
-Midwave minimizes data retention and keeps transient interaction context strictly in ephemeral memory (RAM):
+Midwave uses both temporary in-memory context and persistent SQLite records. The distinction matters: Game Center session records are **not** RAM-only.
+
+### Game Center Records (SQLite)
+* **Persisted session data:** Game Center stores session identifiers, guild/channel/message IDs, game type and status, host/current-turn/winner user IDs, serialized game state, and session timestamps in SQLite.
+* **Participant data:** Each session can store participant Discord user IDs, usernames, roles, scores, outcomes, and join timestamps.
+* **Expiration is not deletion:** Challenge and inactivity timers mark sessions as expired or finished, but the current session service does not automatically delete the corresponding database rows. Do not interpret a session TTL as a database-retention period.
+* **Retention:** No automatic database purge period is currently documented or implemented in the inspected session service. Operators should account for this persistent data when managing SQLite backups and storage.
+* **Game statistics:** The Prisma schema also defines a per-guild/per-user/per-game statistics table. Whether every game flow currently writes to it should be verified against the active game handlers before describing it as a complete leaderboard record.
 
 ### Temporary AI Conversation Context (15-Minute TTL)
-* **Ephemeral RAM Storage:** `/ai` and `!ai` store recent conversation turns strictly in RAM (scoped to `guildId`, `channelId`, and `userId`)—never saved permanently to disk or SQLite without consent.
+* **Ephemeral RAM Storage:** `/ai` and `!ai` store recent conversation turns in RAM scoped to `guildId`, `channelId`, and `userId`; this context is not written to SQLite by the AI context store.
 * **15-Minute Automatic Expiration:** Inactive conversation context automatically expires after **15 minutes** (`DEFAULT_AI_CONVERSATION_TTL_MS = 900,000 ms`) and is periodically swept from memory as well as cleared on bot shutdown.
-* **On-Demand Deletion:** Users can immediately delete their temporary conversation history in the current channel at any time using `/ai question:reset`, `!ai reset`, `!ai clear`, or `!ai hapus riwayat`.
+* **On-Demand Deletion:** Users can immediately delete their temporary conversation history in the current channel using `/ai question:reset`, `!ai reset`, `!ai clear`, or `!ai hapus riwayat`.
 
 ### Third-Party Services & Processed Data
 * **Google Gemini (`@google/genai`)**:
@@ -142,6 +149,10 @@ Midwave minimizes data retention and keeps transient interaction context strictl
 * **RapidAPI**:
   * **Purpose:** Extracts public media download URLs for **Instagram** and **TikTok** via `/media action:download` and Auto-Downloader.
   * **Data Processed:** Only validated public HTTPS URLs (or Instagram shortcodes) belonging strictly to allowlisted **Instagram** (`instagram.com`, `instagr.am`) and **TikTok** (`tiktok.com`) domains, with tracking query parameters stripped beforehand. Non-TikTok/Instagram URLs are rejected before calling RapidAPI, user URLs are neither persisted nor logged unnecessarily, and temporary downloaded files are deleted immediately after upload.
+
+* **Lyrics providers (LRCLIB, iTunes, and optional Genius API):**
+  * **Purpose:** Looks up lyrics and related song metadata/cover art for `/lyrics` and `!lyrics`.
+  * **Data to consider:** The requested song title and artist may be sent to the relevant provider to perform the lookup. Do not include private or sensitive information in song-search fields. Genius is optional and is used only when configured.
 
 ### Feedback Channel Privacy (`FEEDBACK_CHANNEL_ID`)
 * `/feedback` and `!feedback` strictly require `FEEDBACK_CHANNEL_ID` to point to a **private staff channel** inaccessible to `@everyone` (`View Channel` denied). Reports are rejected if the channel is accessible to `@everyone` or if channel privacy permissions cannot be verified.

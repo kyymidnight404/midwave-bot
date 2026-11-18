@@ -66,23 +66,36 @@ async function sendMessageReply(message, payload) {
  * @param {import('discord.js').Message} message
  */
 function checkBotChannelPermissions(message) {
-  if (!message.guild || typeof message.channel?.permissionsFor !== 'function') {
+  // DMs do not have guild channel permission overwrites to inspect.
+  if (!message.guild) {
     return { canSend: true, canAttach: true };
   }
+
+  // In guilds, uncertainty must never grant permission to invoke the downloader.
+  if (typeof message.channel?.permissionsFor !== 'function') {
+    return { canSend: false, canAttach: false };
+  }
+
   const me = message.guild.members?.me;
   if (!me) {
-    return { canSend: true, canAttach: true };
+    return { canSend: false, canAttach: false };
   }
-  const perms = message.channel.permissionsFor(me);
-  if (!perms) {
-    return { canSend: true, canAttach: true };
+
+  try {
+    const perms = message.channel.permissionsFor(me);
+    if (!perms) {
+      return { canSend: false, canAttach: false };
+    }
+
+    const canSend =
+      perms.has(PermissionFlagsBits.ViewChannel) &&
+      perms.has(PermissionFlagsBits.SendMessages) &&
+      perms.has(PermissionFlagsBits.EmbedLinks);
+    const canAttach = perms.has(PermissionFlagsBits.AttachFiles);
+    return { canSend, canAttach };
+  } catch {
+    return { canSend: false, canAttach: false };
   }
-  const canSend =
-    perms.has(PermissionFlagsBits.ViewChannel) &&
-    perms.has(PermissionFlagsBits.SendMessages) &&
-    perms.has(PermissionFlagsBits.EmbedLinks);
-  const canAttach = perms.has(PermissionFlagsBits.AttachFiles);
-  return { canSend, canAttach };
 }
 
 /**
