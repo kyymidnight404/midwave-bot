@@ -47,5 +47,7 @@ describe('guildMemberAdd AutoRole error logging', () => {
     assert.match(logged[0][0], /API_ERROR/);
     assert.equal(logged[0][0].includes(secretMessage), false);
     assert.equal(logged[0][0].includes('super-secret-token'), false);
+    assert.equal(logged[0][0].includes('member-1'), false);
+    assert.equal(logged[0][0].includes('guild-1'), false);
   });
 });
