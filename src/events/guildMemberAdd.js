@@ -24,9 +24,7 @@ export default {
         typeof error?.code === 'string' && /^[A-Z0-9_ -]{1,40}$/i.test(error.code)
           ? error.code
           : 'UNKNOWN_ERROR';
-      context.logger?.error?.(
-        `[AutoRole] Failed assigning roles for member ${member.id} in guild ${member.guild.id} (${errorCode})`,
-      );
+      context.logger?.error?.(`[AutoRole] Failed assigning roles (${errorCode})`);
     }
   },
 };
