@@ -3,7 +3,10 @@ import { createCanvas, GlobalFonts, loadImage, Path2D } from '@napi-rs/canvas';
 
 const require = createRequire(import.meta.url);
 
-export const IGF_SIZE = 1080;
+export const IGF_MAX_PHOTO_WIDTH = 860;
+export const IGF_MAX_PHOTO_HEIGHT = 820;
+export const IGF_MIN_CARD_INNER_WIDTH = 440;
+export const IGF_MIN_PHOTO_BOX_HEIGHT = 180;
 export const IGF_ATTACHMENT_NAME = 'midwave-igf.png';
 export const IGF_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 export const IGF_MAX_AVATAR_BYTES = 5 * 1024 * 1024;
@@ -22,15 +25,12 @@ const SUPPORTED_CONTENT_TYPES = new Set([
 ]);
 const SUPPORTED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
 
-const CARD = Object.freeze({
-  x: 224,
-  y: 70,
-  width: 632,
-  height: 940,
+const CARD_STYLE = Object.freeze({
   radius: 24,
   padX: 20,
-  headerHeight: 100,
-  photoSize: 592,
+  headerHeight: 88,
+  avatarRadius: 25,
+  bottomPad: 24,
 });
 
 const COLORS = Object.freeze({
@@ -300,7 +300,70 @@ function drawCoverImage(ctx, image, dx, dy, dWidth, dHeight) {
   ctx.drawImage(image, sx, sy, sw, sh, dx, dy, dWidth, dHeight);
 }
 
-function drawVectorIcons(ctx, innerLeft, innerRight, rowCenterY) {
+/**
+ * Computes destination rectangle for `object-fit: contain` inside a target box.
+ * @param {number} srcWidth
+ * @param {number} srcHeight
+ * @param {number} dstWidth
+ * @param {number} dstHeight
+ * @returns {{ dx: number, dy: number, dw: number, dh: number }}
+ */
+export function computeContainRect(srcWidth, srcHeight, dstWidth, dstHeight) {
+  const scale = Math.min(dstWidth / srcWidth, dstHeight / srcHeight);
+  const dw = Math.max(1, Math.round(srcWidth * scale));
+  const dh = Math.max(1, Math.round(srcHeight * scale));
+  return {
+    dx: Math.round((dstWidth - dw) / 2),
+    dy: Math.round((dstHeight - dh) / 2),
+    dw,
+    dh,
+  };
+}
+
+/**
+ * Computes dynamic card and photo dimensions that preserve the original image aspect ratio
+ * without excessive outer canvas padding or fixed square cropping.
+ * @param {{ srcWidth: number, srcHeight: number, captionLines?: number }} input
+ */
+export function computeIgfLayout({ srcWidth, srcHeight, captionLines = 0 }) {
+  const scale = Math.min(IGF_MAX_PHOTO_WIDTH / srcWidth, IGF_MAX_PHOTO_HEIGHT / srcHeight);
+  const scaledWidth = Math.max(1, Math.round(srcWidth * scale));
+  const scaledHeight = Math.max(1, Math.round(srcHeight * scale));
+
+  const photoBoxWidth = Math.max(IGF_MIN_CARD_INNER_WIDTH, scaledWidth);
+  const photoBoxHeight = Math.max(IGF_MIN_PHOTO_BOX_HEIGHT, scaledHeight);
+
+  const cardWidth = photoBoxWidth + CARD_STYLE.padX * 2;
+  const photoX = CARD_STYLE.padX;
+  const photoY = CARD_STYLE.headerHeight;
+
+  const actionBarCenterY = photoY + photoBoxHeight + 34;
+  const likesY = actionBarCenterY + 44;
+  const captionY = captionLines > 0 ? likesY + 32 : null;
+  const commentsY =
+    captionLines > 0 ? captionY + (captionLines > 1 ? 56 : 34) : likesY + 32;
+  const timestampY = commentsY + 30;
+  const cardHeight = timestampY + CARD_STYLE.bottomPad;
+
+  return {
+    cardWidth,
+    cardHeight,
+    innerLeft: CARD_STYLE.padX,
+    innerRight: cardWidth - CARD_STYLE.padX,
+    photoX,
+    photoY,
+    photoBoxWidth,
+    photoBoxHeight,
+    photoRect: computeContainRect(srcWidth, srcHeight, photoBoxWidth, photoBoxHeight),
+    actionBarCenterY,
+    likesY,
+    captionY,
+    commentsY,
+    timestampY,
+  };
+}
+
+function drawVectorIcons(ctx, innerLeft, innerRight, rowCenterY, cardWidth) {
   const iconHalf = 13;
   const iconTop = rowCenterY - iconHalf;
 
@@ -346,7 +409,7 @@ function drawVectorIcons(ctx, innerLeft, innerRight, rowCenterY) {
   ctx.restore();
 
   // Center pagination dots (3 dots, middle blue)
-  const centerX = CARD.x + CARD.width / 2;
+  const centerX = cardWidth / 2;
   const dotOffsets = [-14, 0, 14];
   dotOffsets.forEach((dx, idx) => {
     ctx.beginPath();
@@ -367,8 +430,23 @@ function drawVectorIcons(ctx, innerLeft, innerRight, rowCenterY) {
   ctx.restore();
 }
 
-function drawCustomCaption(ctx, caption, inlineStartX, leftX, topY, remainingInlineWidth, maxWidth, lineHeight) {
-  const words = caption.split(' ');
+function normalizeCaptionText(caption) {
+  return typeof caption === 'string' ? caption.trim().replace(/\s+/g, ' ') : '';
+}
+
+function computeCaptionLayout(ctx, username, captionText, maxWidth) {
+  const fontSize = 19;
+  const lineHeight = 25;
+  const gapAfterUsername = 8;
+
+  ctx.font = getBoldFont(fontSize);
+  const maxSingleLineUserWidth = Math.max(120, maxWidth * 0.56);
+  const displayUsername = truncateTextToWidth(ctx, username, maxSingleLineUserWidth);
+  const usernameWidth = ctx.measureText(displayUsername).width;
+  const remainingInlineWidth = maxWidth - usernameWidth - gapAfterUsername;
+
+  ctx.font = getRegularFont(fontSize);
+  const words = captionText.split(' ');
   let line1 = '';
   let line2Words = [];
 
@@ -382,51 +460,34 @@ function drawCustomCaption(ctx, caption, inlineStartX, leftX, topY, remainingInl
     }
   }
 
-  ctx.fillStyle = COLORS.textPrimary;
-  if (line1) {
-    ctx.fillText(line1, inlineStartX, topY);
-  }
+  const line2 =
+    line2Words.length > 0 ? truncateTextToWidth(ctx, line2Words.join(' '), maxWidth) : '';
 
-  if (line2Words.length === 0) {
-    return 1;
-  }
-
-  const line2Text = truncateTextToWidth(ctx, line2Words.join(' '), maxWidth);
-  ctx.fillText(line2Text, leftX, topY + lineHeight);
-  return 2;
-}
-
-function normalizeCaptionText(caption) {
-  return typeof caption === 'string' ? caption.trim().replace(/\s+/g, ' ') : '';
-}
-
-function drawCaptionBlock(ctx, username, captionText, leftX, topY, maxWidth) {
-  const fontSize = 19;
-  const lineHeight = 25;
-  const gapAfterUsername = 8;
-
-  ctx.font = getBoldFont(fontSize);
-  const maxSingleLineUserWidth = Math.max(120, maxWidth * 0.56);
-  const displayUsername = truncateTextToWidth(ctx, username, maxSingleLineUserWidth);
-  const usernameWidth = ctx.measureText(displayUsername).width;
-
-  ctx.fillStyle = COLORS.textPrimary;
-  ctx.fillText(displayUsername, leftX, topY);
-
-  const inlineStartX = leftX + usernameWidth + gapAfterUsername;
-  const remainingInlineWidth = leftX + maxWidth - inlineStartX;
-
-  ctx.font = getRegularFont(fontSize);
-  return drawCustomCaption(
-    ctx,
-    captionText,
-    inlineStartX,
-    leftX,
-    topY,
-    remainingInlineWidth,
-    maxWidth,
+  return {
+    fontSize,
     lineHeight,
-  );
+    gapAfterUsername,
+    displayUsername,
+    usernameWidth,
+    line1,
+    line2,
+    lineCount: line2 ? 2 : 1,
+  };
+}
+
+function drawCaptionLayout(ctx, captionLayout, leftX, topY) {
+  ctx.font = getBoldFont(captionLayout.fontSize);
+  ctx.fillStyle = COLORS.textPrimary;
+  ctx.fillText(captionLayout.displayUsername, leftX, topY);
+
+  const inlineStartX = leftX + captionLayout.usernameWidth + captionLayout.gapAfterUsername;
+  ctx.font = getRegularFont(captionLayout.fontSize);
+  if (captionLayout.line1) {
+    ctx.fillText(captionLayout.line1, inlineStartX, topY);
+  }
+  if (captionLayout.line2) {
+    ctx.fillText(captionLayout.line2, leftX, topY + captionLayout.lineHeight);
+  }
 }
 
 /**
@@ -471,7 +532,8 @@ async function decodeSafeImage(buffer, kind) {
 }
 
 /**
- * Renders the 1080x1080 transparent-background minimalist Instagram Post Frame PNG.
+ * Renders a dynamically sized, tight-fitted minimalist Instagram Post Frame PNG
+ * preserving the original image aspect ratio with zero outer canvas padding.
  * Stateless: operates purely on in-memory Buffers and releases canvas resources afterwards.
  *
  * @param {{ photoBuffer: Buffer, avatarBuffer: Buffer, username: string, caption?: string | null }} input
@@ -482,48 +544,62 @@ export async function renderInstagramFrame({ photoBuffer, avatarBuffer, username
 
   const cleanUsername =
     typeof username === 'string' && username.trim().length > 0 ? username.trim() : 'Midwave User';
+  const cleanCaption = normalizeCaptionText(caption);
 
   let photoImg = await decodeSafeImage(photoBuffer, 'photo');
   let avatarImg = await decodeSafeImage(avatarBuffer, 'avatar');
 
-  const canvas = createCanvas(IGF_SIZE, IGF_SIZE);
+  const baseLayout = computeIgfLayout({
+    srcWidth: photoImg.width,
+    srcHeight: photoImg.height,
+    captionLines: 0,
+  });
+
+  let captionLayout = null;
+  if (cleanCaption) {
+    const probeCanvas = createCanvas(1, 1);
+    try {
+      const probeCtx = probeCanvas.getContext('2d');
+      const contentWidth = baseLayout.innerRight - baseLayout.innerLeft - 16;
+      captionLayout = computeCaptionLayout(probeCtx, cleanUsername, cleanCaption, contentWidth);
+    } finally {
+      probeCanvas.width = 0;
+      probeCanvas.height = 0;
+    }
+  }
+
+  const layout =
+    captionLayout && captionLayout.lineCount > 0
+      ? computeIgfLayout({
+          srcWidth: photoImg.width,
+          srcHeight: photoImg.height,
+          captionLines: captionLayout.lineCount,
+        })
+      : baseLayout;
+
+  const canvas = createCanvas(layout.cardWidth, layout.cardHeight);
   const ctx = canvas.getContext('2d');
 
   try {
-    // 1. Card base with rounded corners and soft subtle drop shadow on transparent canvas
+    // 1. Tight-fitted card base with rounded corners (no outer empty canvas margin)
     ctx.save();
-    ctx.shadowColor = COLORS.cardShadow;
-    ctx.shadowBlur = 32;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 8;
     ctx.fillStyle = COLORS.cardBg;
     ctx.beginPath();
-    ctx.roundRect(CARD.x, CARD.y, CARD.width, CARD.height, CARD.radius);
+    ctx.roundRect(0, 0, layout.cardWidth, layout.cardHeight, CARD_STYLE.radius);
     ctx.fill();
-    ctx.restore();
-
-    // Subtle hairline border so card stays defined on bright backgrounds
-    ctx.save();
-    ctx.strokeStyle = COLORS.cardBorder;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.roundRect(CARD.x, CARD.y, CARD.width, CARD.height, CARD.radius);
-    ctx.stroke();
     ctx.restore();
 
     // Clip all inner elements cleanly inside the rounded card
     ctx.save();
     ctx.beginPath();
-    ctx.roundRect(CARD.x, CARD.y, CARD.width, CARD.height, CARD.radius);
+    ctx.roundRect(0, 0, layout.cardWidth, layout.cardHeight, CARD_STYLE.radius);
     ctx.clip();
 
-    const innerLeft = CARD.x + CARD.padX;
-    const innerRight = CARD.x + CARD.width - CARD.padX;
-    const innerWidth = innerRight - innerLeft;
+    const { innerLeft, innerRight } = layout;
 
     // 2. Card Header: circular avatar (left), username, three-dot menu (right)
-    const headerCenterY = CARD.y + CARD.headerHeight / 2;
-    const avatarRadius = 26;
+    const headerCenterY = CARD_STYLE.headerHeight / 2;
+    const avatarRadius = CARD_STYLE.avatarRadius;
     const avatarCenterX = innerLeft + avatarRadius + 8;
 
     ctx.save();
@@ -566,58 +642,55 @@ export async function renderInstagramFrame({ photoBuffer, avatarBuffer, username
       ctx.fill();
     });
 
-    // 3. Main 1:1 Photo directly below header with object-fit: cover crop
-    const photoX = innerLeft;
-    const photoY = CARD.y + CARD.headerHeight;
+    // 3. Main Photo preserving original aspect ratio with object-fit: contain (no cropping)
+    const { dx, dy, dw, dh } = layout.photoRect;
+    const drawX = layout.photoX + dx;
+    const drawY = layout.photoY + dy;
+
     ctx.save();
     ctx.beginPath();
-    ctx.rect(photoX, photoY, CARD.photoSize, CARD.photoSize);
+    ctx.rect(layout.photoX, layout.photoY, layout.photoBoxWidth, layout.photoBoxHeight);
     ctx.clip();
-    drawCoverImage(ctx, photoImg, photoX, photoY, CARD.photoSize, CARD.photoSize);
+    ctx.drawImage(photoImg, 0, 0, photoImg.width, photoImg.height, drawX, drawY, dw, dh);
     ctx.restore();
 
     ctx.strokeStyle = COLORS.photoBorder;
     ctx.lineWidth = 1;
-    ctx.strokeRect(photoX + 0.5, photoY + 0.5, CARD.photoSize - 1, CARD.photoSize - 1);
+    ctx.strokeRect(drawX + 0.5, drawY + 0.5, Math.max(1, dw - 1), Math.max(1, dh - 1));
 
     // 4. Action Bar (Heart, Comment, Share, 3 dots, Bookmark)
     const contentLeft = innerLeft + 8;
     const contentRight = innerRight - 8;
-    const contentWidth = contentRight - contentLeft;
-    const actionBarCenterY = photoY + CARD.photoSize + 36;
-    drawVectorIcons(ctx, contentLeft, contentRight, actionBarCenterY);
+    drawVectorIcons(ctx, contentLeft, contentRight, layout.actionBarCenterY, layout.cardWidth);
 
     // 5. Engagement, Caption, Comments, Timestamp
     ctx.textBaseline = 'alphabetic';
 
-    const likesY = actionBarCenterY + 46;
     ctx.font = getBoldFont(19);
     ctx.fillStyle = COLORS.textPrimary;
-    ctx.fillText(IGF_DEFAULT_LIKES, contentLeft, likesY);
+    ctx.fillText(IGF_DEFAULT_LIKES, contentLeft, layout.likesY);
 
-    const cleanCaption = normalizeCaptionText(caption);
-    let commentsY = likesY + 34;
-    if (cleanCaption) {
-      const captionY = likesY + 34;
-      const captionLines = drawCaptionBlock(
-        ctx,
-        cleanUsername,
-        cleanCaption,
-        contentLeft,
-        captionY,
-        contentWidth,
-      );
-      commentsY = captionY + (captionLines > 1 ? 56 : 36);
+    if (captionLayout && layout.captionY !== null) {
+      drawCaptionLayout(ctx, captionLayout, contentLeft, layout.captionY);
     }
+
     ctx.font = getRegularFont(18);
     ctx.fillStyle = COLORS.textMuted;
-    ctx.fillText(IGF_DEFAULT_COMMENTS, contentLeft, commentsY);
+    ctx.fillText(IGF_DEFAULT_COMMENTS, contentLeft, layout.commentsY);
 
-    const timestampY = commentsY + 32;
     ctx.font = getRegularFont(14);
     ctx.fillStyle = COLORS.textMuted;
-    ctx.fillText(IGF_DEFAULT_TIMESTAMP, contentLeft, timestampY);
+    ctx.fillText(IGF_DEFAULT_TIMESTAMP, contentLeft, layout.timestampY);
 
+    ctx.restore();
+
+    // Subtle hairline border inset along rounded edge so card stays defined on bright backgrounds
+    ctx.save();
+    ctx.strokeStyle = COLORS.cardBorder;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(0.75, 0.75, layout.cardWidth - 1.5, layout.cardHeight - 1.5, CARD_STYLE.radius - 0.75);
+    ctx.stroke();
     ctx.restore();
 
     const pngBuffer = canvas.toBuffer('image/png');

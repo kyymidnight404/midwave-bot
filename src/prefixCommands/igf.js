@@ -82,7 +82,7 @@ export async function resolveIgfAttachment(message, prefix = '!') {
 }
 
 /**
- * Executes the `!igf` prefix command to generate a 1080x1080 minimalist Instagram Post Frame.
+ * Executes the `!igf` prefix command to generate a dynamically sized minimalist Instagram Post Frame.
  * @param {import('../handlers/MessageCommandAdapter.js').MessageCommandAdapter} adapter
  * @param {{ prefix?: string, fetchFn?: typeof fetch, renderInstagramFrame?: typeof renderInstagramFrame }} [context]
  */
