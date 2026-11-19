@@ -1,18 +1,15 @@
 import {
-  ActionRowBuilder,
   AttachmentBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   PermissionFlagsBits,
 } from 'discord.js';
 import { DOWNLOADER_ERROR_CODES, DownloaderError } from '../services/downloader/errors.js';
 import {
-  cleanupTempDir,
-  downloadViaRapidApi,
-  getDownloaderConfig,
-  getRapidApiConfig,
   MAX_DISCORD_ATTACHMENTS,
   PLATFORMS,
+  STANDARD_DISCORD_UPLOAD_LIMIT_BYTES,
+  cleanupTempDir,
+  downloadMediaFromUrl,
+  getDownloaderConfig,
   sanitizeLogText,
   validateMediaUrl,
 } from '../services/downloader.js';
@@ -89,7 +86,7 @@ function checkBotChannelPermissions(message) {
  * Builds the Midwave embed for successful auto-downloaded attachments.
  *
  * @param {{
- *   platform: 'tiktok' | 'instagram',
+ *   platform: string,
  *   author?: string,
  *   title?: string,
  *   formattedSize: string,
@@ -112,7 +109,7 @@ function buildAutoDownloadEmbed(params) {
 
   if (params.truncatedCount > 0) {
     lines.push(
-      `⚠️ *${params.truncatedCount} item lainnya dilewati karena batas maksimal ${MAX_DISCORD_ATTACHMENTS} lampiran atau 10 MB.*`,
+      `⚠️ *${params.truncatedCount} item lainnya dilewati karena batas maksimal ${MAX_DISCORD_ATTACHMENTS} lampiran atau batas ukuran unggahan.*`,
     );
   }
 
@@ -127,85 +124,23 @@ function buildAutoDownloadEmbed(params) {
 }
 
 /**
- * Builds fallback embed + link button when direct attachment exceeds 10 MB or CDN upload fails.
- *
- * @param {{
- *   platform: 'tiktok' | 'instagram',
- *   author?: string,
- *   title?: string,
- *   reason: string,
- *   primaryCdnUrl: string,
- *   cdnLinks?: string[],
- *   requesterId: string,
- * }} params
- */
-function buildFallbackCdnResponse(params) {
-  const meta = PLATFORM_META[params.platform] || { label: params.platform, icon: '🔗' };
-  const lines = [
-    `${meta.icon} **${meta.label} Auto-Downloader (Tautan Langsung)**`,
-    '',
-    `ℹ️ ${params.reason}`,
-  ];
-
-  if (params.author) {
-    lines.push(`• **Kreator:** ${truncateText(params.author, 80)}`);
-  }
-  if (params.title) {
-    lines.push(`• **Keterangan:** ${truncateText(params.title, 180)}`);
-  }
-
-  const extraLinks = Array.isArray(params.cdnLinks) ? params.cdnLinks.slice(0, 5) : [params.primaryCdnUrl];
-  if (extraLinks.length === 1) {
-    lines.push('', `🔗 **[Klik di sini untuk menonton / mengunduh langsung](${extraLinks[0]})**`);
-  } else {
-    lines.push('', '**Tautan Media Langsung:**');
-    extraLinks.forEach((link, idx) => {
-      lines.push(`${idx + 1}. [Unduh Item #${idx + 1}](${link})`);
-    });
-  }
-
-  lines.push('', `Diminta oleh: <@${params.requesterId}>`);
-
-  const embed = createBaseEmbed({
-    title: 'MIDWAVE AUTO DOWNLOADER',
-    description: lines.join('\n'),
-    color: COLORS.WARNING,
-    includeThumbnail: false,
-  });
-
-  const components = [];
-  if (params.primaryCdnUrl && params.primaryCdnUrl.length <= 512) {
-    components.push(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setLabel('Tonton / Unduh Video')
-          .setStyle(ButtonStyle.Link)
-          .setURL(params.primaryCdnUrl),
-      ),
-    );
-  }
-
-  return { embeds: [embed], components };
-}
-
-/**
- * Detects TikTok & Instagram links inside regular chat messages and auto-downloads them via RapidAPI.
+ * Detects TikTok & Instagram links inside regular chat messages and auto-downloads them via yt-dlp.
  */
 export class AutoDownloaderHandler {
   /**
    * @param {{
    *   cooldowns: import('../utils/cooldown.js').CooldownManager,
    *   prefix?: string,
-   *   downloadFn?: typeof downloadViaRapidApi,
-   *   getConfig?: typeof getRapidApiConfig,
+   *   downloadFn?: typeof downloadMediaFromUrl,
+   *   getConfig?: typeof getDownloaderConfig,
    *   logger?: Console,
    * }} options
    */
   constructor({
     cooldowns,
     prefix = '!',
-    downloadFn = downloadViaRapidApi,
-    getConfig = getRapidApiConfig,
+    downloadFn = downloadMediaFromUrl,
+    getConfig = getDownloaderConfig,
     logger = console,
   }) {
     this.cooldowns = cooldowns;
@@ -247,13 +182,25 @@ export class AutoDownloaderHandler {
     }
 
     const config = this.getConfig();
-    if (!config.configured) {
+    if (config?.autoDownloadEnabled === false) {
       return false;
     }
 
     const perms = checkBotChannelPermissions(message);
     if (!perms.canSend) {
       return false;
+    }
+
+    if (!perms.canAttach) {
+      await sendMessageReply(message, {
+        embeds: [
+          buildErrorEmbed(
+            'Bot memerlukan izin `Attach Files` di channel ini untuk mengirim hasil unduhan.',
+            'Izin Tidak Mencukupi',
+          ),
+        ],
+      }).catch(() => {});
+      return true;
     }
 
     if (this.cooldowns) {
@@ -267,53 +214,38 @@ export class AutoDownloaderHandler {
 
     let result = null;
     try {
-      const downloaderConfig =
-        config.fullConfig ||
-        getDownloaderConfig({
-          RAPIDAPI_KEY: config.apiKey,
-          RAPIDAPI_HOST: config.apiHost,
-          RAPIDAPI_ENDPOINT: config.endpoint,
-        });
+      const downloaderConfig = config?.fullConfig || config || getDownloaderConfig();
 
       result = await this.downloadFn({
         url: validated.normalizedUrl,
-        platform: validated.platform,
+        guild: message.guild,
+        maxBytesOverride: STANDARD_DISCORD_UPLOAD_LIMIT_BYTES,
         config: downloaderConfig,
       });
 
       const items = result.items || result.attachments || [];
-      if (result.mode === 'attachments' && perms.canAttach && items.length > 0) {
-        const files = items
-          .slice(0, MAX_DISCORD_ATTACHMENTS)
-          .map((item) => new AttachmentBuilder(item.filePath || item.buffer, { name: item.fileName }));
-
-        const embed = buildAutoDownloadEmbed({
-          platform: result.platform,
-          author: result.author,
-          title: result.title,
-          formattedSize: result.formattedSize,
-          attachmentCount: files.length,
-          truncatedCount: result.truncatedCount,
-          requesterId: message.author.id,
-        });
-
-        await sendMessageReply(message, { embeds: [embed], files });
-      } else {
-        const fallbackPayload = buildFallbackCdnResponse({
-          platform: result.platform,
-          author: result.author,
-          title: result.title,
-          reason:
-            result.mode === 'attachments' && !perms.canAttach
-              ? 'Bot tidak memiliki izin `Attach Files` di channel ini; gunakan tautan CDN langsung berikut.'
-              : result.reason || 'File melebihi batas lampiran 10 MB Discord.',
-          primaryCdnUrl: result.primaryCdnUrl,
-          cdnLinks: result.cdnLinks,
-          requesterId: message.author.id,
-        });
-
-        await sendMessageReply(message, fallbackPayload);
+      if (items.length === 0) {
+        throw new DownloaderError(
+          DOWNLOADER_ERROR_CODES.NOT_FOUND,
+          'Tidak ada file media yang berhasil diunduh dari tautan tersebut.',
+        );
       }
+
+      const files = items
+        .slice(0, MAX_DISCORD_ATTACHMENTS)
+        .map((item) => new AttachmentBuilder(item.filePath || item.buffer, { name: item.fileName }));
+
+      const embed = buildAutoDownloadEmbed({
+        platform: result.platform || validated.platform,
+        author: result.author,
+        title: result.title,
+        formattedSize: result.formattedSize,
+        attachmentCount: files.length,
+        truncatedCount: result.truncatedCount,
+        requesterId: message.author.id,
+      });
+
+      await sendMessageReply(message, { embeds: [embed], files });
 
       if (typeof message.suppressEmbeds === 'function') {
         await message.suppressEmbeds(true).catch(() => {});

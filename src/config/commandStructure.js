@@ -146,7 +146,7 @@ export const commandStructure = {
           download: {
             usage: 'media action:download url:<link>',
             prefixUsage: '{prefix}download <link>',
-            description: 'Unduh media Instagram atau TikTok',
+            description: 'Unduh video, audio, atau gambar dari berbagai platform via yt-dlp',
           },
         },
       },
@@ -160,7 +160,7 @@ export const commandStructure = {
             { name: 'qc — Buat gambar chat screenshot WhatsApp dari teks', value: 'qc' },
             { name: 'brat — Buat gambar teks gaya Brat (1024x1024 PNG)', value: 'brat' },
             { name: 'lyrics — Cari lirik lagu lengkap dengan cover dan metadata', value: 'lyrics' },
-            { name: 'download — Unduh media (foto/video) Instagram atau TikTok', value: 'download' },
+            { name: 'download — Unduh media (YouTube, TikTok, IG, X, dll.) via yt-dlp', value: 'download' },
           ],
         },
         {
@@ -186,7 +186,7 @@ export const commandStructure = {
         },
         {
           name: 'url',
-          description: 'Tautan publik Instagram atau TikTok (untuk download)',
+          description: 'Tautan publik video/audio/gambar (YouTube, TikTok, IG, X, dll.) untuk download',
           type: 'string',
           required: false,
         },

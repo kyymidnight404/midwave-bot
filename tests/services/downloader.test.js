@@ -1,25 +1,25 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { Readable } from 'node:stream';
 import { describe, it } from 'node:test';
 import { MessageFlags } from 'discord.js';
 import mediaCommand, { data as mediaData } from '../../src/commands/media.js';
-import { execute as executeDownload } from '../../src/prefixCommands/download.js';
+import downloadCommand, { execute as executeDownload } from '../../src/commands/download.js';
 import { createBotApp } from '../../src/index.js';
 import {
-  DEFAULT_INSTAGRAM_RAPIDAPI_PATH,
-  DEFAULT_TIKTOK_RAPIDAPI_PATH,
   DOWNLOADER_ERROR_CODES,
+  DownloadQueue,
   PLATFORMS,
+  assertInsideDir,
+  cleanupStaleTempDirs,
   cleanupTempDir,
   downloadMediaFromUrl,
-  extractInstagramShortcode,
   getActiveDownloadCount,
   getDiscordUploadLimitBytes,
   getDownloaderConfig,
-  parseRapidApiResponse,
+  runYtDlpDownload,
   validateMediaUrl,
 } from '../../src/services/downloader.js';
 import {
@@ -31,11 +31,16 @@ import {
   assertSafeRemoteHost,
   isPrivateOrReservedIp,
   resolveAndValidateRedirects,
-} from '../../src/services/downloader/urlValidator.js';
+  resolvePlatformLabel,
+} from '../../src/services/downloader/platform.js';
 import { CooldownManager } from '../../src/utils/cooldown.js';
+import { parsePrefixInvocation } from '../../src/utils/prefixParser.js';
 
 const FAKE_MP4_HEADER = Buffer.from([
   0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32, 0x00, 0x00, 0x00, 0x00,
+]);
+const FAKE_MP3_HEADER = Buffer.from([
+  0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ]);
 const FAKE_JPEG_HEADER = Buffer.from([
   0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x01, 0x00, 0x48,
@@ -53,6 +58,7 @@ function publicLookupStub() {
 
 function createMockDownloadInteraction({
   url = '',
+  mode = null,
   action = 'download',
   userId = 'u-dl-1',
   guild = { id: 'g-1', premiumTier: 0 },
@@ -72,6 +78,7 @@ function createMockDownloadInteraction({
     options: {
       getString(name, required) {
         if (name === 'action') return action;
+        if (name === 'mode') return mode;
         if (name === 'url') {
           if (required && !url) return '';
           return url;
@@ -102,68 +109,96 @@ function createMockDownloadInteraction({
       events.push({ type: 'followUp', payload });
       return payload;
     },
-    isChatInputCommand() {
-      return true;
-    },
     getEvents: () => events,
   };
 }
 
-describe('Downloader — URL & SSRF Validation (Instagram & TikTok Only)', () => {
-  it('detects valid Instagram and TikTok links and explicitly rejects Threads as unavailable', () => {
-    const ig = validateMediaUrl('https://www.instagram.com/reel/Cop84x6u7CP/#fragment');
-    assert.equal(ig.platform, PLATFORMS.INSTAGRAM);
-    assert.equal(ig.isShortLink, false);
-    assert.equal(ig.normalizedUrl, 'https://www.instagram.com/reel/Cop84x6u7CP/');
-
-    const igShort = validateMediaUrl('https://instagr.am/p/C123456/');
-    assert.equal(igShort.platform, PLATFORMS.INSTAGRAM);
-    assert.equal(igShort.isShortLink, true);
-
-    const tt = validateMediaUrl('https://vm.tiktok.com/ZM6abc123/');
-    assert.equal(tt.platform, PLATFORMS.TIKTOK);
-    assert.equal(tt.isShortLink, true);
-
-    assert.throws(() => validateMediaUrl('https://www.threads.net/@zuck/post/Cwm6qX_LL_M'), (err) => {
-      assert.equal(err.code, DOWNLOADER_ERROR_CODES.UNSUPPORTED_PLATFORM);
-      assert.match(err.userMessage, /Threads.*belum tersedia/i);
+function createFakeSpawn({
+  exitCode = 0,
+  stdoutLines = [],
+  stderrLines = [],
+  emitError = null,
+  delayMs = 5,
+  onSpawn = null,
+} = {}) {
+  return (bin, args, opts) => {
+    onSpawn?.({ bin, args, opts });
+    const child = new EventEmitter();
+    child.pid = 42424;
+    child.killed = false;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.kill = () => {
+      child.killed = true;
       return true;
-    });
+    };
 
-    assert.throws(() => validateMediaUrl('https://www.threads.com/@zuck/post/Cwm6qX_LL_M'), (err) => {
-      assert.equal(err.code, DOWNLOADER_ERROR_CODES.UNSUPPORTED_PLATFORM);
-      return true;
-    });
+    setTimeout(() => {
+      if (emitError) {
+        child.emit('error', emitError);
+        return;
+      }
+      for (const line of stdoutLines) {
+        child.stdout.emit('data', Buffer.from(`${line}\n`));
+      }
+      for (const line of stderrLines) {
+        child.stderr.emit('data', Buffer.from(`${line}\n`));
+      }
+      if (!child.killed) {
+        child.emit('close', exitCode);
+      }
+    }, delayMs);
+
+    return child;
+  };
+}
+
+describe('Downloader — Multi-Platform URL & SSRF Validation', () => {
+  it('detects all major yt-dlp platforms and allows valid public HTTP/HTTPS URLs', () => {
+    const cases = [
+      ['https://www.youtube.com/watch?v=dQw4w9WgXcQ', PLATFORMS.YOUTUBE, 'YouTube', false],
+      ['https://youtu.be/dQw4w9WgXcQ', PLATFORMS.YOUTUBE, 'YouTube', true],
+      ['https://www.tiktok.com/@creator/video/123456', PLATFORMS.TIKTOK, 'TikTok', false],
+      ['https://vm.tiktok.com/ZM6abc123/', PLATFORMS.TIKTOK, 'TikTok', true],
+      ['https://www.instagram.com/reel/Cop84x6u7CP/?igsh=abc#frag', PLATFORMS.INSTAGRAM, 'Instagram', false],
+      ['https://www.facebook.com/watch/?v=123456789', PLATFORMS.FACEBOOK, 'Facebook', false],
+      ['https://x.com/midwave/status/1234567890', PLATFORMS.TWITTER, 'X / Twitter', false],
+      ['https://www.reddit.com/r/videos/comments/abc123/clip/', PLATFORMS.REDDIT, 'Reddit', false],
+      ['https://clips.twitch.tv/FunClipSlug', PLATFORMS.TWITCH, 'Twitch', false],
+      ['https://soundcloud.com/artist/track-name', PLATFORMS.SOUNDCLOUD, 'SoundCloud', false],
+      ['https://vimeo.com/123456789', PLATFORMS.VIMEO, 'Vimeo', false],
+      ['https://www.dailymotion.com/video/x8abcde', PLATFORMS.DAILYMOTION, 'Dailymotion', false],
+      ['https://www.bilibili.com/video/BV1xx411c7mD', PLATFORMS.BILIBILI, 'Bilibili', false],
+      ['http://example.com/media/video.mp4', PLATFORMS.WEB, 'example.com', false],
+    ];
+
+    for (const [input, expectedPlatform, expectedLabel, expectedShort] of cases) {
+      const res = validateMediaUrl(input);
+      assert.equal(res.platform, expectedPlatform, `platform mismatch for ${input}`);
+      assert.equal(res.platformLabel, expectedLabel, `label mismatch for ${input}`);
+      assert.equal(res.isShortLink, expectedShort, `shortLink mismatch for ${input}`);
+    }
+
+    assert.equal(resolvePlatformLabel('Youtube', PLATFORMS.WEB, ''), 'YouTube');
+    assert.equal(resolvePlatformLabel('twitter:amplify', PLATFORMS.WEB, ''), 'X / Twitter');
   });
 
-  it('rejects HTTP, credentials, custom ports, empty paths, IP literals, and unsupported hosts', () => {
-    assert.throws(() => validateMediaUrl('http://www.instagram.com/reel/abc/'), (err) => {
-      assert.equal(err.code, DOWNLOADER_ERROR_CODES.INVALID_URL);
-      return true;
-    });
-    assert.throws(() => validateMediaUrl('https://user:pass@www.tiktok.com/@a/video/1'), (err) => {
-      assert.equal(err.code, DOWNLOADER_ERROR_CODES.INVALID_URL);
-      return true;
-    });
-    assert.throws(() => validateMediaUrl('https://www.tiktok.com:8443/@a/video/1'), (err) => {
-      assert.equal(err.code, DOWNLOADER_ERROR_CODES.INVALID_URL);
-      return true;
-    });
-    assert.throws(() => validateMediaUrl('https://www.instagram.com/'), (err) => {
-      assert.equal(err.code, DOWNLOADER_ERROR_CODES.INVALID_URL);
-      return true;
-    });
-    assert.throws(() => validateMediaUrl('https://127.0.0.1/reel/123'), (err) => {
-      assert.equal(err.code, DOWNLOADER_ERROR_CODES.UNSAFE_TARGET);
-      return true;
-    });
-    assert.throws(() => validateMediaUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ'), (err) => {
-      assert.equal(err.code, DOWNLOADER_ERROR_CODES.UNSUPPORTED_PLATFORM);
-      return true;
-    });
+  it('rejects invalid schemes, credentials, custom ports, bare platform roots, IP literals, and internal hosts', () => {
+    assert.throws(() => validateMediaUrl(''), (e) => e.code === DOWNLOADER_ERROR_CODES.INVALID_URL);
+    assert.throws(() => validateMediaUrl('not a url'), (e) => e.code === DOWNLOADER_ERROR_CODES.INVALID_URL);
+    assert.throws(() => validateMediaUrl('file:///etc/passwd'), (e) => e.code === DOWNLOADER_ERROR_CODES.INVALID_URL);
+    assert.throws(() => validateMediaUrl('ftp://example.com/v.mp4'), (e) => e.code === DOWNLOADER_ERROR_CODES.INVALID_URL);
+    assert.throws(() => validateMediaUrl('https://user:pass@www.youtube.com/watch?v=1'), (e) => e.code === DOWNLOADER_ERROR_CODES.INVALID_URL);
+    assert.throws(() => validateMediaUrl('https://www.tiktok.com:8443/@a/video/1'), (e) => e.code === DOWNLOADER_ERROR_CODES.INVALID_URL);
+    assert.throws(() => validateMediaUrl('https://www.youtube.com/'), (e) => e.code === DOWNLOADER_ERROR_CODES.INVALID_URL);
+    assert.throws(() => validateMediaUrl('https://127.0.0.1/video.mp4'), (e) => e.code === DOWNLOADER_ERROR_CODES.UNSAFE_TARGET);
+    assert.throws(() => validateMediaUrl('http://localhost/video.mp4'), (e) => e.code === DOWNLOADER_ERROR_CODES.UNSAFE_TARGET);
+    assert.throws(() => validateMediaUrl('https://internal.local/video.mp4'), (e) => e.code === DOWNLOADER_ERROR_CODES.UNSAFE_TARGET);
+    assert.throws(() => validateMediaUrl('https://redis/secret'), (e) => e.code === DOWNLOADER_ERROR_CODES.UNSAFE_TARGET);
+    assert.throws(() => validateMediaUrl('https://www.instagram.com/accounts/login/'), (e) => e.code === DOWNLOADER_ERROR_CODES.PRIVATE_OR_RESTRICTED);
   });
 
-  it('identifies private, loopback, link-local, and mapped IPv6 addresses for SSRF prevention', async () => {
+  it('identifies private/reserved IPs and blocks unsafe short-link redirect chains', async () => {
     assert.equal(isPrivateOrReservedIp('127.0.0.1'), true);
     assert.equal(isPrivateOrReservedIp('10.20.30.40'), true);
     assert.equal(isPrivateOrReservedIp('172.16.0.5'), true);
@@ -175,14 +210,12 @@ describe('Downloader — URL & SSRF Validation (Instagram & TikTok Only)', () =>
     assert.equal(isPrivateOrReservedIp('93.184.216.34'), false);
 
     await assert.rejects(
-      assertSafeRemoteHost('evil-rebind.tiktok.com', {
+      assertSafeRemoteHost('evil-rebind.example.com', {
         lookupFn: async () => [{ address: '192.168.0.10', family: 4 }],
       }),
       (err) => err.code === DOWNLOADER_ERROR_CODES.UNSAFE_TARGET,
     );
-  });
 
-  it('validates short-link redirect chains and blocks unsafe redirect destinations', async () => {
     const validatedShort = validateMediaUrl('https://vm.tiktok.com/ZM6valid/');
     const resolved = await resolveAndValidateRedirects(validatedShort, {
       lookupFn: publicLookupStub,
@@ -193,7 +226,6 @@ describe('Downloader — URL & SSRF Validation (Instagram & TikTok Only)', () =>
         }),
     });
     assert.equal(resolved.normalizedUrl, 'https://www.tiktok.com/@creator/video/7123456789');
-    assert.equal(resolved.isShortLink, false);
 
     await assert.rejects(
       resolveAndValidateRedirects(validatedShort, {
@@ -209,13 +241,19 @@ describe('Downloader — URL & SSRF Validation (Instagram & TikTok Only)', () =>
   });
 });
 
-describe('Downloader — File Signatures, Sizes & Config', () => {
-  it('validates binary magic bytes and rejects masqueraded HTML/EXE/JSON payloads', () => {
+describe('Downloader — File Signatures, Sizes, Config & Path Safety', () => {
+  it('validates video, audio, and image magic bytes and rejects masqueraded HTML/EXE/JSON', () => {
     assert.deepEqual(detectMediaSignature(FAKE_MP4_HEADER), {
       kind: 'video',
       mime: 'video/mp4',
       ext: 'mp4',
       format: 'MP4',
+    });
+    assert.deepEqual(detectMediaSignature(FAKE_MP3_HEADER), {
+      kind: 'audio',
+      mime: 'audio/mpeg',
+      ext: 'mp3',
+      format: 'MP3',
     });
     assert.deepEqual(detectMediaSignature(FAKE_JPEG_HEADER), {
       kind: 'image',
@@ -241,892 +279,421 @@ describe('Downloader — File Signatures, Sizes & Config', () => {
     assert.equal(detectMediaSignature(Buffer.from('{"error":"blocked"}')), null);
   });
 
-  it('computes dynamic upload limits per server boost tier bounded by config cap', () => {
+  it('computes dynamic Discord upload limits and resolves yt-dlp configuration', () => {
     assert.equal(getDiscordUploadLimitBytes({ premiumTier: 0 }, 25).maxMb, 25);
     assert.equal(getDiscordUploadLimitBytes({ premiumTier: 2 }, 50).maxMb, 50);
     assert.equal(getDiscordUploadLimitBytes({ premiumTier: 3 }, 100).maxMb, 100);
     assert.equal(getDiscordUploadLimitBytes({ premiumTier: 3 }, 20).maxMb, 20);
     assert.equal(formatBytes(12.5 * 1024 * 1024), '12.5 MB');
+
+    const cfg = getDownloaderConfig({
+      PYTHON_PATH: '/usr/bin/python3',
+      DOWNLOAD_MAX_SIZE_MB: '50',
+      DOWNLOAD_TIMEOUT_SECONDS: '90',
+      DOWNLOAD_MAX_CONCURRENT: '2',
+      DOWNLOAD_TEMP_DIR: './temp/custom',
+    });
+    assert.equal(cfg.pythonPath, '/usr/bin/python3');
+    assert.equal(cfg.maxSizeMb, 50);
+    assert.equal(cfg.timeoutMs, 90_000);
+    assert.equal(cfg.maxConcurrent, 2);
+    assert.equal(cfg.tempBaseDir.endsWith(path.join('temp', 'custom')), true);
+  });
+
+  it('blocks path traversal and sweeps stale temporary directories', async () => {
+    assert.throws(
+      () => assertInsideDir('/tmp/midwave-dl-123', '/tmp/midwave-dl-123/../evil.mp4'),
+      (e) => e.code === DOWNLOADER_ERROR_CODES.UNSAFE_TARGET,
+    );
+
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'midwave-stale-'));
+    try {
+      const staleDir = await createJobTempDir(tempRoot);
+      const oldTime = new Date(Date.now() - 2 * 60 * 60 * 1000);
+      await fs.utimes(staleDir, oldTime, oldTime);
+
+      const removed = await cleanupStaleTempDirs(tempRoot, 60 * 60 * 1000);
+      assert.equal(removed, 1);
+      await assert.rejects(fs.stat(staleDir));
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
   });
 });
 
-describe('Downloader — Unified RapidAPI + Axios Pipeline', () => {
-  it('parses Instagram, TikTok, HD selection, carousel, invalid JSON, and missing media URLs', () => {
-    assert.throws(() => parseRapidApiResponse('not-json-string'), (err) => {
-      assert.equal(err.code, DOWNLOADER_ERROR_CODES.EXTRACTION_FAILED);
-      return true;
-    });
-    assert.throws(() => parseRapidApiResponse({ title: 'empty', links: [] }), (err) => {
-      assert.equal(err.code, DOWNLOADER_ERROR_CODES.NOT_FOUND);
-      return true;
-    });
+describe('Downloader — yt-dlp Subprocess, Queue, Error Handling & Cleanup', () => {
+  it('spawns Python yt-dlp worker with safe argument array (never shell) and parses progress + result', async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'midwave-ytdlp-sub-'));
+    try {
+      const mediaFile = path.join(tempRoot, 'raw_video.mp4');
+      await fs.writeFile(mediaFile, FAKE_MP4_HEADER);
 
-    const parsed = parseRapidApiResponse({
-      title: 'Instagram Reel HD',
-      links: [
-        { quality: 'sd', link: 'https://scontent.cdninstagram.com/sd.mp4' },
-        { quality: 'hd_no_watermark', link: 'https://scontent.cdninstagram.com/hd.mp4' },
-      ],
-    });
-    assert.equal(parsed.mode, 'video');
-    assert.equal(parsed.candidates[0].url, 'https://scontent.cdninstagram.com/hd.mp4');
+      let capturedSpawn = null;
+      const progressEvents = [];
+      const mockSpawn = createFakeSpawn({
+        stdoutLines: [
+          'PROGRESS:{"type":"progress","status":"downloading","percent":45.5}',
+          `RESULT:${JSON.stringify({
+            ok: true,
+            extractor: 'Youtube',
+            title: 'Midwave Demo Video',
+            author: 'MidwaveChannel',
+            duration: 30,
+            is_audio: false,
+            files: [{ path: mediaFile, filename: 'raw_video.mp4', size_bytes: FAKE_MP4_HEADER.length, ext: 'mp4' }],
+            truncated_count: 0,
+          })}`,
+        ],
+        onSpawn: (info) => {
+          capturedSpawn = info;
+        },
+      });
+
+      const res = await runYtDlpDownload({
+        url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        jobDir: tempRoot,
+        maxBytes: 25 * 1024 * 1024,
+        mode: 'video',
+        timeoutMs: 10_000,
+        config: { pythonPath: 'python3' },
+        spawnFn: mockSpawn,
+        onProgress: (ev) => progressEvents.push(ev),
+      });
+
+      assert.equal(capturedSpawn.opts.shell, undefined);
+      assert.ok(Array.isArray(capturedSpawn.args));
+      assert.ok(capturedSpawn.args.includes('--url'));
+      assert.ok(capturedSpawn.args.includes('https://www.youtube.com/watch?v=dQw4w9WgXcQ'));
+      assert.equal(progressEvents.length, 1);
+      assert.equal(progressEvents[0].percent, 45.5);
+      assert.equal(res.ok, true);
+      assert.equal(res.extractor, 'Youtube');
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
   });
 
-  it('downloads Instagram & TikTok media to temp files via RapidAPI + Axios and cleans up', async () => {
-    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'midwave-test-rapid-'));
+  it('executes full downloadMediaFromUrl pipeline for video & audio-only and enforces file validation', async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'midwave-dl-e2e-'));
     try {
       const config = {
-        ...getDownloaderConfig({ DOWNLOAD_MAX_SIZE_MB: '25', RAPIDAPI_KEY: 'test-rapid-key' }),
+        ...getDownloaderConfig({ DOWNLOAD_MAX_SIZE_MB: '25' }),
         tempBaseDir: tempRoot,
       };
 
-      const axiosStub = {
-        async get(targetUrl) {
-          if (String(targetUrl).includes('rapidapi.com')) {
+      const videoResult = await downloadMediaFromUrl({
+        url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        config,
+        deps: {
+          lookupFn: publicLookupStub,
+          ytdlpRunner: async ({ jobDir }) => {
+            const filePath = path.join(jobDir, 'yt_raw.mp4');
+            await fs.writeFile(filePath, FAKE_MP4_HEADER);
             return {
-              data: {
-                title: 'Reel Keren',
-                author: 'ig_creator',
-                links: [
-                  { quality: 'hd_no_watermark', link: 'https://scontent.cdninstagram.com/reel.mp4' },
-                ],
-              },
+              ok: true,
+              extractor: 'Youtube',
+              title: 'Sample Video',
+              author: 'Creator',
+              duration: 42,
+              is_audio: false,
+              files: [{ path: filePath, filename: 'yt_raw.mp4', size_bytes: FAKE_MP4_HEADER.length, ext: 'mp4' }],
+              truncated_count: 0,
             };
-          }
-          return {
-            status: 200,
-            headers: { 'content-length': String(FAKE_MP4_HEADER.length), 'content-type': 'video/mp4' },
-            data: Readable.from(FAKE_MP4_HEADER),
-          };
+          },
         },
-      };
-
-      const result = await downloadMediaFromUrl({
-        url: 'https://www.instagram.com/reel/Cop84x6u7CP/',
-        config,
-        deps: { axiosClient: axiosStub, lookupFn: publicLookupStub },
       });
 
-      assert.equal(result.platform, PLATFORMS.INSTAGRAM);
-      assert.equal(result.platformLabel, 'Instagram');
-      assert.equal(result.mediaType, 'Video');
-      assert.equal(result.fileFormat, 'MP4');
-      assert.equal(result.provider, 'rapidapi');
-      assert.equal(result.items.length, 1);
-      assert.equal(getActiveDownloadCount(), 0);
+      assert.equal(videoResult.provider, 'yt-dlp');
+      assert.equal(videoResult.platform, PLATFORMS.YOUTUBE);
+      assert.equal(videoResult.platformLabel, 'YouTube');
+      assert.equal(videoResult.mediaType, 'Video');
+      assert.equal(videoResult.fileFormat, 'MP4');
+      assert.equal(videoResult.items.length, 1);
+      assert.equal(videoResult.items[0].fileName, 'youtube_video.mp4');
+      await cleanupTempDir(videoResult.jobDir);
 
-      const stat = await fs.stat(result.items[0].filePath);
-      assert.equal(stat.isFile(), true);
-
-      await cleanupTempDir(result.jobDir);
-      await assert.rejects(fs.stat(result.jobDir));
-    } finally {
-      await fs.rm(tempRoot, { recursive: true, force: true });
-    }
-  });
-
-  it('rejects unsafe CDN redirects, HTML masquerading as video, and oversized files with zero temp leaks', async () => {
-    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'midwave-test-sec-'));
-    try {
-      const config = {
-        ...getDownloaderConfig({ DOWNLOAD_MAX_SIZE_MB: '1', RAPIDAPI_KEY: 'test-rapid-key' }),
-        tempBaseDir: tempRoot,
-      };
-
-      // 1. Unsafe CDN redirect to 127.0.0.1
-      await assert.rejects(
-        downloadMediaFromUrl({
-          url: 'https://www.tiktok.com/@creator/video/1',
-          config,
-          deps: {
-            lookupFn: publicLookupStub,
-            axiosClient: {
-              async get(targetUrl) {
-                if (String(targetUrl).includes('rapidapi.com')) {
-                  return { data: { url: 'https://v16.tiktokcdn.com/redirect.mp4' } };
-                }
-                return {
-                  status: 302,
-                  headers: { location: 'http://127.0.0.1:9000/secret.mp4' },
-                  data: Readable.from([]),
-                };
-              },
-            },
-          },
-        }),
-        (err) => err.code === DOWNLOADER_ERROR_CODES.UNSAFE_TARGET,
-      );
-
-      // 2. HTTP 200 HTML response masquerading as media
-      await assert.rejects(
-        downloadMediaFromUrl({
-          url: 'https://www.instagram.com/reel/HtmlPage1/',
-          config,
-          deps: {
-            lookupFn: publicLookupStub,
-            axiosClient: {
-              async get(targetUrl) {
-                if (String(targetUrl).includes('rapidapi.com')) {
-                  return { data: { url: 'https://scontent.cdninstagram.com/fake.mp4' } };
-                }
-                return {
-                  status: 200,
-                  headers: { 'content-type': 'text/html; charset=utf-8' },
-                  data: Readable.from(Buffer.from('<html>not a video</html>')),
-                };
-              },
-            },
-          },
-        }),
-        (err) => err.code === DOWNLOADER_ERROR_CODES.UNSUPPORTED_MEDIA,
-      );
-
-      // 3. Oversized Content-Length (> 1 MB limit)
-      await assert.rejects(
-        downloadMediaFromUrl({
-          url: 'https://www.tiktok.com/@creator/video/999',
-          config,
-          deps: {
-            lookupFn: publicLookupStub,
-            axiosClient: {
-              async get(targetUrl) {
-                if (String(targetUrl).includes('rapidapi.com')) {
-                  return { data: { url: 'https://v16.tiktokcdn.com/huge.mp4' } };
-                }
-                return {
-                  status: 200,
-                  headers: { 'content-length': String(5 * 1024 * 1024), 'content-type': 'video/mp4' },
-                  data: Readable.from(FAKE_MP4_HEADER),
-                };
-              },
-            },
-          },
-        }),
-        (err) => err.code === DOWNLOADER_ERROR_CODES.FILE_TOO_LARGE,
-      );
-
-      const leftover = await fs.readdir(tempRoot);
-      assert.deepEqual(leftover, []);
-      assert.equal(getActiveDownloadCount(), 0);
-    } finally {
-      await fs.rm(tempRoot, { recursive: true, force: true });
-    }
-  });
-
-  it('classifies RapidAPI auth failure (401/403), quota exceeded (429), and timeout cleanly', async () => {
-    const config = getDownloaderConfig({ RAPIDAPI_KEY: 'key-1' });
-
-    await assert.rejects(
-      downloadMediaFromUrl({
-        url: 'https://www.tiktok.com/@a/video/1',
+      // Audio-only mode
+      const audioResult = await downloadMediaFromUrl({
+        url: 'https://soundcloud.com/artist/track',
+        mode: 'audio',
         config,
         deps: {
           lookupFn: publicLookupStub,
-          axiosClient: {
-            async get() {
-              const err = new Error('Unauthorized');
-              err.response = { status: 403, data: { message: 'You are not subscribed to this API' } };
-              throw err;
-            },
+          ytdlpRunner: async ({ jobDir }) => {
+            const filePath = path.join(jobDir, 'track.mp3');
+            await fs.writeFile(filePath, FAKE_MP3_HEADER);
+            return {
+              ok: true,
+              extractor: 'Soundcloud',
+              title: 'Chill Track',
+              author: 'DJ Midwave',
+              duration: 180,
+              is_audio: true,
+              files: [{ path: filePath, filename: 'track.mp3', size_bytes: FAKE_MP3_HEADER.length, ext: 'mp3' }],
+              truncated_count: 0,
+            };
           },
         },
-      }),
-      (err) =>
-        err.code === DOWNLOADER_ERROR_CODES.PRIVATE_OR_RESTRICTED &&
-        /Autentikasi RapidAPI/i.test(err.userMessage),
-    );
-
-    await assert.rejects(
-      downloadMediaFromUrl({
-        url: 'https://www.tiktok.com/@a/video/2',
-        config,
-        deps: {
-          lookupFn: publicLookupStub,
-          axiosClient: {
-            async get() {
-              const err = new Error('Quota Exceeded');
-              err.response = { status: 429, data: { message: 'Monthly quota exceeded' } };
-              throw err;
-            },
-          },
-        },
-      }),
-      (err) => err.code === DOWNLOADER_ERROR_CODES.RATE_LIMITED && /Kuota RapidAPI/i.test(err.userMessage),
-    );
-
-    await assert.rejects(
-      downloadMediaFromUrl({
-        url: 'https://www.instagram.com/reel/Timeout1/',
-        config,
-        deps: {
-          lookupFn: publicLookupStub,
-          axiosClient: {
-            async get() {
-              const err = new Error('timeout');
-              err.code = 'ECONNABORTED';
-              throw err;
-            },
-          },
-        },
-      }),
-      (err) => err.code === DOWNLOADER_ERROR_CODES.TIMEOUT,
-    );
-  });
-
-  it('enforces max concurrency limit without leaking active slots', async () => {
-    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'midwave-test-conc-'));
-    let releaseFirst;
-    const gate = new Promise((resolve) => {
-      releaseFirst = resolve;
-    });
-
-    try {
-      const config = {
-        ...getDownloaderConfig({ DOWNLOAD_MAX_CONCURRENT: '1', RAPIDAPI_KEY: 'key-1' }),
-        tempBaseDir: tempRoot,
-      };
-
-      const slowAxios = {
-        async get(targetUrl) {
-          if (String(targetUrl).includes('rapidapi.com')) {
-            await gate;
-            return { data: { url: 'https://v16.tiktokcdn.com/ok.mp4' } };
-          }
-          return { status: 200, headers: {}, data: Readable.from(FAKE_MP4_HEADER) };
-        },
-      };
-
-      const firstPromise = downloadMediaFromUrl({
-        url: 'https://www.tiktok.com/@creator/video/123',
-        config,
-        deps: { lookupFn: publicLookupStub, axiosClient: slowAxios },
       });
 
-      await new Promise((r) => setTimeout(r, 15));
+      assert.equal(audioResult.platformLabel, 'SoundCloud');
+      assert.equal(audioResult.mediaType, 'Audio');
+      assert.equal(audioResult.fileFormat, 'MP3');
+      assert.equal(audioResult.items[0].fileName, 'soundcloud_audio.mp3');
+      await cleanupTempDir(audioResult.jobDir);
 
+      // Rejects masqueraded HTML file even if named .mp4
       await assert.rejects(
         downloadMediaFromUrl({
-          url: 'https://www.tiktok.com/@creator/video/456',
+          url: 'https://vimeo.com/123456',
           config,
-          deps: { lookupFn: publicLookupStub, axiosClient: slowAxios },
-        }),
-        (err) => err.code === DOWNLOADER_ERROR_CODES.BUSY,
-      );
-
-      releaseFirst();
-      const firstResult = await firstPromise;
-      await cleanupTempDir(firstResult.jobDir);
-      assert.equal(getActiveDownloadCount(), 0);
-    } finally {
-      releaseFirst?.();
-      await fs.rm(tempRoot, { recursive: true, force: true });
-    }
-  });
-
-  it('normalizes tracking query params, rejects login walls, and handles object-map / JSON-string RapidAPI schemas', () => {
-    const igClean = validateMediaUrl(
-      'https://www.instagram.com/reel/AbCdEf123/?igsh=MzRlODBiNWFlZA==&utm_source=ig_web_copy_link',
-    );
-    assert.equal(igClean.normalizedUrl, 'https://www.instagram.com/reel/AbCdEf123/');
-
-    const ttClean = validateMediaUrl(
-      'https://www.tiktok.com/@midwave/video/7400000000000000000?_t=8pABC&_r=1',
-    );
-    assert.equal(ttClean.normalizedUrl, 'https://www.tiktok.com/@midwave/video/7400000000000000000');
-
-    assert.throws(
-      () => validateMediaUrl('https://www.instagram.com/accounts/login/?next=/reel/123/'),
-      (err) => err.code === DOWNLOADER_ERROR_CODES.PRIVATE_OR_RESTRICTED,
-    );
-
-    const fromMap = parseRapidApiResponse(
-      JSON.stringify({
-        success: true,
-        links: {
-          hd_no_watermark: 'https://v16.tiktokcdn.com/hd.mp4',
-          sd: 'https://v16.tiktokcdn.com/sd.mp4',
-          audio: 'https://v16.tiktokcdn.com/audio.mp3',
-        },
-      }),
-    );
-    assert.equal(fromMap.mode, 'video');
-    assert.equal(fromMap.candidates[0].url, 'https://v16.tiktokcdn.com/hd.mp4');
-
-    assert.throws(
-      () => parseRapidApiResponse({ success: false, message: 'Invalid API key' }),
-      (err) => err.code === DOWNLOADER_ERROR_CODES.PRIVATE_OR_RESTRICTED,
-    );
-
-    assert.throws(
-      () => parseRapidApiResponse({ success: false, message: 'Unsupported URL' }),
-      (err) => err.code === DOWNLOADER_ERROR_CODES.UNSUPPORTED_PLATFORM,
-    );
-  });
-
-  it('maps missing-route 404 to EXTRACTION_FAILED and never leaks API key or signed CDN tokens in logs', async () => {
-    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'midwave-test-logging-'));
-    const secretKey = 'SUPER_SECRET_RAPIDAPI_KEY_12345';
-    const warnLogs = [];
-    const safeLogger = {
-      warn: (msg) => warnLogs.push(String(msg)),
-    };
-
-    try {
-      const customConfig = {
-        ...getDownloaderConfig({
-          RAPIDAPI_KEY: secretKey,
-          RAPIDAPI_ENDPOINT: 'https://social-media-video-downloader.p.rapidapi.com/custom/wrong',
-        }),
-        tempBaseDir: tempRoot,
-      };
-
-      await assert.rejects(
-        downloadMediaFromUrl({
-          url: 'https://www.tiktok.com/@creator/video/123',
-          config: customConfig,
           deps: {
             lookupFn: publicLookupStub,
-            logger: safeLogger,
-            axiosClient: {
-              async get() {
-                const err = new Error('Not Found https://cdn.tiktokcdn.com/video.mp4?token=SIGNED_SECRET_999');
-                err.response = {
-                  status: 404,
-                  data: { message: "Endpoint '/custom/wrong' does not exist" },
-                };
-                throw err;
-              },
-            },
-          },
-        }),
-        (err) => err.code === DOWNLOADER_ERROR_CODES.EXTRACTION_FAILED,
-      );
-
-      assert.equal(warnLogs.length, 1);
-      assert.equal(warnLogs[0].includes(secretKey), false);
-      assert.equal(warnLogs[0].includes('SIGNED_SECRET_999'), false);
-    } finally {
-      await fs.rm(tempRoot, { recursive: true, force: true });
-    }
-  });
-
-  it('uses GET /tiktok/v3/post/details for TikTok (4 variants, H.264 priority, non-H.264 fallback, playAddr fallback, metadata, and error/HTML/size/cleanup checks)', async () => {
-    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'midwave-test-ttv3-'));
-
-    const fourVariantResponse = {
-      error: null,
-      contents: [
-        {
-          videos: [
-            {
-              label: '1080p_hevc',
-              url: 'https://v16.tiktokcdn.com/1080_h265.mp4?x-expires=999',
-              repId: 'rep-hevc-1080',
-              metadata: {
-                mime_type: 'video/mp4',
-                content_length: 4_000_000,
-                width: 1080,
-                height: 1920,
-                has_audio: true,
-                CodecType: 'h265',
-                Format: 'mp4',
-              },
-            },
-            {
-              label: '720p_h264',
-              url: 'https://v16.tiktokcdn.com/720_h264.mp4?x-expires=999',
-              repId: 'rep-h264-720',
-              metadata: {
-                mime_type: 'video/mp4',
-                content_length: 2_500_000,
-                width: 720,
-                height: 1280,
-                has_audio: true,
-                CodecType: 'h264',
-                Format: 'mp4',
-              },
-            },
-            {
-              label: '540p_h264',
-              url: 'https://v16.tiktokcdn.com/540_h264.mp4?x-expires=999',
-              repId: 'rep-h264-540',
-              metadata: {
-                mime_type: 'video/mp4',
-                content_length: 1_500_000,
-                width: 540,
-                height: 960,
-                has_audio: true,
-                CodecType: 'h264',
-                Format: 'mp4',
-              },
-            },
-            {
-              label: '720p_hevc',
-              url: 'https://v16.tiktokcdn.com/720_h265.mp4?x-expires=999',
-              repId: 'rep-hevc-720',
-              metadata: {
-                mime_type: 'video/mp4',
-                content_length: 2_000_000,
-                width: 720,
-                height: 1280,
-                has_audio: true,
-                CodecType: 'hevc',
-                Format: 'mp4',
-              },
-            },
-          ],
-          renderableAudios: [{ url: 'https://v16.tiktokcdn.com/audio_only.mp3' }],
-        },
-      ],
-      metadata: {
-        title: 'TikTok V3 Demo Caption',
-        author: { user: { uniqueId: 'midwave_tt', nickname: 'Midwave TT' } },
-        thumbnailUrl: 'https://p16.tiktokcdn.com/thumb.jpg',
-      },
-      additionalData: {
-        video: {
-          playAddr: 'https://v16.tiktokcdn.com/play_addr_fallback.mp4',
-          downloadAddr: 'https://v16.tiktokcdn.com/download_addr_ignored_dup.mp4',
-          cover: 'https://p16.tiktokcdn.com/cover.jpg',
-          duration: 15,
-        },
-        stats: { playCount: 1000 },
-      },
-    };
-
-    try {
-      // 1 & 2. 4 variants -> H.264 720p selected first, only 1 attachment sent, no audio/downloadAddr duplication
-      const parsed4 = parseRapidApiResponse(fourVariantResponse);
-      assert.equal(parsed4.mode, 'video');
-      assert.equal(parsed4.title, 'TikTok V3 Demo Caption');
-      assert.equal(parsed4.author, 'midwave_tt');
-      assert.match(parsed4.candidates[0].url, /720_h264\.mp4/);
-      assert.equal(parsed4.candidates.some((c) => c.url.includes('audio_only')), false);
-      assert.equal(parsed4.candidates.some((c) => c.url.includes('download_addr_ignored_dup')), false);
-
-      const config = {
-        ...getDownloaderConfig({ RAPIDAPI_KEY: 'tt-live-key', DOWNLOAD_MAX_SIZE_MB: '1' }),
-        tempBaseDir: tempRoot,
-      };
-
-      let capturedRequest = null;
-      const ttResult = await downloadMediaFromUrl({
-        url: 'https://www.tiktok.com/@midwave_tt/video/7400000000000000000',
-        config,
-        deps: {
-          lookupFn: publicLookupStub,
-          axiosClient: {
-            async get(targetUrl, opts) {
-              if (targetUrl.includes('rapidapi.com')) {
-                capturedRequest = { url: targetUrl, params: opts.params, headers: opts.headers };
-                return { data: fourVariantResponse };
-              }
+            ytdlpRunner: async ({ jobDir }) => {
+              const fakePath = path.join(jobDir, 'bad.mp4');
+              await fs.writeFile(fakePath, Buffer.from('<html>not a video</html>'));
               return {
-                status: 200,
-                headers: { 'content-type': 'video/mp4' },
-                data: Readable.from(FAKE_MP4_HEADER),
+                ok: true,
+                extractor: 'Vimeo',
+                files: [{ path: fakePath, filename: 'bad.mp4', size_bytes: 24, ext: 'mp4' }],
               };
             },
           },
-        },
-      });
-
-      assert.ok(capturedRequest.url.endsWith(DEFAULT_TIKTOK_RAPIDAPI_PATH));
-      assert.equal(
-        capturedRequest.params.url,
-        'https://www.tiktok.com/@midwave_tt/video/7400000000000000000',
-      );
-      assert.equal(ttResult.items.length, 1);
-      assert.equal(ttResult.author, 'midwave_tt');
-      assert.equal(ttResult.title, 'TikTok V3 Demo Caption');
-      assert.equal(ttResult.items[0].mime, 'video/mp4');
-      await cleanupTempDir(ttResult.jobDir);
-
-      // 3. Fallback when H.264 is unavailable -> selects valid non-H.264 MP4
-      const nonH264 = parseRapidApiResponse({
-        error: null,
-        contents: [
-          {
-            videos: [
-              {
-                label: '1080p_hevc',
-                url: 'https://v16.tiktokcdn.com/only_hevc.mp4',
-                metadata: { mime_type: 'video/mp4', width: 1080, height: 1920, CodecType: 'h265', Format: 'mp4' },
-              },
-            ],
-          },
-        ],
-      });
-      assert.equal(nonH264.candidates[0].url, 'https://v16.tiktokcdn.com/only_hevc.mp4');
-
-      // 4. Fallback to additionalData.video.playAddr when contents[0].videos is empty
-      const playAddrOnly = parseRapidApiResponse({
-        error: null,
-        contents: [{ videos: [] }],
-        additionalData: {
-          video: {
-            playAddr: 'https://v16.tiktokcdn.com/play_addr_only.mp4',
-            downloadAddr: 'https://v16.tiktokcdn.com/download_addr_dup.mp4',
-          },
-        },
-      });
-      assert.equal(playAddrOnly.candidates.length, 1);
-      assert.equal(playAddrOnly.candidates[0].url, 'https://v16.tiktokcdn.com/play_addr_only.mp4');
-
-      // 5. Error NOT_FOUND when no valid video is present
-      assert.throws(
-        () =>
-          parseRapidApiResponse({
-            error: null,
-            contents: [{ videos: [] }],
-            additionalData: { video: {} },
-          }),
-        (err) => err.code === DOWNLOADER_ERROR_CODES.NOT_FOUND,
-      );
-
-      // 6. Reject HTML masquerading as video
-      await assert.rejects(
-        downloadMediaFromUrl({
-          url: 'https://www.tiktok.com/@midwave_tt/video/7400000000000000001',
-          config,
-          deps: {
-            lookupFn: publicLookupStub,
-            axiosClient: {
-              async get(targetUrl) {
-                if (targetUrl.includes('rapidapi.com')) return { data: fourVariantResponse };
-                return {
-                  status: 200,
-                  headers: { 'content-type': 'text/html' },
-                  data: Readable.from(Buffer.from('<html>blocked</html>')),
-                };
-              },
-            },
-          },
         }),
         (err) => err.code === DOWNLOADER_ERROR_CODES.UNSUPPORTED_MEDIA,
       );
 
-      // 7. Reject actual streamed file exceeding limit even if metadata.content_length lied
-      const oversizedPayload = Buffer.concat([FAKE_MP4_HEADER, Buffer.alloc(1.2 * 1024 * 1024)]);
+      // Rejects files exceeding guild upload limit and cleans up temp dir
       await assert.rejects(
         downloadMediaFromUrl({
-          url: 'https://www.tiktok.com/@midwave_tt/video/7400000000000000002',
-          config,
+          url: 'https://www.tiktok.com/@user/video/999',
+          config: { ...config, maxSizeMb: 1 },
           deps: {
             lookupFn: publicLookupStub,
-            axiosClient: {
-              async get(targetUrl) {
-                if (targetUrl.includes('rapidapi.com')) return { data: fourVariantResponse };
-                return {
-                  status: 200,
-                  headers: { 'content-type': 'video/mp4' },
-                  data: Readable.from(oversizedPayload),
-                };
-              },
+            ytdlpRunner: async ({ jobDir }) => {
+              const bigPath = path.join(jobDir, 'huge.mp4');
+              await fs.writeFile(bigPath, Buffer.concat([FAKE_MP4_HEADER, Buffer.alloc(1.2 * 1024 * 1024)]));
+              return {
+                ok: true,
+                extractor: 'TikTok',
+                files: [{ path: bigPath }],
+              };
             },
           },
         }),
         (err) => err.code === DOWNLOADER_ERROR_CODES.FILE_TOO_LARGE,
       );
 
-      // 8. Verify temp dir cleanup
+      assert.deepEqual(await fs.readdir(tempRoot), []);
+      assert.equal(getActiveDownloadCount(), 0);
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('handles missing dependencies, private/age/geo errors, unsupported websites, and subprocess timeout', async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'midwave-dl-err-'));
+    try {
+      const config = {
+        ...getDownloaderConfig({ DOWNLOAD_TIMEOUT_SECONDS: '5' }),
+        tempBaseDir: tempRoot,
+      };
+
+      // Missing Python binary (ENOENT)
+      await assert.rejects(
+        runYtDlpDownload({
+          url: 'https://www.youtube.com/watch?v=123',
+          jobDir: tempRoot,
+          maxBytes: 1024 * 1024,
+          spawnFn: createFakeSpawn({ emitError: Object.assign(new Error('spawn python ENOENT'), { code: 'ENOENT' }) }),
+        }),
+        (err) => err.code === DOWNLOADER_ERROR_CODES.MISSING_DEPENDENCY,
+      );
+
+      // Missing yt-dlp / FFmpeg reported by worker JSON
+      await assert.rejects(
+        runYtDlpDownload({
+          url: 'https://www.youtube.com/watch?v=123',
+          jobDir: tempRoot,
+          maxBytes: 1024 * 1024,
+          spawnFn: createFakeSpawn({
+            exitCode: 1,
+            stdoutLines: ['RESULT:{"ok":false,"code":"MISSING_DEPENDENCY","message":"FFmpeg tidak ditemukan"}'],
+          }),
+        }),
+        (err) => err.code === DOWNLOADER_ERROR_CODES.MISSING_DEPENDENCY,
+      );
+
+      // Private / unsupported / not found worker errors
+      for (const code of ['PRIVATE_OR_RESTRICTED', 'UNSUPPORTED_PLATFORM', 'NOT_FOUND', 'RATE_LIMITED', 'NETWORK_ERROR']) {
+        await assert.rejects(
+          runYtDlpDownload({
+            url: 'https://www.youtube.com/watch?v=123',
+            jobDir: tempRoot,
+            maxBytes: 1024 * 1024,
+            spawnFn: createFakeSpawn({
+              exitCode: 1,
+              stdoutLines: [`RESULT:${JSON.stringify({ ok: false, code, message: `Err ${code}` })}`],
+            }),
+          }),
+          (err) => err.code === DOWNLOADER_ERROR_CODES[code],
+        );
+      }
+
+      // Timeout terminates child process and cleans temp directory
+      let killedChild = false;
+      const hangingSpawn = () => {
+        const child = new EventEmitter();
+        child.pid = 99999;
+        child.killed = false;
+        child.stdout = new EventEmitter();
+        child.stderr = new EventEmitter();
+        child.kill = () => {
+          child.killed = true;
+          killedChild = true;
+          return true;
+        };
+        return child;
+      };
+
+      await assert.rejects(
+        downloadMediaFromUrl({
+          url: 'https://www.youtube.com/watch?v=timeout',
+          config: { ...config, timeoutMs: 40 },
+          deps: {
+            lookupFn: publicLookupStub,
+            spawnFn: hangingSpawn,
+          },
+        }),
+        (err) => err.code === DOWNLOADER_ERROR_CODES.TIMEOUT,
+      );
+
+      assert.equal(killedChild, true);
       assert.deepEqual(await fs.readdir(tempRoot), []);
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
   });
 
-  it('extracts Instagram shortcodes (/p/, /reel/, /tv/) and uses /instagram/v3/media/post/details for single image DfrczbZiueP, carousel, and video while ignoring polaris timeline edges', async () => {
-    assert.equal(extractInstagramShortcode('https://www.instagram.com/p/DfrczbZiueP/?igsh=abc'), 'DfrczbZiueP');
-    assert.equal(extractInstagramShortcode('https://www.instagram.com/reel/DfrczbZiueP/'), 'DfrczbZiueP');
-    assert.equal(extractInstagramShortcode('https://www.instagram.com/tv/C9tv123/'), 'C9tv123');
-    assert.equal(extractInstagramShortcode('https://www.instagram.com/stories/user/123'), null);
+  it('queues concurrent jobs cleanly and rejects overflow with BUSY without leaking slots', async () => {
+    const queue = new DownloadQueue({ maxConcurrent: 1, maxQueueSize: 1 });
+    let releaseFirst;
+    const gate = new Promise((resolve) => {
+      releaseFirst = resolve;
+    });
+    const order = [];
+    const queuedPositions = [];
 
-    // 1. Single image response matching live Get-Instagram-Media-Post-Details payload (including polaris timeline edges distraction)
-    const singleParsed = parseRapidApiResponse({
-      error: null,
-      contents: [
-        {
-          images: [
-            {
-              label: '640x761',
-              url: 'https://scontent.cdninstagram.com/thumb_640.jpg',
-              metadata: { width: 640, height: 761, mime_type: 'image/jpeg' },
-            },
-            {
-              label: '1184x1408',
-              url: 'https://scontent.cdninstagram.com/full_1184.jpg',
-              metadata: { width: 1184, height: 1408, mime_type: 'image/jpeg' },
-            },
-          ],
-        },
-      ],
-      metadata: {
-        title: 'Live Shot DfrczbZiueP',
-        author: { username: 'midwave_official' },
-      },
-      additionalData: {
-        media_type: 1,
-        image_versions2: {
-          candidates: [
-            { url: 'https://scontent.cdninstagram.com/alt_highres.jpg', width: 1184, height: 1408 },
-          ],
-        },
-        polaris_ordered_timeline_connection: {
-          edges: [
-            {
-              node: {
-                url: 'https://scontent.cdninstagram.com/unrelated_feed_post.jpg',
-              },
-            },
-          ],
-        },
-      },
+    const first = queue.enqueue(async () => {
+      order.push('start-1');
+      await gate;
+      order.push('end-1');
+      return 'res-1';
     });
 
-    assert.equal(singleParsed.mode, 'image');
-    assert.equal(singleParsed.title, 'Live Shot DfrczbZiueP');
-    assert.equal(singleParsed.author, 'midwave_official');
-    assert.equal(singleParsed.candidates[0].url, 'https://scontent.cdninstagram.com/full_1184.jpg');
-    assert.equal(
-      singleParsed.candidates.some((c) => c.url.includes('unrelated_feed_post')),
-      false,
+    const second = queue.enqueue(
+      async () => {
+        order.push('start-2');
+        return 'res-2';
+      },
+      {
+        onQueued: (pos) => queuedPositions.push(pos),
+      },
     );
 
-    // 2. End-to-end single image download with shortcode DfrczbZiueP -> 1 .jpg attachment (no duplicate fallback attachment)
-    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'midwave-test-igv3-'));
-    try {
-      const config = {
-        ...getDownloaderConfig({ RAPIDAPI_KEY: 'ig-live-key' }),
-        tempBaseDir: tempRoot,
-      };
-      let capturedRequest = null;
+    // 3rd request exceeds maxQueueSize=1 -> BUSY immediately
+    await assert.rejects(
+      queue.enqueue(async () => 'res-3'),
+      (err) => err.code === DOWNLOADER_ERROR_CODES.BUSY,
+    );
 
-      const igSingleResult = await downloadMediaFromUrl({
-        url: 'https://www.instagram.com/p/DfrczbZiueP/?igsh=xyz',
-        config,
-        deps: {
-          lookupFn: publicLookupStub,
-          axiosClient: {
-            async get(targetUrl, opts) {
-              if (targetUrl.includes('rapidapi.com')) {
-                capturedRequest = { url: targetUrl, params: opts.params, headers: opts.headers };
-                return {
-                  data: {
-                    error: null,
-                    contents: [
-                      {
-                        images: [
-                          {
-                            label: '1184x1408',
-                            url: 'https://scontent.cdninstagram.com/full_1184.jpg',
-                            metadata: { width: 1184, height: 1408, mime_type: 'image/jpeg' },
-                          },
-                        ],
-                      },
-                    ],
-                    metadata: { title: 'Post DfrczbZiueP', author: { username: 'creator_ig' } },
-                    additionalData: {
-                      media_type: 1,
-                      image_versions2: {
-                        candidates: [{ url: 'https://scontent.cdninstagram.com/alt_highres.jpg' }],
-                      },
-                    },
-                  },
-                };
-              }
-              return {
-                status: 200,
-                headers: { 'content-type': 'image/jpeg' },
-                data: Readable.from(FAKE_JPEG_HEADER),
-              };
-            },
-          },
-        },
-      });
+    assert.equal(queue.getActiveCount(), 1);
+    assert.equal(queue.getPendingCount(), 1);
+    assert.deepEqual(queuedPositions, [1]);
 
-      assert.ok(capturedRequest.url.endsWith(DEFAULT_INSTAGRAM_RAPIDAPI_PATH));
-      assert.equal(capturedRequest.url.includes('/smvd/get/'), false);
-      assert.equal(capturedRequest.params.shortcode, 'DfrczbZiueP');
-      assert.equal(capturedRequest.params.renderableFormats, '720p');
-      assert.equal(igSingleResult.items.length, 1);
-      assert.equal(igSingleResult.items[0].format, 'JPG');
-      assert.equal(igSingleResult.items[0].mime, 'image/jpeg');
-      assert.equal(igSingleResult.items[0].fileName.endsWith('.jpg'), true);
-      await cleanupTempDir(igSingleResult.jobDir);
-
-      // 3. Instagram Carousel (multiple items in contents) -> multiple .jpg attachments
-      const igCarouselResult = await downloadMediaFromUrl({
-        url: 'https://www.instagram.com/p/CarouselPost99/',
-        config,
-        deps: {
-          lookupFn: publicLookupStub,
-          axiosClient: {
-            async get(targetUrl) {
-              if (targetUrl.includes('rapidapi.com')) {
-                return {
-                  data: {
-                    error: null,
-                    contents: [
-                      {
-                        images: [
-                          { label: '1080x1080', url: 'https://scontent.cdninstagram.com/slide1.jpg', metadata: { width: 1080, height: 1080 } },
-                        ],
-                      },
-                      {
-                        images: [
-                          { label: '1080x1080', url: 'https://scontent.cdninstagram.com/slide2.jpg', metadata: { width: 1080, height: 1080 } },
-                        ],
-                      },
-                    ],
-                    metadata: { title: 'Carousel IG', author: { username: 'carousel_user' } },
-                  },
-                };
-              }
-              return {
-                status: 200,
-                headers: { 'content-type': 'image/jpeg' },
-                data: Readable.from(FAKE_JPEG_HEADER),
-              };
-            },
-          },
-        },
-      });
-
-      assert.equal(igCarouselResult.items.length, 2);
-      assert.equal(igCarouselResult.items[0].fileName, 'instagram_slide_1.jpg');
-      assert.equal(igCarouselResult.items[1].fileName, 'instagram_slide_2.jpg');
-      await cleanupTempDir(igCarouselResult.jobDir);
-
-      // 4. Instagram Video (contents[].videos[] / renderableVideos[]) -> .mp4 attachment
-      const igVideoResult = await downloadMediaFromUrl({
-        url: 'https://www.instagram.com/reel/ReelVideo99/',
-        config,
-        deps: {
-          lookupFn: publicLookupStub,
-          axiosClient: {
-            async get(targetUrl) {
-              if (targetUrl.includes('rapidapi.com')) {
-                return {
-                  data: {
-                    error: null,
-                    contents: [
-                      {
-                        videos: [
-                          { label: '720p', url: 'https://scontent.cdninstagram.com/reel_720.mp4', metadata: { width: 720, height: 1280, mime_type: 'video/mp4' } },
-                        ],
-                        images: [
-                          { label: '720x1280', url: 'https://scontent.cdninstagram.com/reel_cover.jpg' },
-                        ],
-                      },
-                    ],
-                    metadata: { title: 'Reel Video', author: { username: 'reel_creator' } },
-                  },
-                };
-              }
-              return {
-                status: 200,
-                headers: { 'content-type': 'video/mp4' },
-                data: Readable.from(FAKE_MP4_HEADER),
-              };
-            },
-          },
-        },
-      });
-
-      assert.equal(igVideoResult.items.length, 1);
-      assert.equal(igVideoResult.items[0].format, 'MP4');
-      assert.equal(igVideoResult.items[0].mime, 'video/mp4');
-      assert.equal(igVideoResult.items[0].fileName.endsWith('.mp4'), true);
-      await cleanupTempDir(igVideoResult.jobDir);
-    } finally {
-      await fs.rm(tempRoot, { recursive: true, force: true });
-    }
+    releaseFirst();
+    assert.equal(await first, 'res-1');
+    assert.equal(await second, 'res-2');
+    assert.deepEqual(order, ['start-1', 'end-1', 'start-2']);
+    assert.equal(queue.getActiveCount(), 0);
+    assert.equal(queue.getPendingCount(), 0);
   });
 });
 
-describe('Downloader — Discord /media action:download Command & Cooldown Integration', () => {
-  it('registers /media with action:download and optional url option cleanly', () => {
+describe('Downloader — Discord Commands (/media action:download & !download) & Cooldown', () => {
+  it('registers /media with action:download and parses !download / !dl with optional audio flag', () => {
     const json = mediaData.toJSON();
     assert.equal(json.name, 'media');
-    assert.equal(json.options[0].name, 'action');
-    assert.equal(json.options[0].required, true);
     assert.ok(json.options[0].choices.some((c) => c.value === 'download'));
-    const urlOption = json.options.find((o) => o.name === 'url');
-    assert.ok(urlOption);
-    assert.equal(urlOption.required, false);
     assert.equal(typeof mediaCommand.execute, 'function');
+    assert.equal(typeof downloadCommand.execute, 'function');
+
+    assert.deepEqual(parsePrefixInvocation('!download https://www.youtube.com/watch?v=123'), {
+      commandName: 'download',
+      subcommand: null,
+      options: { url: 'https://www.youtube.com/watch?v=123' },
+    });
+    assert.deepEqual(parsePrefixInvocation('!dl audio https://soundcloud.com/a/b'), {
+      commandName: 'download',
+      subcommand: null,
+      options: { url: 'https://soundcloud.com/a/b', mode: 'audio' },
+    });
+    assert.deepEqual(parsePrefixInvocation('!download https://youtu.be/123 mp3'), {
+      commandName: 'download',
+      subcommand: null,
+      options: { url: 'https://youtu.be/123', mode: 'audio' },
+    });
+    assert.ok(parsePrefixInvocation('!download')?.error);
   });
 
-  it('replies ephemerally when url is omitted on /media action:download', async () => {
+  it('replies ephemerally on missing or unsafe URL without deferring', async () => {
     const missingUrl = createMockDownloadInteraction({ url: null });
     await executeDownload(missingUrl);
     assert.equal(missingUrl.deferred, false);
     assert.equal(missingUrl.replied, true);
     assert.equal(missingUrl.getEvents()[0].payload.flags, MessageFlags.Ephemeral);
-  });
 
-  it('replies ephemerally on invalid or unsupported URL (including Threads) without deferring', async () => {
-    const badHost = createMockDownloadInteraction({ url: 'https://example.com/file.mp4' });
-    await executeDownload(badHost);
-    assert.equal(badHost.deferred, false);
-    assert.equal(badHost.replied, true);
-    assert.equal(badHost.getEvents()[0].payload.flags, MessageFlags.Ephemeral);
-    assert.match(badHost.getEvents()[0].payload.embeds[0].data.description, /Platform tidak didukung/i);
-
-    const threadsHost = createMockDownloadInteraction({ url: 'https://www.threads.net/@zuck/post/123' });
-    await executeDownload(threadsHost);
-    assert.equal(threadsHost.deferred, false);
-    assert.match(threadsHost.getEvents()[0].payload.embeds[0].data.description, /Threads.*belum tersedia/i);
-  });
-
-  it('fails fast ephemerally before deferReply when RAPIDAPI_KEY is unconfigured', async () => {
-    const interaction = createMockDownloadInteraction({
-      url: 'https://www.instagram.com/reel/Cop84x6u7CP/',
-    });
-
-    await executeDownload(interaction, {
-      config: getDownloaderConfig({}),
-    });
-
-    assert.equal(interaction.deferred, false);
-    assert.equal(interaction.replied, true);
-    const reply = interaction.getEvents().find((e) => e.type === 'reply').payload;
-    assert.equal(reply.flags, MessageFlags.Ephemeral);
-    assert.equal(reply.embeds[0].data.title, 'Downloader Belum Dikonfigurasi');
+    const unsafeHost = createMockDownloadInteraction({ url: 'https://127.0.0.1/video.mp4' });
+    await executeDownload(unsafeHost);
+    assert.equal(unsafeHost.deferred, false);
+    assert.equal(unsafeHost.replied, true);
+    assert.equal(unsafeHost.getEvents()[0].payload.flags, MessageFlags.Ephemeral);
+    assert.match(unsafeHost.getEvents()[0].payload.embeds[0].data.description, /tidak diizinkan/i);
   });
 
   it('defers, uploads attachment with Midwave embed, and deletes temp dir afterwards', async () => {
     const jobDir = await createJobTempDir();
-    const mediaPath = path.join(jobDir, 'ig_slide_1.png');
-    await fs.writeFile(mediaPath, FAKE_PNG_HEADER);
+    const mediaPath = path.join(jobDir, 'youtube_video.mp4');
+    await fs.writeFile(mediaPath, FAKE_MP4_HEADER);
 
     const interaction = createMockDownloadInteraction({
-      url: 'https://www.instagram.com/p/CarouselPost1/',
+      url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
       userId: 'u-999',
     });
 
     await executeDownload(interaction, {
-      config: getDownloaderConfig({ RAPIDAPI_KEY: 'key-1' }),
+      config: getDownloaderConfig({}),
       downloadMedia: async () => ({
         jobDir,
-        platform: PLATFORMS.INSTAGRAM,
-        platformLabel: 'Instagram',
-        sourceUrl: 'https://www.instagram.com/p/CarouselPost1/',
-        provider: 'rapidapi',
+        platform: PLATFORMS.YOUTUBE,
+        platformLabel: 'YouTube',
+        sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        provider: 'yt-dlp',
+        title: 'Demo Video',
+        author: 'Midwave',
         items: [
           {
             filePath: mediaPath,
-            fileName: 'ig_slide_1.png',
-            sizeBytes: FAKE_PNG_HEADER.length,
-            kind: 'image',
-            mime: 'image/png',
-            format: 'PNG',
+            fileName: 'youtube_video.mp4',
+            sizeBytes: FAKE_MP4_HEADER.length,
+            kind: 'video',
+            mime: 'video/mp4',
+            format: 'MP4',
           },
         ],
         truncatedCount: 0,
-        mediaType: 'Image',
-        fileFormat: 'PNG',
+        mediaType: 'Video',
+        fileFormat: 'MP4',
         formattedSize: '16 B',
       }),
     });
@@ -1137,9 +704,10 @@ describe('Downloader — Discord /media action:download Command & Cooldown Integ
 
     const finalPayload = edits[1].payload;
     assert.equal(finalPayload.files.length, 1);
-    assert.equal(finalPayload.files[0].name, 'ig_slide_1.png');
+    assert.equal(finalPayload.files[0].name, 'youtube_video.mp4');
     assert.equal(finalPayload.embeds[0].data.title, 'MIDWAVE MEDIA DOWNLOADER');
-    assert.match(finalPayload.embeds[0].data.description, /Instagram/);
+    assert.match(finalPayload.embeds[0].data.description, /YouTube/);
+    assert.match(finalPayload.embeds[0].data.description, /Demo Video/);
     assert.match(finalPayload.embeds[0].data.description, /<@u-999>/);
 
     await assert.rejects(fs.stat(jobDir));
@@ -1166,13 +734,13 @@ describe('Downloader — Discord /media action:download Command & Cooldown Integ
     };
 
     await executeDownload(interaction, {
-      config: getDownloaderConfig({ RAPIDAPI_KEY: 'key-1' }),
+      config: getDownloaderConfig({}),
       downloadMedia: async () => ({
         jobDir,
         platform: PLATFORMS.INSTAGRAM,
         platformLabel: 'Instagram',
         sourceUrl: 'https://www.instagram.com/reel/TooBig123/',
-        provider: 'rapidapi',
+        provider: 'yt-dlp',
         items: [
           {
             filePath: mediaPath,
@@ -1200,7 +768,7 @@ describe('Downloader — Discord /media action:download Command & Cooldown Integ
   it('enforces dedicated /media action:download cooldown inside InteractionHandler', async () => {
     let now = 10_000;
     const cooldowns = new CooldownManager(2_500, () => now);
-    const app = await createBotApp({ cooldowns });
+    const app = await createBotApp({ cooldowns, skipTempCleanup: true });
     app.commandHandler.commands.set('media', {
       data: mediaData,
       async execute(inter) {
@@ -1222,5 +790,6 @@ describe('Downloader — Discord /media action:download Command & Cooldown Integ
     const third = createMockDownloadInteraction({ url: 'https://www.tiktok.com/@a/video/3', userId: 'u-cd' });
     await app.interactionHandler.handle(third);
     assert.equal(third.getEvents()[0].payload.content, 'ok');
+    app.shutdown();
   });
 });

@@ -1,206 +1,30 @@
 import crypto from 'node:crypto';
 import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import dns from 'node:dns/promises';
 import { Readable } from 'node:stream';
-import axios from 'axios';
 import { DOWNLOADER_ERROR_CODES, DownloaderError } from './errors.js';
-import { assertSafeRemoteHost, createPinnedHttpsAgent } from './urlValidator.js';
+import { assertInsideDir, cleanupTempDir, createJobTempDir } from './cleanup.js';
+import {
+  detectMediaSignature,
+  formatBytes,
+  inspectMediaFile,
+  sanitizeFileBaseName,
+} from './media.js';
+import { assertSafeRemoteHost, createPinnedHttpsAgent } from './platform.js';
 
-export { createPinnedHttpsAgent };
+export {
+  assertInsideDir,
+  cleanupTempDir,
+  createJobTempDir,
+  createPinnedHttpsAgent,
+  detectMediaSignature,
+  formatBytes,
+  inspectMediaFile,
+  sanitizeFileBaseName,
+};
 
-/**
- * Creates a unique, isolated temporary directory for one download job.
- *
- * @param {string} [baseDir]
- * @returns {Promise<string>}
- */
-export async function createJobTempDir(baseDir = os.tmpdir()) {
-  await fs.mkdir(baseDir, { recursive: true });
-  return fs.mkdtemp(path.join(baseDir, 'midwave-dl-'));
-}
-
-/**
- * Safely deletes a job temporary directory and all files inside it.
- *
- * @param {string | null | undefined} jobDir
- * @returns {Promise<void>}
- */
-export async function cleanupTempDir(jobDir) {
-  if (!jobDir || typeof jobDir !== 'string') {
-    return;
-  }
-  try {
-    await fs.rm(jobDir, { recursive: true, force: true });
-  } catch {
-    // Cleanup failures must not mask primary command errors
-  }
-}
-
-/**
- * Produces a safe basename without path traversal or unsafe characters.
- *
- * @param {string} rawName
- * @param {string} [fallbackBase]
- * @returns {string}
- */
-export function sanitizeFileBaseName(rawName, fallbackBase = 'midwave_media') {
-  const base = path
-    .basename(String(rawName || ''))
-    .replace(/\.[^.]+$/, '')
-    .replace(/[^a-zA-Z0-9_-]/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 64);
-
-  return base || fallbackBase;
-}
-
-/**
- * Formats byte sizes for Discord embed display.
- *
- * @param {number} bytes
- * @returns {string}
- */
-export function formatBytes(bytes) {
-  if (!Number.isFinite(bytes) || bytes < 0) {
-    return '0 B';
-  }
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  const kb = bytes / 1024;
-  if (kb < 1024) {
-    return `${kb.toFixed(1)} KB`;
-  }
-  const mb = kb / 1024;
-  return `${mb.toFixed(2).replace(/\.?0+$/, '')} MB`;
-}
-
-/**
- * Detects genuine image or video formats strictly from file header magic bytes.
- * Rejects masqueraded HTML, JSON, archives, or executable binaries.
- *
- * @param {Uint8Array | Buffer} bytes
- * @returns {{ kind: 'video' | 'image', mime: string, ext: string, format: string } | null}
- */
-export function detectMediaSignature(bytes) {
-  if (!bytes || bytes.length < 12) {
-    return null;
-  }
-
-  // JPEG: FF D8 FF
-  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
-    return { kind: 'image', mime: 'image/jpeg', ext: 'jpg', format: 'JPG' };
-  }
-
-  // PNG: 89 50 4E 47 0D 0A 1A 0A
-  if (
-    bytes[0] === 0x89 &&
-    bytes[1] === 0x50 &&
-    bytes[2] === 0x4e &&
-    bytes[3] === 0x47 &&
-    bytes[4] === 0x0d &&
-    bytes[5] === 0x0a &&
-    bytes[6] === 0x1a &&
-    bytes[7] === 0x0a
-  ) {
-    return { kind: 'image', mime: 'image/png', ext: 'png', format: 'PNG' };
-  }
-
-  // GIF: GIF87a or GIF89a
-  if (
-    bytes[0] === 0x47 &&
-    bytes[1] === 0x49 &&
-    bytes[2] === 0x46 &&
-    bytes[3] === 0x38 &&
-    (bytes[4] === 0x37 || bytes[4] === 0x39) &&
-    bytes[5] === 0x61
-  ) {
-    return { kind: 'image', mime: 'image/gif', ext: 'gif', format: 'GIF' };
-  }
-
-  // WebP: RIFF....WEBP
-  if (
-    bytes[0] === 0x52 &&
-    bytes[1] === 0x49 &&
-    bytes[2] === 0x46 &&
-    bytes[3] === 0x46 &&
-    bytes[8] === 0x57 &&
-    bytes[9] === 0x45 &&
-    bytes[10] === 0x42 &&
-    bytes[11] === 0x50
-  ) {
-    return { kind: 'image', mime: 'image/webp', ext: 'webp', format: 'WEBP' };
-  }
-
-  // WebM / Matroska: 1A 45 DF A3
-  if (bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) {
-    return { kind: 'video', mime: 'video/webm', ext: 'webm', format: 'WEBM' };
-  }
-
-  // ISO Base Media File Format (MP4 / MOV): offset 4..7 == 'ftyp'
-  if (bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
-    const brand = Buffer.from(bytes.subarray(8, 12)).toString('ascii');
-    if (brand === 'qt  ') {
-      return { kind: 'video', mime: 'video/quicktime', ext: 'mov', format: 'MOV' };
-    }
-    return { kind: 'video', mime: 'video/mp4', ext: 'mp4', format: 'MP4' };
-  }
-
-  return null;
-}
-
-/**
- * Reads the header of an on-disk file and verifies it is a supported image/video binary.
- *
- * @param {string} filePath
- * @returns {Promise<{ kind: 'video' | 'image', mime: string, ext: string, format: string }>}
- */
-export async function inspectMediaFile(filePath) {
-  const handle = await fs.open(filePath, 'r');
-  try {
-    const header = Buffer.alloc(32);
-    const { bytesRead } = await handle.read(header, 0, header.length, 0);
-    const signature = detectMediaSignature(header.subarray(0, bytesRead));
-    if (!signature) {
-      throw new DownloaderError(
-        DOWNLOADER_ERROR_CODES.UNSUPPORTED_MEDIA,
-        'File yang diunduh bukan format video atau gambar yang valid dan didukung Discord.',
-      );
-    }
-    return signature;
-  } finally {
-    await handle.close();
-  }
-}
-
-/**
- * Ensures a resolved file path remains strictly inside the designated temp job directory.
- *
- * @param {string} jobDir
- * @param {string} targetPath
- */
-export function assertInsideDir(jobDir, targetPath) {
-  const resolvedRoot = path.resolve(jobDir);
-  const resolvedTarget = path.resolve(targetPath);
-  const rootPrefix = resolvedRoot.endsWith(path.sep) ? resolvedRoot : `${resolvedRoot}${path.sep}`;
-  if (!resolvedTarget.startsWith(rootPrefix)) {
-    throw new DownloaderError(
-      DOWNLOADER_ERROR_CODES.UNSAFE_TARGET,
-      'Path file tidak valid terdeteksi di luar direktori sementara.',
-    );
-  }
-}
-
-/**
- * Validates a direct media CDN URL before issuing an HTTP download.
- *
- * @param {string} rawUrl
- * @param {{ lookupFn?: typeof dns.lookup }} [options]
- * @returns {Promise<URL>}
- */
 async function validateMediaStreamTarget(rawUrl, options = {}) {
   const { lookupFn = dns.lookup } = options;
 
@@ -232,13 +56,6 @@ async function validateMediaStreamTarget(rawUrl, options = {}) {
   return { parsed, resolved };
 }
 
-/**
- * Normalizes a header lookup across Fetch Headers and Axios plain header objects.
- *
- * @param {Headers | Record<string, string | string[] | undefined>} headers
- * @param {string} name
- * @returns {string}
- */
 function readHeaderValue(headers, name) {
   if (!headers) return '';
   if (typeof headers.get === 'function') {
@@ -250,8 +67,8 @@ function readHeaderValue(headers, name) {
 }
 
 /**
- * Streams a remote media URL into an isolated temp directory while enforcing byte caps,
- * redirect safety, timeout controls, and binary magic-byte validation.
+ * Streams a remote HTTPS media URL into an isolated temp directory while enforcing byte caps,
+ * redirect SSRF safety, timeout controls, and binary magic-byte validation.
  *
  * @param {{
  *   url: string,
@@ -260,18 +77,9 @@ function readHeaderValue(headers, name) {
  *   maxBytes: number,
  *   timeoutMs: number,
  *   fetchFn?: typeof fetch,
- *   axiosClient?: import('axios').AxiosInstance | typeof import('axios').default,
  *   lookupFn?: typeof dns.lookup,
  *   headers?: Record<string, string>,
  * }} params
- * @returns {Promise<{
- *   filePath: string,
- *   fileName: string,
- *   sizeBytes: number,
- *   kind: 'video' | 'image',
- *   mime: string,
- *   format: string,
- * }>}
  */
 export async function downloadMediaToTempFile(params) {
   const {
@@ -280,8 +88,7 @@ export async function downloadMediaToTempFile(params) {
     fileBaseName = 'media',
     maxBytes,
     timeoutMs,
-    fetchFn = null,
-    axiosClient = null,
+    fetchFn = fetch,
     lookupFn = dns.lookup,
     headers = {},
   } = params;
@@ -293,11 +100,10 @@ export async function downloadMediaToTempFile(params) {
   let statusCode = 0;
   let resHeaders = null;
   let bodyStream = null;
-  let isWebStream = false;
 
   const disposeActiveStream = async () => {
     try {
-      if (isWebStream && bodyStream?.cancel) {
+      if (bodyStream?.cancel) {
         await bodyStream.cancel();
       } else if (bodyStream && typeof bodyStream.destroy === 'function') {
         bodyStream.destroy();
@@ -315,36 +121,17 @@ export async function downloadMediaToTempFile(params) {
     };
 
     for (let hop = 0; hop < 6; hop += 1) {
-      const { parsed, resolved } = await validateMediaStreamTarget(currentUrl, { lookupFn });
+      await validateMediaStreamTarget(currentUrl, { lookupFn });
 
-      if (axiosClient || !fetchFn) {
-        const effectiveAxios = axiosClient || axios;
-        const pinnedAgent = resolved ? createPinnedHttpsAgent(parsed.hostname, resolved) : undefined;
-        const axRes = await effectiveAxios.get(currentUrl, {
-          responseType: 'stream',
-          maxRedirects: 0,
-          validateStatus: () => true,
-          timeout: timeoutMs,
-          headers: requestHeaders,
-          signal: controller.signal,
-          ...(pinnedAgent ? { httpsAgent: pinnedAgent } : {}),
-        });
-        statusCode = axRes.status ?? 200;
-        resHeaders = axRes.headers ?? {};
-        bodyStream = Buffer.isBuffer(axRes.data) ? Readable.from(axRes.data) : axRes.data;
-        isWebStream = false;
-      } else {
-        const fRes = await fetchFn(currentUrl, {
-          method: 'GET',
-          redirect: 'manual',
-          headers: requestHeaders,
-          signal: controller.signal,
-        });
-        statusCode = fRes.status;
-        resHeaders = fRes.headers;
-        bodyStream = fRes.body;
-        isWebStream = true;
-      }
+      const fRes = await fetchFn(currentUrl, {
+        method: 'GET',
+        redirect: 'manual',
+        headers: requestHeaders,
+        signal: controller.signal,
+      });
+      statusCode = fRes.status;
+      resHeaders = fRes.headers;
+      bodyStream = fRes.body;
 
       if (statusCode >= 300 && statusCode < 400) {
         const location = readHeaderValue(resHeaders, 'location');
@@ -510,18 +297,8 @@ export async function downloadMediaToTempFile(params) {
       throw error;
     }
     if (
-      error?.code === 'ERR_FR_MAX_BODY_LENGTH_EXCEEDED' ||
-      String(error?.message || '').toLowerCase().includes('maxcontentlength')
-    ) {
-      throw new DownloaderError(
-        DOWNLOADER_ERROR_CODES.FILE_TOO_LARGE,
-        `Ukuran media melebihi batas unggahan ${formatBytes(maxBytes)}.`,
-      );
-    }
-    if (
-      error?.code === 'ECONNABORTED' ||
-      error?.code === 'ETIMEDOUT' ||
       error?.name === 'AbortError' ||
+      error?.name === 'TimeoutError' ||
       controller.signal.aborted
     ) {
       const reasonMsg = String(controller.signal.reason?.message || '');

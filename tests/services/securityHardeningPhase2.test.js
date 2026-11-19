@@ -14,8 +14,8 @@ import {
   downloadMediaToTempFile,
 } from '../../src/services/downloader/fileManager.js';
 import {
-  sanitizeCdnUrl,
-  validateCdnFallbackUrl,
+  DOWNLOADER_ERROR_CODES,
+  validateMediaUrl,
 } from '../../src/services/downloader.js';
 
 function createMockFeedbackClient({
@@ -240,19 +240,21 @@ describe('Security Hardening Phase 2 Regression Tests', () => {
     );
   });
 
-  it('10. rejects disallowed CDN fallback hosts, HTTP, credentials, and private IPs', async () => {
-    assert.equal(sanitizeCdnUrl('https://evil.attacker.com/video.mp4'), null);
-    assert.equal(sanitizeCdnUrl('http://cdn.tiktokcdn.com/video.mp4'), null);
-    assert.equal(sanitizeCdnUrl('https://user:pass@cdn.tiktokcdn.com/video.mp4'), null);
-    assert.equal(sanitizeCdnUrl('https://localhost/video.mp4'), null);
-    assert.ok(sanitizeCdnUrl('https://v16-webapp.tiktokcdn.com/video.mp4'));
+  it('10. rejects non-HTTP(S), embedded credentials, custom ports, and private IP URLs', async () => {
+    assert.throws(() => validateMediaUrl('file:///etc/passwd'), (err) => err?.code === DOWNLOADER_ERROR_CODES.INVALID_URL);
+    assert.throws(() => validateMediaUrl('ftp://example.com/video.mp4'), (err) => err?.code === DOWNLOADER_ERROR_CODES.INVALID_URL);
+    assert.throws(() => validateMediaUrl('https://user:pass@youtube.com/watch?v=123'), (err) => err?.code === DOWNLOADER_ERROR_CODES.INVALID_URL);
+    assert.throws(() => validateMediaUrl('https://youtube.com:8443/watch?v=123'), (err) => err?.code === DOWNLOADER_ERROR_CODES.INVALID_URL);
+    assert.throws(() => validateMediaUrl('https://127.0.0.1/video.mp4'), (err) => err?.code === DOWNLOADER_ERROR_CODES.UNSAFE_TARGET);
+    assert.throws(() => validateMediaUrl('http://localhost/video.mp4'), (err) => err?.code === DOWNLOADER_ERROR_CODES.UNSAFE_TARGET);
+    assert.throws(() => validateMediaUrl('https://metadata.internal/latest'), (err) => err?.code === DOWNLOADER_ERROR_CODES.UNSAFE_TARGET);
 
     await assert.rejects(
       () =>
-        validateCdnFallbackUrl('https://v16-webapp.tiktokcdn.com/video.mp4', {
+        assertSafeRemoteHost('evil.example.com', {
           lookupFn: async () => [{ address: '10.0.0.5', family: 4 }],
         }),
-      (err) => err?.code === 'UNSAFE_TARGET',
+      (err) => err?.code === DOWNLOADER_ERROR_CODES.UNSAFE_TARGET,
     );
   });
 

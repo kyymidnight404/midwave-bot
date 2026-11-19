@@ -21,7 +21,7 @@ Supports both Slash Commands (`/`) and Prefix Commands (`!` by default):
 ### 2. Utilities & AI
 
 * **Midwave AI** (`/ai` & `!ai`) — Conversational AI assistant powered by **Google Gemini API** (`gemini-2.5-flash`) with temporary **15-minute RAM-only conversation context** per user/channel (auto-expired and manually clearable via `/ai question:reset`, `!ai reset`, or `!ai hapus riwayat`), automatic real-time web search (**Tavily Search**), >2,000-character Markdown-safe splitting, and mention sanitization.
-* **Media Downloader** (`/media action:download` & Auto-Downloader) — Downloads public **Instagram** and **TikTok** photos, videos/reels, and carousels via RapidAPI with strict domain allowlisting, anti-SSRF & magic-byte validation, automatic chat link detection, and direct CDN button fallbacks for large files.
+* **Media Downloader** (`/media action:download`, `!download`, & Auto-Downloader) — Powered by **yt-dlp** + **FFmpeg** via a Python 3.11+ subprocess. Supports YouTube, TikTok, Instagram, Facebook, X / Twitter, Reddit, Twitch, SoundCloud, Vimeo, Dailymotion, Bilibili, and other public yt-dlp extractors (plus `!download audio <url>` for audio-only extraction). Includes HTTP/HTTPS SSRF protection, magic-byte file inspection, concurrency-bounded FIFO queueing, timeout/process-tree termination, Discord attachment size limits (25/50/100 MB), and automatic temporary directory cleanup.
 * **Lyrics Finder** (`/lyrics` & `!lyrics`) — Fetches song lyrics via **LRCLIB API** enriched with cover art (iTunes / optional Genius API) and interactive pagination buttons.
 * **Brat Generator** (`/brat`) — Generates minimalist `1024×1024` Brat-style PNG images directly in memory.
 * **Instagram Post Frame** (`!igf`) — Generates a transparent `1080×1080` Instagram Post Card PNG using the user's Discord avatar and display name.
@@ -32,6 +32,9 @@ Supports both Slash Commands (`/`) and Prefix Commands (`!` by default):
 
 * **Node.js** `>= 20.6.0` (uses built-in `--env-file=.env` and `node:test`)
 * **npm** `>= 10`
+* **Python** `>= 3.11` with `yt-dlp` and `yt-dlp-ejs` (for Media Downloader)
+* **FFmpeg** & **FFprobe** (for merging video/audio streams and audio extraction)
+* **Deno** (recommended for full YouTube JavaScript challenge support)
 * **PM2** (optional, for Ubuntu VPS production deployment)
 
 ---
@@ -63,7 +66,17 @@ cp .env.example .env
 | `PREFIX` | Optional | Custom command prefix (default: `!`) |
 | `GEMINI_API_KEY` | Optional | Google AI Studio API key for `/ai` |
 | `TAVILY_API_KEY` | Optional | Tavily API key for real-time web search in `/ai` |
-| `RAPIDAPI_KEY` | Optional | RapidAPI key (`social-media-video-downloader`) for `/download` |
+| `RAPIDAPI` *(removed)* | — | *(No longer used; replaced by local `yt-dlp`)* |
+| `PYTHON_PATH` | Optional | Path/command for Python 3.11+ executable (default: `python3` / `python`) |
+| `YTDLP_PATH` | Optional | Path/command override for `yt-dlp` (default: `yt-dlp`) |
+| `FFMPEG_PATH` | Optional | Custom path to `ffmpeg` binary or directory if not in `PATH` |
+| `DENO_PATH` | Optional | Custom path to `deno` binary for YouTube EJS JS challenge solving |
+| `DOWNLOAD_TEMP_DIR` | Optional | Temporary download folder (default: `./temp/downloads`) |
+| `DOWNLOAD_MAX_SIZE_MB` | Optional | Max attachment size cap in MB (default: `25`, bounded by guild boost tier) |
+| `DOWNLOAD_TIMEOUT_SECONDS` | Optional | Per-job download timeout in seconds (default: `60`) |
+| `DOWNLOAD_MAX_CONCURRENT` | Optional | Max concurrent yt-dlp jobs (default: `3`) |
+| `DOWNLOAD_MAX_DURATION_SECONDS` | Optional | Max media duration in seconds (`0` = unlimited, default: `900`) |
+| `AUTO_DOWNLOAD_ENABLED` | Optional | Enable/disable chat Auto-Downloader for TikTok/Instagram links (`true`/`false`) |
 | `GENIUS_API_KEY` | Optional | Genius API token for metadata & official links in `/lyrics` |
 
 
@@ -112,7 +125,7 @@ midwave/
 │   ├── games/            # Pure game engines & AI (Minimax / Alpha-Beta)
 │   ├── handlers/         # Command, button interaction, and Auto-Downloader routers
 │   ├── managers/         # In-memory session, invite, and game state managers
-│   ├── services/         # External API clients (Gemini, Tavily, LRCLIB, RapidAPI)
+│   ├── services/         # External API clients & media services (Gemini, Tavily, LRCLIB, AniList, yt-dlp)
 │   └── utils/            # Image renderers (Brat/IGF), formatters, cooldowns & validators
 ├── tests/                # Automated test suite (node:test)
 ├── deploy-commands.js    # Slash command registration script
@@ -139,14 +152,56 @@ Midwave minimizes data retention and keeps transient interaction context strictl
 * **Tavily (`Tavily Search API`)**:
   * **Purpose:** Provides real-time web search results for time-sensitive `/ai` / `!ai` queries.
   * **Data Processed:** Only the normalized search query string derived from the user's question (along with search topic and result limit settings). Conversation history, Discord user IDs, and bot credentials are never sent to Tavily.
-* **RapidAPI**:
-  * **Purpose:** Extracts public media download URLs for **Instagram** and **TikTok** via `/media action:download` and Auto-Downloader.
-  * **Data Processed:** Only validated public HTTPS URLs (or Instagram shortcodes) belonging strictly to allowlisted **Instagram** (`instagram.com`, `instagr.am`) and **TikTok** (`tiktok.com`) domains, with tracking query parameters stripped beforehand. Non-TikTok/Instagram URLs are rejected before calling RapidAPI, user URLs are neither persisted nor logged unnecessarily, and temporary downloaded files are deleted immediately after upload.
+* **Local Media Downloader (`yt-dlp` + `FFmpeg`)**:
+  * **Purpose:** Extracts and downloads public media via `/media action:download`, `!download`, and chat Auto-Downloader (TikTok/Instagram).
+  * **Data Processed:** Only validated public HTTP/HTTPS URLs (with tracking query parameters stripped and private/internal IPs blocked via SSRF checks) are passed via `child_process.spawn` argument arrays to `yt-dlp`. No personal browser cookies are read, user URLs are neither persisted nor logged unnecessarily, and temporary downloaded files are deleted immediately after upload.
 
 ### Feedback Channel Privacy (`FEEDBACK_CHANNEL_ID`)
 * `/feedback` and `!feedback` strictly require `FEEDBACK_CHANNEL_ID` to point to a **private staff channel** inaccessible to `@everyone` (`View Channel` denied). Reports are rejected if the channel is accessible to `@everyone` or if channel privacy permissions cannot be verified.
 
 ---
+
+### Downloader Setup (`yt-dlp` + `FFmpeg` + `Deno`)
+
+1. **Install runtime dependencies** (Ubuntu/Debian VPS):
+```bash
+bash scripts/downloader/setup_deps.sh
+```
+Or manually:
+```bash
+python3 -m pip install --user --upgrade yt-dlp yt-dlp-ejs
+sudo apt-get install -y ffmpeg
+curl -fsSL https://deno.land/install.sh | sh
+```
+On Windows:
+```powershell
+python -m pip install --upgrade yt-dlp yt-dlp-ejs
+winget install Gyan.FFmpeg DenoLand.Deno
+```
+2. **Verify installation:**
+```bash
+python3 --version
+python3 -m yt_dlp --version
+ffmpeg -version
+ffprobe -version
+deno --version
+```
+
+> **Hosting / Wispbyte Note:** Managed Node.js panels like Wispbyte may not allow system-level `apt` installations (`ffmpeg`) or pre-installed `python3`/`deno`. If your hosting plan lacks Python 3.11+, `yt-dlp`, or `ffmpeg`:
+> - Use a Docker-based container or Ubuntu VPS (with PM2) where `python3`, `yt-dlp`, `yt-dlp-ejs`, `ffmpeg`, `ffprobe`, and `deno` can be installed.
+> - Or point `PYTHON_PATH`, `FFMPEG_PATH`, and `DENO_PATH` in `.env` to bundled binaries if your panel permits user-space binaries.
+
+### Supported Platforms & Limitations
+- `yt-dlp` supports thousands of extractors (including YouTube, TikTok, Instagram, Facebook, X/Twitter, Reddit, Twitch, SoundCloud, Vimeo, Dailymotion, and Bilibili).
+- Actual download availability depends on each website's current layout, login/cookie walls, age restrictions, geographic blocks, and `yt-dlp` extractor updates.
+- Files exceeding the Discord server upload limit (25 MB standard, 50 MB Boost Lv.2, 100 MB Boost Lv.3) are rejected cleanly with an informative message rather than sending raw external stream links.
+- Playlists are restricted (`noplaylist`) to prevent flooding Discord when sharing single-video links with playlist parameters.
+
+### Downloader Troubleshooting
+- **`Engine downloader (yt-dlp) belum terpasang`**: Run `python3 -m pip install --upgrade yt-dlp yt-dlp-ejs` in the environment pointed to by `PYTHON_PATH`.
+- **`Dependensi FFmpeg tidak ditemukan`**: Install `ffmpeg` and `ffprobe`, or set `FFMPEG_PATH` in `.env`.
+- **YouTube extraction / signature errors**: Ensure `yt-dlp`, `yt-dlp-ejs`, and `deno` are up to date (`pip install -U yt-dlp yt-dlp-ejs`).
+- **Private / Login / Age-restricted / Geo-blocked errors**: Midwave intentionally does not ship or read personal browser cookies; private or authenticated posts cannot be downloaded.
 
 ## VPS Deployment (PM2) & Testing
 

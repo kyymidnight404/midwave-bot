@@ -347,21 +347,19 @@ describe('Security & Privacy Remediation', () => {
     }
   });
 
-  it('rejects non-TikTok/Instagram, private IP, login-wall, and unsafe redirect URLs before calling RapidAPI', async () => {
-    let rapidApiCalls = 0;
-    const axiosMock = {
-      async get() {
-        rapidApiCalls += 1;
-        return { status: 200, headers: { 'content-type': 'video/mp4' }, data: Readable.from(FAKE_MP4) };
-      },
+  it('rejects unsafe schemes, private IPs, login-walls, and unsafe redirect URLs before spawning yt-dlp', async () => {
+    let runnerCalls = 0;
+    const ytdlpStub = async () => {
+      runnerCalls += 1;
+      return { files: [] };
     };
-    const config = getDownloaderConfig({ RAPIDAPI_KEY: 'rapid-test-secret' });
+    const config = getDownloaderConfig({});
 
     const disallowedUrls = [
-      'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-      'https://x.com/user/status/123456',
+      'file:///etc/passwd',
+      'ftp://example.com/video.mp4',
       'https://127.0.0.1/video/1',
-      'http://www.tiktok.com/@user/video/1',
+      'http://localhost:8080/video/1',
       'https://user:pass@www.instagram.com/reel/abc/',
       'https://www.instagram.com/accounts/login/',
     ];
@@ -371,31 +369,34 @@ describe('Security & Privacy Remediation', () => {
         downloadMediaFromUrl({
           url,
           config,
-          deps: { axiosClient: axiosMock, lookupFn: async () => [{ address: '93.184.216.34', family: 4 }] },
+          deps: { ytdlpRunner: ytdlpStub, lookupFn: async () => [{ address: '93.184.216.34', family: 4 }] },
         }),
       );
     }
-    assert.equal(rapidApiCalls, 0);
+    assert.equal(runnerCalls, 0);
 
-    // Even if a redirect chain starts on vm.tiktok.com and tries redirecting off-platform, block it before RapidAPI
+    // Even if a redirect chain starts on vm.tiktok.com and tries redirecting to an internal host, block it before yt-dlp
     const validatedShort = validateMediaUrl('https://vm.tiktok.com/ZM6redirect/');
     await assert.rejects(
       resolveAndValidateRedirects(validatedShort, {
-        lookupFn: async () => [{ address: '93.184.216.34', family: 4 }],
+        lookupFn: async (host) => {
+          if (host === 'vm.tiktok.com') return [{ address: '93.184.216.34', family: 4 }];
+          return [{ address: '127.0.0.1', family: 4 }];
+        },
         fetchFn: async () =>
           new Response(null, {
             status: 302,
             headers: { location: 'https://evil.example.com/payload.mp4' },
           }),
       }),
-      (err) => err.code === DOWNLOADER_ERROR_CODES.UNSUPPORTED_PLATFORM,
+      (err) => err.code === DOWNLOADER_ERROR_CODES.UNSAFE_TARGET,
     );
 
-    // AutoDownloaderHandler also skips unsupported/malicious URLs cleanly without calling downloadFn
+    // AutoDownloaderHandler also skips non-TikTok/Instagram URLs cleanly without calling downloadFn
     let autoDownloadCalls = 0;
     const autoHandler = new AutoDownloaderHandler({
       cooldowns: new CooldownManager(0),
-      getConfig: () => ({ configured: true, apiKey: 'rapid-test-secret' }),
+      getConfig: () => ({ autoDownloadEnabled: true }),
       downloadFn: async () => {
         autoDownloadCalls += 1;
         return null;
@@ -456,7 +457,7 @@ describe('Security & Privacy Remediation', () => {
     const loggedErrors = [];
     const autoHandler = new AutoDownloaderHandler({
       cooldowns: new CooldownManager(0),
-      getConfig: () => ({ configured: true, apiKey: rapidSecret }),
+      getConfig: () => ({ autoDownloadEnabled: true }),
       logger: {
         error: (...args) => loggedErrors.push(args.join(' ')),
       },
@@ -465,17 +466,17 @@ describe('Security & Privacy Remediation', () => {
       },
     });
 
-    await autoHandler.handle({
-      content: privateShareUrl,
-      author: { id: 'u-log-1', bot: false },
-      guild: { members: { me: { id: 'bot-1' } } },
-      channel: {
-        permissionsFor: () => ({ has: () => true }),
-        async sendTyping() {},
-      },
-      async reply() {},
-      async suppressEmbeds() {},
-    });
+      await autoHandler.handle({
+        content: privateShareUrl,
+        author: { id: 'u-log-1', bot: false },
+        guild: { members: { me: { id: 'bot-1' } } },
+        channel: {
+          permissionsFor: () => ({ has: () => true }),
+          async sendTyping() {},
+        },
+        async reply() {},
+        async suppressEmbeds() {},
+      });
 
     assert.equal(loggedErrors.length, 1);
     assert.equal(loggedErrors[0].includes(rapidSecret), false);
@@ -502,7 +503,7 @@ describe('Security & Privacy Remediation', () => {
           async reply() {},
         },
         {
-          config: getDownloaderConfig({ RAPIDAPI_KEY: rapidSecret }),
+          config: getDownloaderConfig({}),
           downloadMedia: async () => {
             throw new Error(`Upstream failed at ${privateShareUrl} token=${rapidSecret}`);
           },

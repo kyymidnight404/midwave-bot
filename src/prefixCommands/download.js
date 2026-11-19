@@ -1,7 +1,6 @@
 import { AttachmentBuilder, MessageFlags } from 'discord.js';
 import {
   DownloaderError,
-  PLATFORM_LABELS,
   cleanupTempDir,
   downloadMediaFromUrl,
   getDownloaderConfig,
@@ -36,10 +35,27 @@ function resolveUploadErrorMessage(error) {
   return 'Gagal mengunggah file media ke Discord. Silakan coba lagi beberapa saat lagi.';
 }
 
+function formatProgressStatusText(progress) {
+  if (!progress) return null;
+  if (progress.stage === 'queued') {
+    return `Dalam antrean unduhan (posisi #${progress.position || 1})...`;
+  }
+  if (progress.stage === 'downloading') {
+    if (typeof progress.percent === 'number' && progress.percent > 0) {
+      return `Mengunduh media (${progress.percent.toFixed(0)}%)...`;
+    }
+    return 'Mengunduh media melalui yt-dlp...';
+  }
+  if (progress.stage === 'processing') {
+    return 'Memproses & memvalidasi file media (FFmpeg)...';
+  }
+  return null;
+}
+
 /**
- * Executes media download for `/media action:download` using the unified RapidAPI downloader service.
+ * Executes media download for `/media action:download` and `!download` using the yt-dlp pipeline.
  *
- * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @param {import('discord.js').ChatInputCommandInteraction | import('../handlers/MessageCommandAdapter.js').MessageCommandAdapter} interaction
  * @param {{
  *   downloadMedia?: typeof downloadMediaFromUrl,
  *   cleanupDir?: typeof cleanupTempDir,
@@ -49,12 +65,14 @@ function resolveUploadErrorMessage(error) {
  */
 export async function execute(interaction, context = {}) {
   const rawUrl = interaction.options?.getString?.('url', false);
+  const rawMode = interaction.options?.getString?.('mode', false);
+  const mode = rawMode === 'audio' ? 'audio' : 'video';
 
   if (typeof rawUrl !== 'string' || !rawUrl.trim()) {
     await interaction.reply({
       embeds: [
         buildErrorEmbed(
-          'Tautan `url` wajib diisi untuk mengunduh media. Contoh: `/media action:download url:https://www.instagram.com/reel/...`.',
+          'Tautan `url` wajib diisi untuk mengunduh media. Contoh: `/media action:download url:https://www.youtube.com/watch?v=...` atau `!download https://vt.tiktok.com/...`.',
           'Tautan Tidak Valid',
         ),
       ],
@@ -70,7 +88,7 @@ export async function execute(interaction, context = {}) {
     const message =
       error instanceof DownloaderError
         ? error.userMessage
-        : 'Tautan tidak valid. Gunakan URL publik Instagram atau TikTok.';
+        : 'Tautan tidak valid. Gunakan URL publik HTTP/HTTPS yang valid.';
     await interaction.reply({
       embeds: [buildErrorEmbed(message, 'Tautan Tidak Valid')],
       flags: MessageFlags.Ephemeral,
@@ -79,25 +97,29 @@ export async function execute(interaction, context = {}) {
   }
 
   const runtimeConfig = context.config || getDownloaderConfig();
-  if (!context.downloadMedia && !runtimeConfig.rapidApiConfigured) {
-    await interaction.reply({
-      embeds: [
-        buildErrorEmbed(
-          'Fitur download media belum aktif karena `RAPIDAPI_KEY` belum dikonfigurasi oleh administrator.',
-          'Downloader Belum Dikonfigurasi',
-        ),
-      ],
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-
-  const platformLabel = PLATFORM_LABELS[validated.platform] || validated.platform;
+  const platformLabel = validated.platformLabel || validated.platform;
   await interaction.deferReply();
 
   let result = null;
   const downloader = context.downloadMedia || downloadMediaFromUrl;
   const cleanup = context.cleanupDir || cleanupTempDir;
+
+  let lastProgressUpdateAt = Date.now();
+  const handleProgress = async (progress) => {
+    const now = Date.now();
+    const isQueued = progress?.stage === 'queued';
+    if (!isQueued && now - lastProgressUpdateAt < 2_500) {
+      return;
+    }
+    const statusText = formatProgressStatusText(progress);
+    if (!statusText) return;
+    lastProgressUpdateAt = now;
+    await interaction
+      .editReply({
+        embeds: [buildDownloadProcessingEmbed({ platformLabel, statusText })],
+      })
+      .catch(() => {});
+  };
 
   try {
     await interaction.editReply({
@@ -106,8 +128,10 @@ export async function execute(interaction, context = {}) {
 
     result = await downloader({
       url: validated.normalizedUrl,
+      mode,
       guild: interaction.guild,
       config: runtimeConfig,
+      onProgress: handleProgress,
       deps: context.deps,
     });
 
@@ -121,6 +145,8 @@ export async function execute(interaction, context = {}) {
       fileFormat: result.fileFormat,
       formattedSize: result.formattedSize,
       requesterId: interaction.user.id,
+      title: result.title,
+      author: result.author,
       truncatedCount: result.truncatedCount,
     });
 

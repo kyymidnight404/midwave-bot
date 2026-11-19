@@ -494,28 +494,43 @@ export function buildHelpEmbed(prefix = '!') {
 }
 
 const PLATFORM_BADGES = Object.freeze({
+  YouTube: '📺 YouTube',
   Instagram: '📸 Instagram',
   TikTok: '🎵 TikTok',
+  Facebook: '📘 Facebook',
+  'X / Twitter': '𝕏 X / Twitter',
+  Reddit: '👽 Reddit',
+  Twitch: '🟣 Twitch',
+  SoundCloud: '☁️ SoundCloud',
+  Vimeo: '🎞️ Vimeo',
+  Dailymotion: '🎥 Dailymotion',
+  Bilibili: '📺 Bilibili',
 });
+
+function formatPlatformBadge(platformLabel) {
+  return PLATFORM_BADGES[platformLabel] || `🌐 ${platformLabel}`;
+}
 
 /**
  * Builds the processing status embed shown while media is being extracted and uploaded.
  *
- * @param {{ platformLabel: string }} params
+ * @param {{ platformLabel: string, statusText?: string }} params
  * @returns {EmbedBuilder}
  */
-export function buildDownloadProcessingEmbed({ platformLabel }) {
-  const badge = PLATFORM_BADGES[platformLabel] || platformLabel;
+export function buildDownloadProcessingEmbed({ platformLabel, statusText = null }) {
+  const badge = formatPlatformBadge(platformLabel);
+  const detail =
+    statusText || 'Mengekstrak dan mengunduh media dengan yt-dlp sebelum diunggah ke Discord.';
   return createBaseEmbed({
     title: 'MIDWAVE MEDIA DOWNLOADER',
-    description: `${badge}\n\n⏳ **Memproses unduhan...**\nMengekstrak dan memvalidasi file media sebelum diunggah ke Discord.`,
+    description: `${badge}\n\n⏳ **Memproses unduhan...**\n${detail}`,
     color: COLORS.INFO,
     includeThumbnail: false,
   });
 }
 
 /**
- * Builds the dark Midwave-styled completion embed for `/media action:download`.
+ * Builds the dark Midwave-styled completion embed for `/media action:download` and `!download`.
  *
  * @param {{
  *   platformLabel: string,
@@ -523,6 +538,8 @@ export function buildDownloadProcessingEmbed({ platformLabel }) {
  *   fileFormat: string,
  *   formattedSize: string,
  *   requesterId: string,
+ *   title?: string,
+ *   author?: string,
  *   truncatedCount?: number,
  * }} params
  * @returns {EmbedBuilder}
@@ -533,23 +550,38 @@ export function buildDownloadSuccessEmbed({
   fileFormat,
   formattedSize,
   requesterId,
+  title = '',
+  author = '',
   truncatedCount = 0,
 }) {
-  const badge = PLATFORM_BADGES[platformLabel] || platformLabel;
+  const badge = formatPlatformBadge(platformLabel);
+  const cleanTitle = String(title || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+  const cleanAuthor = String(author || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+
   const lines = [
     badge,
     '',
     '**Download Completed**',
+  ];
+
+  if (cleanTitle) {
+    lines.push(`• **Judul:** ${cleanTitle}`);
+  }
+  if (cleanAuthor) {
+    lines.push(`• **Kreator:** ${cleanAuthor}`);
+  }
+
+  lines.push(
     `• **Platform:** ${platformLabel}`,
     `• **Media Type:** ${mediaType}`,
     `• **File Format:** ${fileFormat}`,
     `• **File Size:** ${formattedSize}`,
-  ];
+  );
 
   if (truncatedCount > 0) {
     lines.push(
       '',
-      `⚠️ *${truncatedCount} item carousel lainnya tidak disertakan karena batas maksimal 10 lampiran atau ukuran unggahan Discord.*`,
+      `⚠️ *${truncatedCount} item lainnya tidak disertakan karena batas maksimal 10 lampiran atau ukuran unggahan Discord.*`,
     );
   }
 

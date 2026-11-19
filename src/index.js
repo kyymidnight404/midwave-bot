@@ -22,6 +22,7 @@ import messageCreateEvent from './events/messageCreate.js';
 import guildMemberAddEvent from './events/guildMemberAdd.js';
 import guildCreateEvent from './events/guildCreate.js';
 import { clearAllGameCenterTimers } from './games/services/sessionService.js';
+import { cleanupStaleTempDirs, getDownloaderConfig } from './services/downloader.js';
 import { prisma as defaultPrisma } from './services/prisma.js';
 
 /**
@@ -97,6 +98,10 @@ export async function createBotApp(options = {}) {
       prefix,
     });
   context.autoDownloaderHandler = autoDownloaderHandler;
+
+  if (!options.skipTempCleanup) {
+    cleanupStaleTempDirs(getDownloaderConfig().tempBaseDir).catch(() => {});
+  }
 
   const events = [readyEvent, interactionCreateEvent, messageCreateEvent, guildMemberAddEvent, guildCreateEvent];
   for (const event of events) {

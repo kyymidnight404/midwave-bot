@@ -8,6 +8,7 @@ node_modules/
 
 # Logs and runtime artifacts
 logs/
+temp/
 *.log
 npm-debug.log*
 pids/

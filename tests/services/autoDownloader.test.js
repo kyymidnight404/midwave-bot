@@ -1,19 +1,18 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import { Readable } from 'node:stream';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, it } from 'node:test';
 import { AutoDownloaderHandler } from '../../src/handlers/AutoDownloaderHandler.js';
 import messageCreateEvent from '../../src/events/messageCreate.js';
 import { createBotApp } from '../../src/index.js';
 import {
-  DEFAULT_RAPIDAPI_HOST,
-  STANDARD_DISCORD_UPLOAD_LIMIT_BYTES,
+  DOWNLOADER_ERROR_CODES,
+  DownloaderError,
   cleanupTempDir,
-  downloadViaRapidApi,
-  getRapidApiConfig,
-  parseRapidApiResponse,
+  downloadMediaFromUrl,
+  getDownloaderConfig,
 } from '../../src/services/downloader.js';
-import { DOWNLOADER_ERROR_CODES } from '../../src/services/downloader/errors.js';
 import { CooldownManager } from '../../src/utils/cooldown.js';
 import { detectFirstMediaUrl, detectMediaUrls } from '../../src/utils/urlDetector.js';
 
@@ -103,7 +102,7 @@ describe('AutoDownloader — URL Detector Regex', () => {
     );
   });
 
-  it('ignores unsupported domains, homepages, bare profiles, and credential URLs', () => {
+  it('ignores non-auto-download domains, homepages, bare profiles, and credential URLs', () => {
     assert.deepEqual(detectMediaUrls('https://www.youtube.com/watch?v=123'), []);
     assert.deepEqual(detectMediaUrls('https://www.tiktok.com/'), []);
     assert.deepEqual(detectMediaUrls('https://www.tiktok.com/@onlyprofile'), []);
@@ -111,169 +110,49 @@ describe('AutoDownloader — URL Detector Regex', () => {
   });
 });
 
-describe('AutoDownloader — RapidAPI Parser & Axios Downloader', () => {
-  it('parses flexible links, medias, images carousel, and single url responses cleanly', () => {
-    // 1. `links` array: picks HD no watermark over SD/watermarked/audio
-    const fromLinks = parseRapidApiResponse({
-      title: 'Klip Keren',
-      links: [
-        { quality: 'hd_watermark', link: 'https://cdn.tiktok.com/wm.mp4' },
-        { quality: 'audio', link: 'https://cdn.tiktok.com/sound.mp3' },
-        { quality: 'hd_no_watermark', link: 'https://cdn.tiktok.com/clean_hd.mp4' },
-      ],
-    });
-    assert.equal(fromLinks.mode, 'video');
-    assert.equal(fromLinks.candidates[0].url, 'https://cdn.tiktok.com/clean_hd.mp4');
+describe('AutoDownloader — yt-dlp Integration & Discord Handling', () => {
+  it('downloads valid TikTok video attachment via yt-dlp runner and cleans temp dir', async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'midwave-autodl-'));
+    try {
+      const config = {
+        ...getDownloaderConfig({}),
+        tempBaseDir: tempRoot,
+      };
 
-    // 2. `medias` / multi-photo carousel capped at 10 attachments
-    const manyImages = Array.from({ length: 12 }, (_, idx) => ({
-      type: 'image',
-      url: `https://scontent.cdninstagram.com/slide_${idx + 1}.jpg`,
-    }));
-    const fromCarousel = parseRapidApiResponse({
-      author: { nickname: 'creator_ig' },
-      medias: manyImages,
-    });
-    assert.equal(fromCarousel.mode, 'carousel');
-    assert.equal(fromCarousel.author, 'creator_ig');
-    assert.equal(fromCarousel.candidates.length, 10);
-
-    // 3. Single `url` field
-    const fromSingle = parseRapidApiResponse({
-      url: 'https://cdn.instagram.com/reel_single.mp4',
-    });
-    assert.equal(fromSingle.mode, 'video');
-    assert.equal(fromSingle.candidates[0].url, 'https://cdn.instagram.com/reel_single.mp4');
-  });
-
-  it('downloads valid video attachment via mocked axios with required RapidAPI headers', async () => {
-    let capturedHeaders = null;
-    const axiosMock = {
-      async get(url, options) {
-        if (url.includes(DEFAULT_RAPIDAPI_HOST)) {
-          capturedHeaders = options.headers;
-          return {
-            status: 200,
-            headers: { 'content-type': 'application/json' },
-            data: {
+      const result = await downloadMediaFromUrl({
+        url: 'https://www.tiktok.com/@midwave/video/123456',
+        config,
+        deps: {
+          lookupFn: publicLookup,
+          ytdlpRunner: async ({ jobDir }) => {
+            const p = path.join(jobDir, 'tt.mp4');
+            await fs.writeFile(p, FAKE_MP4);
+            return {
+              ok: true,
+              extractor: 'TikTok',
               title: 'Demo TikTok',
               author: 'midwave',
-              links: [{ quality: 'hd_no_watermark', link: 'https://v16.tiktokcdn.com/video.mp4' }],
-            },
-          };
-        }
-        return {
-          status: 200,
-          headers: {
-            'content-type': 'video/mp4',
-            'content-length': String(FAKE_MP4.length),
+              files: [{ path: p, filename: 'tt.mp4', size_bytes: FAKE_MP4.length, ext: 'mp4' }],
+            };
           },
-          data: Readable.from(FAKE_MP4),
-        };
-      },
-    };
+        },
+      });
 
-    const result = await downloadViaRapidApi({
-      url: 'https://www.tiktok.com/@midwave/video/123456',
-      platform: 'tiktok',
-      config: getRapidApiConfig({ RAPIDAPI_KEY: 'secret-test-key' }),
-      deps: { axiosClient: axiosMock, lookupFn: publicLookup },
-    });
-
-    try {
-      assert.equal(capturedHeaders['x-rapidapi-key'], 'secret-test-key');
-      assert.equal(capturedHeaders['x-rapidapi-host'], DEFAULT_RAPIDAPI_HOST);
       assert.equal(result.mode, 'attachments');
+      assert.equal(result.provider, 'yt-dlp');
       assert.equal(result.attachments.length, 1);
       assert.equal(result.attachments[0].fileName, 'tiktok_video.mp4');
-      assert.ok(result.attachments[0].filePath);
-      const saved = await fs.readFile(result.attachments[0].filePath);
-      assert.deepEqual(saved, FAKE_MP4);
-    } finally {
       await cleanupTempDir(result.jobDir);
+      assert.deepEqual(await fs.readdir(tempRoot), []);
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
     }
   });
 
-  it('returns fallback CDN mode when media exceeds 10 MB Discord limit or CDN rejects attachment', async () => {
-    const oversizedAxios = {
-      async get(url) {
-        if (url.includes(DEFAULT_RAPIDAPI_HOST)) {
-          return {
-            status: 200,
-            headers: { 'content-type': 'application/json' },
-            data: {
-              title: 'Huge Video',
-              links: [{ quality: 'hd', link: 'https://scontent.cdninstagram.com/huge_video.mp4' }],
-            },
-          };
-        }
-        return {
-          status: 200,
-          headers: {
-            'content-type': 'video/mp4',
-            'content-length': String(STANDARD_DISCORD_UPLOAD_LIMIT_BYTES + 5_000_000),
-          },
-          data: Readable.from(FAKE_MP4),
-        };
-      },
-    };
-
-    const result = await downloadViaRapidApi({
-      url: 'https://www.instagram.com/reel/HugeReel123/',
-      platform: 'instagram',
-      config: getRapidApiConfig({ RAPIDAPI_KEY: 'key-1' }),
-      deps: { axiosClient: oversizedAxios, lookupFn: publicLookup },
-    });
-
-    assert.equal(result.mode, 'fallback');
-    assert.equal(result.primaryCdnUrl, 'https://scontent.cdninstagram.com/huge_video.mp4');
-    assert.match(result.reason, /melebihi batas|limit|besar/i);
-  });
-
-  it('handles RapidAPI 429 rate limit, private error, and timeout cleanly', async () => {
-    const rateLimitedAxios = {
-      async get() {
-        const err = new Error('Too many requests');
-        err.response = { status: 429 };
-        throw err;
-      },
-    };
-
-    await assert.rejects(
-      downloadViaRapidApi({
-        url: 'https://www.tiktok.com/@a/video/1',
-        platform: 'tiktok',
-        config: getRapidApiConfig({ RAPIDAPI_KEY: 'key-1' }),
-        deps: { axiosClient: rateLimitedAxios, lookupFn: publicLookup },
-      }),
-      (err) => err.code === DOWNLOADER_ERROR_CODES.RATE_LIMITED,
-    );
-
-    const timeoutAxios = {
-      async get() {
-        const err = new Error('timeout exceeded');
-        err.code = 'ECONNABORTED';
-        throw err;
-      },
-    };
-
-    await assert.rejects(
-      downloadViaRapidApi({
-        url: 'https://www.tiktok.com/@a/video/2',
-        platform: 'tiktok',
-        config: getRapidApiConfig({ RAPIDAPI_KEY: 'key-1' }),
-        deps: { axiosClient: timeoutAxios, lookupFn: publicLookup },
-      }),
-      (err) => err.code === DOWNLOADER_ERROR_CODES.TIMEOUT,
-    );
-  });
-});
-
-describe('AutoDownloader — MessageCreate Handler & Discord Fallback Flow', () => {
-  it('ignores bot messages, prefix commands, and skips cleanly when RAPIDAPI_KEY is unset', async () => {
+  it('ignores bot messages, prefix commands, and disabled AUTO_DOWNLOAD_ENABLED', async () => {
     const handler = new AutoDownloaderHandler({
       cooldowns: new CooldownManager(0),
-      getConfig: () => getRapidApiConfig({}),
+      getConfig: () => getDownloaderConfig({ AUTO_DOWNLOAD_ENABLED: 'false' }),
     });
 
     const botMsg = createMockMessage({
@@ -287,17 +166,17 @@ describe('AutoDownloader — MessageCreate Handler & Discord Fallback Flow', () 
     });
     assert.equal(await handler.handle(prefixMsg), false);
 
-    const unconfiguredMsg = createMockMessage({
+    const disabledMsg = createMockMessage({
       content: 'https://www.tiktok.com/@a/video/1',
     });
-    assert.equal(await handler.handle(unconfiguredMsg), false);
-    assert.equal(unconfiguredMsg.getEvents().length, 0);
+    assert.equal(await handler.handle(disabledMsg), false);
+    assert.equal(disabledMsg.getEvents().length, 0);
   });
 
   it('sends typing indicator, attaches downloaded carousel files, and suppresses original embeds', async () => {
     const handler = new AutoDownloaderHandler({
       cooldowns: new CooldownManager(1_000),
-      getConfig: () => getRapidApiConfig({ RAPIDAPI_KEY: 'valid-key' }),
+      getConfig: () => getDownloaderConfig({}),
       downloadFn: async () => ({
         mode: 'attachments',
         platform: 'instagram',
@@ -329,19 +208,17 @@ describe('AutoDownloader — MessageCreate Handler & Discord Fallback Flow', () 
     assert.equal(events[2].value, true);
   });
 
-  it('sends fallback embed with direct CDN button when media exceeds 10 MB and suppresses original embed', async () => {
+  it('informs user cleanly when file exceeds Discord limit instead of posting external links', async () => {
     const handler = new AutoDownloaderHandler({
       cooldowns: new CooldownManager(1_000),
-      getConfig: () => getRapidApiConfig({ RAPIDAPI_KEY: 'valid-key' }),
-      downloadFn: async () => ({
-        mode: 'fallback',
-        platform: 'tiktok',
-        title: 'Big Video',
-        author: 'creator',
-        primaryCdnUrl: 'https://v16.tiktokcdn.com/huge_video.mp4',
-        cdnLinks: ['https://v16.tiktokcdn.com/huge_video.mp4'],
-        reason: 'Ukuran video melebihi batas unggahan standar 10 MB.',
-      }),
+      getConfig: () => getDownloaderConfig({}),
+      logger: { error() {} },
+      downloadFn: async () => {
+        throw new DownloaderError(
+          DOWNLOADER_ERROR_CODES.FILE_TOO_LARGE,
+          'Ukuran media (32 MB) melebihi batas unggahan 10 MB Discord.',
+        );
+      },
     });
 
     const msg = createMockMessage({
@@ -353,13 +230,13 @@ describe('AutoDownloader — MessageCreate Handler & Discord Fallback Flow', () 
 
     const reply = msg.getEvents().find((e) => e.type === 'reply').payload;
     assert.equal(reply.files, undefined);
-    assert.equal(reply.components.length, 1);
-    assert.match(reply.embeds[0].data.description, /https:\/\/v16\.tiktokcdn\.com\/huge_video\.mp4/);
-    assert.equal(msg.getEvents().some((e) => e.type === 'suppressEmbeds' && e.value === true), true);
+    assert.equal(reply.components, undefined);
+    assert.equal(reply.embeds[0].data.title, 'Gagal Mengunduh Media');
+    assert.match(reply.embeds[0].data.description, /melebihi batas unggahan/i);
   });
 
   it('wires AutoDownloaderHandler into createBotApp and messageCreate event cleanly', async () => {
-    const app = await createBotApp();
+    const app = await createBotApp({ skipTempCleanup: true });
     let invoked = false;
     app.context.autoDownloaderHandler = {
       async handle() {
@@ -371,5 +248,6 @@ describe('AutoDownloader — MessageCreate Handler & Discord Fallback Flow', () 
     const msg = createMockMessage({ content: 'hello world' });
     await messageCreateEvent.execute(msg, app.context);
     assert.equal(invoked, true);
+    app.shutdown();
   });
 });

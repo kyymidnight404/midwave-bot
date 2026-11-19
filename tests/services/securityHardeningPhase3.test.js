@@ -7,11 +7,10 @@ import {
   validateMediaUrl,
 } from '../../src/services/downloader/urlValidator.js';
 import {
-  downloadViaRapidApi,
+  DOWNLOADER_ERROR_CODES,
+  assertInsideDir,
+  downloadMediaFromUrl,
   getDownloaderConfig,
-  sanitizeCdnUrl,
-  validateAllCdnCandidates,
-  validateCdnFallbackUrl,
 } from '../../src/services/downloader.js';
 import { sanitizeError } from '../../src/utils/errorSanitizer.js';
 import { InteractionHandler } from '../../src/handlers/InteractionHandler.js';
@@ -197,55 +196,34 @@ describe('Security Remediation Phase 3.1 Regression Tests', () => {
     assert.ok(!safe.includes('tok123'));
   });
 
-  it('6. validates every CDN candidate (not just candidates[0]) before request or fallback', async () => {
-    await assert.rejects(
-      () =>
-        validateAllCdnCandidates(
-          [
-            { url: 'https://v16.tiktokcdn.com/valid.mp4' },
-            { url: 'https://evil-cdn.example.com/malicious.mp4' },
-          ],
-          { lookupFn: async () => [{ address: '93.184.216.34', family: 4 }] },
-        ),
-      (err) => err?.code === 'UNSAFE_TARGET',
+  it('6. blocks path traversal outside temporary job directory before returning media', () => {
+    assert.throws(
+      () => assertInsideDir('/tmp/midwave-dl-abc', '/tmp/midwave-dl-abc/../../etc/passwd'),
+      (err) => err?.code === DOWNLOADER_ERROR_CODES.UNSAFE_TARGET,
     );
-
-    await assert.rejects(
-      () =>
-        downloadViaRapidApi({
-          url: 'https://www.tiktok.com/@midwave/video/1234567890123',
-          config: getDownloaderConfig({ RAPIDAPI_KEY: 'test-key' }),
-          deps: {
-            lookupFn: async (host) => {
-              if (host === 'v16.tiktokcdn.com') return [{ address: '93.184.216.34', family: 4 }];
-              if (host === 'v19.tiktokcdn.com') return [{ address: '127.0.0.1', family: 4 }];
-              return [{ address: '93.184.216.34', family: 4 }];
-            },
-            axiosClient: {
-              get: async () => ({
-                data: {
-                  links: [
-                    { quality: 'hd_no_watermark', link: 'https://v16.tiktokcdn.com/valid.mp4' },
-                    { quality: 'sd', link: 'https://v19.tiktokcdn.com/ssrf.mp4' },
-                  ],
-                },
-              }),
-            },
-          },
-        }),
-      (err) => err?.code === 'UNSAFE_TARGET',
+    assert.doesNotThrow(() =>
+      assertInsideDir('/tmp/midwave-dl-abc', '/tmp/midwave-dl-abc/youtube_video.mp4'),
     );
   });
 
-  it('7. rejects disallowed and generic multi-tenant CDN domains', async () => {
-    assert.equal(sanitizeCdnUrl('https://d123456.cloudfront.net/video.mp4'), null);
-    assert.equal(sanitizeCdnUrl('https://evil.akamaized.net/video.mp4'), null);
-    assert.equal(sanitizeCdnUrl('https://evil-tiktokcdn.com/video.mp4'), null);
-
+  it('7. blocks SSRF targets before spawning yt-dlp subprocess', async () => {
+    let spawned = 0;
     await assert.rejects(
-      () => validateCdnFallbackUrl('https://d123456.cloudfront.net/video.mp4'),
-      (err) => err?.code === 'UNSAFE_TARGET',
+      () =>
+        downloadMediaFromUrl({
+          url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+          config: getDownloaderConfig({}),
+          deps: {
+            lookupFn: async () => [{ address: '10.0.0.8', family: 4 }],
+            ytdlpRunner: async () => {
+              spawned += 1;
+              return { files: [] };
+            },
+          },
+        }),
+      (err) => err?.code === DOWNLOADER_ERROR_CODES.UNSAFE_TARGET,
     );
+    assert.equal(spawned, 0);
   });
 
   it('8. error sanitizer never throws on hostile or malformed error objects', () => {

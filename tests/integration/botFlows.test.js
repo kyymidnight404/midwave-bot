@@ -274,9 +274,7 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
       jobDir: null,
       sourceUrl: url,
     });
-    app.interactionHandler.context.config = { rapidApiConfigured: true };
     app.interactionHandler.context.downloadMedia = mockDownload;
-    app.prefixCommandHandler.context.config = { rapidApiConfigured: true };
     app.prefixCommandHandler.context.downloadMedia = mockDownload;
 
     const slashInteraction = createMockCommandInteraction({

@@ -14,7 +14,7 @@ const MEDIA_ACTION_CHOICES = [
   { name: 'qc — Buat gambar chat screenshot WhatsApp', value: 'qc' },
   { name: 'brat — Buat gambar teks gaya Brat (1024x1024 PNG)', value: 'brat' },
   { name: 'lyrics — Cari lirik lagu lengkap dengan cover', value: 'lyrics' },
-  { name: 'download — Unduh media Instagram atau TikTok', value: 'download' },
+  { name: 'download — Unduh media (YouTube, TikTok, IG, X, dll.) via yt-dlp', value: 'download' },
 ];
 
 const MEDIA_DISPATCHERS = Object.freeze({
@@ -51,7 +51,7 @@ export const data = new SlashCommandBuilder()
   .addStringOption((option) =>
     option
       .setName('url')
-      .setDescription('Tautan publik Instagram atau TikTok untuk action download')
+      .setDescription('Tautan publik media (YouTube, TikTok, IG, X, dll.) untuk action download')
       .setRequired(false),
   )
   .addStringOption((option) =>
