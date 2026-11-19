@@ -534,7 +534,7 @@ export function buildDownloadProcessingEmbed({ platformLabel, statusText = null 
  *
  * @param {{
  *   platformLabel: string,
- *   mediaType: string,
+ *   mediaType?: string,
  *   fileFormat: string,
  *   formattedSize: string,
  *   requesterId: string,
@@ -546,7 +546,6 @@ export function buildDownloadProcessingEmbed({ platformLabel, statusText = null 
  */
 export function buildDownloadSuccessEmbed({
   platformLabel,
-  mediaType,
   fileFormat,
   formattedSize,
   requesterId,
@@ -557,26 +556,18 @@ export function buildDownloadSuccessEmbed({
   const badge = formatPlatformBadge(platformLabel);
   const cleanTitle = String(title || '').replace(/\s+/g, ' ').trim().slice(0, 140);
   const cleanAuthor = String(author || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  const cleanFormat = String(fileFormat || 'MP4').trim().toUpperCase();
 
-  const lines = [
-    badge,
-    '',
-    '**Download Completed**',
-  ];
+  const lines = ['✅ **Download Selesai**', ''];
 
   if (cleanTitle) {
-    lines.push(`• **Judul:** ${cleanTitle}`);
+    lines.push(`**Judul:** ${cleanTitle}`);
   }
   if (cleanAuthor) {
-    lines.push(`• **Kreator:** ${cleanAuthor}`);
+    lines.push(`**Kreator:** ${cleanAuthor}`);
   }
 
-  lines.push(
-    `• **Platform:** ${platformLabel}`,
-    `• **Media Type:** ${mediaType}`,
-    `• **File Format:** ${fileFormat}`,
-    `• **File Size:** ${formattedSize}`,
-  );
+  lines.push(`${badge} • ${cleanFormat} • ${formattedSize}`);
 
   if (truncatedCount > 0) {
     lines.push(
@@ -585,7 +576,7 @@ export function buildDownloadSuccessEmbed({
     );
   }
 
-  lines.push('', `Requested by: <@${requesterId}>`);
+  lines.push('', `Diminta oleh: <@${requesterId}>`);
 
   return createBaseEmbed({
     title: 'MIDWAVE MEDIA DOWNLOADER',

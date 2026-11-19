@@ -199,15 +199,27 @@ describe('Embed Design System', () => {
       buildDownloadProcessingEmbed({ platformLabel: 'TikTok' }).toJSON().color,
       CONFIG_COLORS.INFO,
     );
+    const dlSuccessEmbed = buildDownloadSuccessEmbed({
+      platformLabel: 'TikTok',
+      mediaType: 'Video',
+      fileFormat: 'MP4',
+      formattedSize: '1.2 MB',
+      requesterId: '100',
+      title: 'Contoh Video',
+      author: 'Kreator Midwave',
+    }).toJSON();
+    assert.equal(dlSuccessEmbed.color, CONFIG_COLORS.SUCCESS);
     assert.equal(
-      buildDownloadSuccessEmbed({
-        platformLabel: 'TikTok',
-        mediaType: 'Video',
-        fileFormat: 'MP4',
-        formattedSize: '1.2 MB',
-        requesterId: '100',
-      }).toJSON().color,
-      CONFIG_COLORS.SUCCESS,
+      dlSuccessEmbed.description,
+      [
+        '✅ **Download Selesai**',
+        '',
+        '**Judul:** Contoh Video',
+        '**Kreator:** Kreator Midwave',
+        '🎵 TikTok • MP4 • 1.2 MB',
+        '',
+        'Diminta oleh: <@100>',
+      ].join('\n'),
     );
 
     assert.equal(

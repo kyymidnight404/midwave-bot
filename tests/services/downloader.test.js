@@ -749,9 +749,18 @@ describe('Downloader — Discord Commands (/media action:download & !download) &
     assert.equal(finalPayload.files.length, 1);
     assert.equal(finalPayload.files[0].name, 'youtube_video.mp4');
     assert.equal(finalPayload.embeds[0].data.title, 'MIDWAVE MEDIA DOWNLOADER');
-    assert.match(finalPayload.embeds[0].data.description, /YouTube/);
-    assert.match(finalPayload.embeds[0].data.description, /Demo Video/);
-    assert.match(finalPayload.embeds[0].data.description, /<@u-999>/);
+    assert.equal(
+      finalPayload.embeds[0].data.description,
+      [
+        '✅ **Download Selesai**',
+        '',
+        '**Judul:** Demo Video',
+        '**Kreator:** Midwave',
+        '📺 YouTube • MP4 • 16 B',
+        '',
+        'Diminta oleh: <@u-999>',
+      ].join('\n'),
+    );
 
     await assert.rejects(fs.stat(jobDir));
   });
