@@ -10,8 +10,6 @@ export const IGF_MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 export const IGF_MAX_DIMENSION = 8192;
 
 export const IGF_DEFAULT_LIKES = '9,311 likes';
-export const IGF_DEFAULT_CAPTION_BODY = 'Lorem ipsum dolor sit amet ';
-export const IGF_DEFAULT_CAPTION_TAG = '#template';
 export const IGF_DEFAULT_COMMENTS = 'View all 987 comments';
 export const IGF_DEFAULT_TIMESTAMP = '5 DAYS AGO';
 
@@ -398,7 +396,11 @@ function drawCustomCaption(ctx, caption, inlineStartX, leftX, topY, remainingInl
   return 2;
 }
 
-function drawCaptionBlock(ctx, username, caption, leftX, topY, maxWidth) {
+function normalizeCaptionText(caption) {
+  return typeof caption === 'string' ? caption.trim().replace(/\s+/g, ' ') : '';
+}
+
+function drawCaptionBlock(ctx, username, captionText, leftX, topY, maxWidth) {
   const fontSize = 19;
   const lineHeight = 25;
   const gapAfterUsername = 8;
@@ -415,64 +417,16 @@ function drawCaptionBlock(ctx, username, caption, leftX, topY, maxWidth) {
   const remainingInlineWidth = leftX + maxWidth - inlineStartX;
 
   ctx.font = getRegularFont(fontSize);
-
-  const customCaption =
-    typeof caption === 'string' ? caption.trim().replace(/\s+/g, ' ') : '';
-  if (customCaption) {
-    return drawCustomCaption(
-      ctx,
-      customCaption,
-      inlineStartX,
-      leftX,
-      topY,
-      remainingInlineWidth,
-      maxWidth,
-      lineHeight,
-    );
-  }
-
-  const bodyText = IGF_DEFAULT_CAPTION_BODY;
-  const tagText = IGF_DEFAULT_CAPTION_TAG;
-  const bodyWidth = ctx.measureText(bodyText).width;
-  const tagWidth = ctx.measureText(tagText).width;
-
-  if (bodyWidth + tagWidth <= remainingInlineWidth) {
-    ctx.fillStyle = COLORS.textPrimary;
-    ctx.fillText(bodyText, inlineStartX, topY);
-    ctx.fillStyle = COLORS.hashtagBlue;
-    ctx.fillText(tagText, inlineStartX + bodyWidth, topY);
-    return 1;
-  }
-
-  // Wrap caption body onto second line if username is long so text never overflows the card.
-  const words = bodyText.trim().split(' ');
-  let line1 = '';
-  let line2Words = [];
-  for (let i = 0; i < words.length; i++) {
-    const candidate = line1 ? `${line1} ${words[i]}` : words[i];
-    if (ctx.measureText(candidate).width <= remainingInlineWidth) {
-      line1 = candidate;
-    } else {
-      line2Words = words.slice(i);
-      break;
-    }
-  }
-
-  if (line1) {
-    ctx.fillStyle = COLORS.textPrimary;
-    ctx.fillText(line1, inlineStartX, topY);
-  }
-
-  const line2Body = line2Words.length > 0 ? `${line2Words.join(' ')} ` : '';
-  const line2Y = topY + lineHeight;
-  ctx.fillStyle = COLORS.textPrimary;
-  if (line2Body) {
-    ctx.fillText(line2Body, leftX, line2Y);
-  }
-  const line2BodyWidth = line2Body ? ctx.measureText(line2Body).width : 0;
-  ctx.fillStyle = COLORS.hashtagBlue;
-  ctx.fillText(tagText, leftX + line2BodyWidth, line2Y);
-  return 2;
+  return drawCustomCaption(
+    ctx,
+    captionText,
+    inlineStartX,
+    leftX,
+    topY,
+    remainingInlineWidth,
+    maxWidth,
+    lineHeight,
+  );
 }
 
 /**
@@ -641,17 +595,20 @@ export async function renderInstagramFrame({ photoBuffer, avatarBuffer, username
     ctx.fillStyle = COLORS.textPrimary;
     ctx.fillText(IGF_DEFAULT_LIKES, contentLeft, likesY);
 
-    const captionY = likesY + 34;
-    const captionLines = drawCaptionBlock(
-      ctx,
-      cleanUsername,
-      caption,
-      contentLeft,
-      captionY,
-      contentWidth,
-    );
-
-    const commentsY = captionY + (captionLines > 1 ? 56 : 36);
+    const cleanCaption = normalizeCaptionText(caption);
+    let commentsY = likesY + 34;
+    if (cleanCaption) {
+      const captionY = likesY + 34;
+      const captionLines = drawCaptionBlock(
+        ctx,
+        cleanUsername,
+        cleanCaption,
+        contentLeft,
+        captionY,
+        contentWidth,
+      );
+      commentsY = captionY + (captionLines > 1 ? 56 : 36);
+    }
     ctx.font = getRegularFont(18);
     ctx.fillStyle = COLORS.textMuted;
     ctx.fillText(IGF_DEFAULT_COMMENTS, contentLeft, commentsY);

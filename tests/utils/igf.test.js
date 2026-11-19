@@ -245,6 +245,54 @@ describe('Instagram Post Frame (!igf) utility & prefix command', () => {
     assert.ok(webpCenter[2] > 200 && webpCenter[0] > 100, 'Expected purple WebP pixel rendered in photo box');
   });
 
+  it('omits caption block completely (no Lorem ipsum placeholder) when caption is empty or missing', async () => {
+    const avatarPng = makeSolidImageBuffer(256, 256, '#10b981', 'image/png');
+    const photoPng = makeSolidImageBuffer(600, 600, '#3b82f6', 'image/png');
+
+    const noCaptionUndefined = await renderInstagramFrame({
+      photoBuffer: photoPng,
+      avatarBuffer: avatarPng,
+      username: 'kyy',
+    });
+    const noCaptionNull = await renderInstagramFrame({
+      photoBuffer: photoPng,
+      avatarBuffer: avatarPng,
+      username: 'kyy',
+      caption: null,
+    });
+    const noCaptionWhitespace = await renderInstagramFrame({
+      photoBuffer: photoPng,
+      avatarBuffer: avatarPng,
+      username: 'kyy',
+      caption: '   \n\t  ',
+    });
+    const withExplicitCaption = await renderInstagramFrame({
+      photoBuffer: photoPng,
+      avatarBuffer: avatarPng,
+      username: 'kyy',
+      caption: 'Lorem ipsum dolor sit amet #template',
+    });
+
+    assert.ok(noCaptionUndefined.equals(noCaptionNull));
+    assert.ok(noCaptionUndefined.equals(noCaptionWhitespace));
+    assert.equal(noCaptionUndefined.equals(withExplicitCaption), false);
+
+    // Ensure no blue hashtag (#2B7DE9) pixels are drawn in the caption region when caption is omitted.
+    const img = await loadImage(noCaptionUndefined);
+    const canvas = createCanvas(IGF_SIZE, IGF_SIZE);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    const region = ctx.getImageData(252, 850, 576, 100).data;
+    let blueHashtagPixels = 0;
+    for (let i = 0; i < region.length; i += 4) {
+      const [r, g, b, a] = [region[i], region[i + 1], region[i + 2], region[i + 3]];
+      if (a > 200 && b > 180 && r < 100 && g > 90 && g < 160) {
+        blueHashtagPixels += 1;
+      }
+    }
+    assert.equal(blueHashtagPixels, 0);
+  });
+
   it('rejects corrupted images and failed fetches cleanly', async () => {
     const avatarPng = makeSolidImageBuffer(128, 128, '#10b981', 'image/png');
     const corruptedPng = Buffer.concat([PNG_SIGNATURE, Buffer.from([0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, 0xff])]);
