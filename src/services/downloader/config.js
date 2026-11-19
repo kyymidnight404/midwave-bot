@@ -101,6 +101,7 @@ export function getDownloaderConfig(env = process.env) {
   const denoPath = (env.DENO_PATH || '').trim() || null;
   const tempBaseDir = resolveTempBaseDir(env.DOWNLOAD_TEMP_DIR);
   const autoDownloadEnabled = String(env.AUTO_DOWNLOAD_ENABLED ?? 'true').trim().toLowerCase() !== 'false';
+  const autoInstallYtDlp = String(env.YTDLP_AUTO_DOWNLOAD ?? 'true').trim().toLowerCase() !== 'false';
 
   return {
     maxSizeMb,
@@ -117,6 +118,7 @@ export function getDownloaderConfig(env = process.env) {
     ffprobePath,
     denoPath,
     autoDownloadEnabled,
+    autoInstallYtDlp,
   };
 }
 

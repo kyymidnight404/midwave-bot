@@ -306,16 +306,13 @@ def estimate_entry_size(entry: dict[str, Any]) -> int | None:
     return None
 
 
-def build_format_selector(mode: str, max_bytes: int, has_ffmpeg: bool) -> str:
+def build_format_selector(max_bytes: int, has_ffmpeg: bool) -> str:
     """
-    Constructs a yt-dlp format selector that:
-    - Prefers H.264/MP4 + AAC/M4A for native Discord playback
+    Constructs a yt-dlp video format selector that:
+    - Prefers H.264/MP4 + AAC/M4A for native Discord video playback
     - Avoids selecting streams known to exceed max_bytes when smaller formats exist
-    - Falls back cleanly for single-file formats or audio-only extraction
+    - Falls back cleanly to single-stream MP4 when FFmpeg is unavailable
     """
-    if mode == "audio":
-        return f"bestaudio[filesize<=?{max_bytes}]/bestaudio/best[filesize<=?{max_bytes}]/best"
-
     if has_ffmpeg:
         return (
             f"bv*[filesize<=?{max_bytes}][vcodec^=avc]+ba[acodec^=mp4a]/"
@@ -334,16 +331,17 @@ def build_format_selector(mode: str, max_bytes: int, has_ffmpeg: bool) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="MIDWAVE yt-dlp worker")
+    parser = argparse.ArgumentParser(description="MIDWAVE yt-dlp video worker")
     parser.add_argument("--url", required=True, help="Validated HTTP/HTTPS target URL")
     parser.add_argument("--output-dir", required=True, help="Isolated temporary directory")
     parser.add_argument("--max-bytes", required=True, type=int, help="Max total/file byte limit")
-    parser.add_argument("--mode", default="video", choices=["video", "audio"], help="Download mode")
     parser.add_argument("--max-duration", default=900, type=int, help="Max video duration in seconds (0=unlimited)")
     parser.add_argument("--max-items", default=10, type=int, help="Max carousel items")
     parser.add_argument("--timeout", default=60, type=int, help="Socket timeout in seconds")
     parser.add_argument("--ffmpeg-location", default="", help="Optional path to ffmpeg binary or dir")
     parser.add_argument("--deno-path", default="", help="Optional path to deno binary for YouTube EJS")
+    parser.add_argument("--node-path", default="", help="Optional path to node binary for YouTube EJS")
+    parser.add_argument("--ytdlp-path", default="", help="Optional path to standalone yt-dlp zipapp")
     args = parser.parse_args()
 
     url = args.url.strip()
@@ -362,9 +360,23 @@ def main() -> int:
         )
         return 1
 
+    yt_dlp = None
     try:
-        import yt_dlp  # type: ignore
+        import yt_dlp as _yt_dlp  # type: ignore
+
+        yt_dlp = _yt_dlp
     except ImportError:
+        ytdlp_zip = (args.ytdlp_path or "").strip()
+        if ytdlp_zip and os.path.isfile(ytdlp_zip):
+            sys.path.insert(0, ytdlp_zip)
+            try:
+                import yt_dlp as _yt_dlp  # type: ignore
+
+                yt_dlp = _yt_dlp
+            except ImportError:
+                yt_dlp = None
+
+    if yt_dlp is None:
         emit_json(
             "RESULT:",
             {
@@ -444,7 +456,7 @@ def main() -> int:
     ydl_opts: dict[str, Any] = {
         "outtmpl": os.path.join(output_dir, "media_%(autonumber)s.%(ext)s"),
         "paths": {"home": output_dir, "temp": output_dir},
-        "format": build_format_selector(args.mode, args.max_bytes, has_ffmpeg),
+        "format": build_format_selector(args.max_bytes, has_ffmpeg),
         "noplaylist": True,
         "playlist_items": f"1-{max_items}",
         "socket_timeout": max(5, min(args.timeout, 30)),
@@ -472,19 +484,13 @@ def main() -> int:
         ydl_opts["ffmpeg_location"] = ffmpeg_loc
 
     deno_path = args.deno_path.strip()
+    node_path = args.node_path.strip()
     if deno_path:
         ydl_opts["js_runtimes"] = {"deno": {"path": deno_path}}
+    elif node_path:
+        ydl_opts["js_runtimes"] = {"node": {"path": node_path}}
 
-    if args.mode == "audio":
-        if has_ffmpeg:
-            ydl_opts["postprocessors"] = [
-                {
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "mp3",
-                    "preferredquality": "192",
-                }
-            ]
-    elif has_ffmpeg:
+    if has_ffmpeg:
         ydl_opts["merge_output_format"] = "mp4"
 
     try:
@@ -612,7 +618,6 @@ def main() -> int:
                     "title": title,
                     "author": author,
                     "duration": int(duration) if isinstance(duration, (int, float)) else None,
-                    "is_audio": args.mode == "audio",
                     "files": files,
                     "truncated_count": truncated_count,
                 },

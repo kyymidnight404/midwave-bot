@@ -16,6 +16,7 @@ import {
   cleanupStaleTempDirs,
   cleanupTempDir,
   downloadMediaFromUrl,
+  ensureYtDlpZipapp,
   getActiveDownloadCount,
   getDiscordUploadLimitBytes,
   getDownloaderConfig,
@@ -353,7 +354,6 @@ describe('Downloader — yt-dlp Subprocess, Queue, Error Handling & Cleanup', ()
         url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
         jobDir: tempRoot,
         maxBytes: 25 * 1024 * 1024,
-        mode: 'video',
         timeoutMs: 10_000,
         config: { pythonPath: 'python3' },
         spawnFn: mockSpawn,
@@ -373,7 +373,7 @@ describe('Downloader — yt-dlp Subprocess, Queue, Error Handling & Cleanup', ()
     }
   });
 
-  it('executes full downloadMediaFromUrl pipeline for video & audio-only and enforces file validation', async () => {
+  it('executes full downloadMediaFromUrl pipeline for video & carousel and enforces file validation', async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'midwave-dl-e2e-'));
     try {
       const config = {
@@ -411,36 +411,6 @@ describe('Downloader — yt-dlp Subprocess, Queue, Error Handling & Cleanup', ()
       assert.equal(videoResult.items.length, 1);
       assert.equal(videoResult.items[0].fileName, 'youtube_video.mp4');
       await cleanupTempDir(videoResult.jobDir);
-
-      // Audio-only mode
-      const audioResult = await downloadMediaFromUrl({
-        url: 'https://soundcloud.com/artist/track',
-        mode: 'audio',
-        config,
-        deps: {
-          lookupFn: publicLookupStub,
-          ytdlpRunner: async ({ jobDir }) => {
-            const filePath = path.join(jobDir, 'track.mp3');
-            await fs.writeFile(filePath, FAKE_MP3_HEADER);
-            return {
-              ok: true,
-              extractor: 'Soundcloud',
-              title: 'Chill Track',
-              author: 'DJ Midwave',
-              duration: 180,
-              is_audio: true,
-              files: [{ path: filePath, filename: 'track.mp3', size_bytes: FAKE_MP3_HEADER.length, ext: 'mp3' }],
-              truncated_count: 0,
-            };
-          },
-        },
-      });
-
-      assert.equal(audioResult.platformLabel, 'SoundCloud');
-      assert.equal(audioResult.mediaType, 'Audio');
-      assert.equal(audioResult.fileFormat, 'MP3');
-      assert.equal(audioResult.items[0].fileName, 'soundcloud_audio.mp3');
-      await cleanupTempDir(audioResult.jobDir);
 
       // Rejects masqueraded HTML file even if named .mp4
       await assert.rejects(
@@ -575,6 +545,84 @@ describe('Downloader — yt-dlp Subprocess, Queue, Error Handling & Cleanup', ()
     }
   });
 
+  it('auto-bootstraps standalone yt-dlp zipapp when Python module is missing and rejects corrupt payloads', async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'midwave-zipapp-'));
+    try {
+      const dlDir = path.join(tempRoot, 'downloads');
+      await fs.mkdir(dlDir, { recursive: true });
+
+      const fakeZipapp = Buffer.concat([
+        Buffer.from('#!/usr/bin/env python3\nPK\x03\x04'),
+        Buffer.alloc(600_000, 0x41),
+      ]);
+
+      let fetchCalls = 0;
+      const resolvedPath = await ensureYtDlpZipapp(
+        {
+          tempBaseDir: dlDir,
+          autoInstallYtDlp: true,
+        },
+        {
+          hasModuleFn: () => false,
+          fetchImpl: async () => {
+            fetchCalls += 1;
+            return {
+              ok: true,
+              status: 200,
+              async arrayBuffer() {
+                return fakeZipapp;
+              },
+            };
+          },
+        },
+      );
+
+      assert.equal(fetchCalls, 1);
+      assert.equal(resolvedPath, path.join(tempRoot, 'bin', 'yt-dlp'));
+      const saved = await fs.readFile(resolvedPath);
+      assert.equal(saved.length, fakeZipapp.length);
+
+      // Subsequent call reuses cached zipapp on disk without re-fetching
+      const secondPath = await ensureYtDlpZipapp(
+        {
+          tempBaseDir: dlDir,
+          autoInstallYtDlp: true,
+        },
+        {
+          hasModuleFn: () => false,
+          fetchImpl: async () => {
+            fetchCalls += 1;
+            throw new Error('should not fetch again');
+          },
+        },
+      );
+      assert.equal(secondPath, resolvedPath);
+      assert.equal(fetchCalls, 1);
+
+      // Corrupt small HTML payload is rejected cleanly
+      const dlDir2 = path.join(tempRoot, 'downloads2');
+      await fs.mkdir(dlDir2, { recursive: true });
+      await assert.rejects(
+        ensureYtDlpZipapp(
+          { tempBaseDir: dlDir2, autoInstallYtDlp: true },
+          {
+            hasModuleFn: () => false,
+            fetchImpl: async () => ({
+              ok: true,
+              status: 200,
+              async arrayBuffer() {
+                return Buffer.from('<html>bad</html>');
+              },
+            }),
+          },
+        ),
+        (err) => err.code === DOWNLOADER_ERROR_CODES.MISSING_DEPENDENCY,
+      );
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('queues concurrent jobs cleanly and rejects overflow with BUSY without leaking slots', async () => {
     const queue = new DownloadQueue({ maxConcurrent: 1, maxQueueSize: 1 });
     let releaseFirst;
@@ -621,7 +669,7 @@ describe('Downloader — yt-dlp Subprocess, Queue, Error Handling & Cleanup', ()
 });
 
 describe('Downloader — Discord Commands (/media action:download & !download) & Cooldown', () => {
-  it('registers /media with action:download and parses !download / !dl with optional audio flag', () => {
+  it('registers /media with action:download and parses !download / !dl directly as video URL', () => {
     const json = mediaData.toJSON();
     assert.equal(json.name, 'media');
     assert.ok(json.options[0].choices.some((c) => c.value === 'download'));
@@ -633,15 +681,10 @@ describe('Downloader — Discord Commands (/media action:download & !download) &
       subcommand: null,
       options: { url: 'https://www.youtube.com/watch?v=123' },
     });
-    assert.deepEqual(parsePrefixInvocation('!dl audio https://soundcloud.com/a/b'), {
+    assert.deepEqual(parsePrefixInvocation('!dl https://vt.tiktok.com/ZS2abcd/'), {
       commandName: 'download',
       subcommand: null,
-      options: { url: 'https://soundcloud.com/a/b', mode: 'audio' },
-    });
-    assert.deepEqual(parsePrefixInvocation('!download https://youtu.be/123 mp3'), {
-      commandName: 'download',
-      subcommand: null,
-      options: { url: 'https://youtu.be/123', mode: 'audio' },
+      options: { url: 'https://vt.tiktok.com/ZS2abcd/' },
     });
     assert.ok(parsePrefixInvocation('!download')?.error);
   });

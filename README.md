@@ -21,7 +21,7 @@ Supports both Slash Commands (`/`) and Prefix Commands (`!` by default):
 ### 2. Utilities & AI
 
 * **Midwave AI** (`/ai` & `!ai`) — Conversational AI assistant powered by **Google Gemini API** (`gemini-2.5-flash`) with temporary **15-minute RAM-only conversation context** per user/channel (auto-expired and manually clearable via `/ai question:reset`, `!ai reset`, or `!ai hapus riwayat`), automatic real-time web search (**Tavily Search**), >2,000-character Markdown-safe splitting, and mention sanitization.
-* **Media Downloader** (`/media action:download`, `!download`, & Auto-Downloader) — Powered by **yt-dlp** + **FFmpeg** via a Python 3.11+ subprocess. Supports YouTube, TikTok, Instagram, Facebook, X / Twitter, Reddit, Twitch, SoundCloud, Vimeo, Dailymotion, Bilibili, and other public yt-dlp extractors (plus `!download audio <url>` for audio-only extraction). Includes HTTP/HTTPS SSRF protection, magic-byte file inspection, concurrency-bounded FIFO queueing, timeout/process-tree termination, Discord attachment size limits (25/50/100 MB), and automatic temporary directory cleanup.
+* **Media Downloader** (`/media action:download`, `!download`, & Auto-Downloader) — Powered by **yt-dlp** + **FFmpeg** via a Python 3.11+ subprocess. Supports YouTube, TikTok, Instagram, Facebook, X / Twitter, Reddit, Twitch, Vimeo, Dailymotion, Bilibili, and other public video extractors. Includes HTTP/HTTPS SSRF protection, magic-byte file inspection, concurrency-bounded FIFO queueing, timeout/process-tree termination, Discord attachment size limits (25/50/100 MB), and automatic temporary directory cleanup.
 * **Lyrics Finder** (`/lyrics` & `!lyrics`) — Fetches song lyrics via **LRCLIB API** enriched with cover art (iTunes / optional Genius API) and interactive pagination buttons.
 * **Brat Generator** (`/brat`) — Generates minimalist `1024×1024` Brat-style PNG images directly in memory.
 * **Instagram Post Frame** (`!igf`) — Generates a transparent `1080×1080` Instagram Post Card PNG using the user's Discord avatar and display name.
@@ -68,7 +68,8 @@ cp .env.example .env
 | `TAVILY_API_KEY` | Optional | Tavily API key for real-time web search in `/ai` |
 | `RAPIDAPI` *(removed)* | — | *(No longer used; replaced by local `yt-dlp`)* |
 | `PYTHON_PATH` | Optional | Path/command for Python 3.11+ executable (default: `python3` / `python`) |
-| `YTDLP_PATH` | Optional | Path/command override for `yt-dlp` (default: `yt-dlp`) |
+| `YTDLP_PATH` | Optional | Path/command override for `yt-dlp` or standalone zipapp (default: `yt-dlp`) |
+| `YTDLP_AUTO_DOWNLOAD` | Optional | Auto-download official `yt-dlp` zipapp (~3 MB) if `yt_dlp` module is missing (`true`/`false`) |
 | `FFMPEG_PATH` | Optional | Custom path to `ffmpeg` binary or directory if not in `PATH` |
 | `DENO_PATH` | Optional | Custom path to `deno` binary for YouTube EJS JS challenge solving |
 | `DOWNLOAD_TEMP_DIR` | Optional | Temporary download folder (default: `./temp/downloads`) |
@@ -187,9 +188,7 @@ ffprobe -version
 deno --version
 ```
 
-> **Hosting / Wispbyte Note:** Managed Node.js panels like Wispbyte may not allow system-level `apt` installations (`ffmpeg`) or pre-installed `python3`/`deno`. If your hosting plan lacks Python 3.11+, `yt-dlp`, or `ffmpeg`:
-> - Use a Docker-based container or Ubuntu VPS (with PM2) where `python3`, `yt-dlp`, `yt-dlp-ejs`, `ffmpeg`, `ffprobe`, and `deno` can be installed.
-> - Or point `PYTHON_PATH`, `FFMPEG_PATH`, and `DENO_PATH` in `.env` to bundled binaries if your panel permits user-space binaries.
+> **Hosting / Wispbyte Note:** On managed Node.js containers like Wispbyte (`nodejs_22`) where `python3` is available without `pip` or `sudo`, Midwave automatically downloads the official standalone `yt-dlp` zipapp (~3 MB, including `yt-dlp-ejs`) into `./temp/bin/yt-dlp` on first use and uses `node` as the JS runtime fallback when `deno` is absent. Single-stream formats (TikTok, Instagram, X, etc.) work without `ffmpeg`; for 1080p stream merging on low-disk/RAM tiers (512 MB RAM / 1 GB disk), an Ubuntu VPS or Docker host with `ffmpeg` installed is recommended.
 
 ### Supported Platforms & Limitations
 - `yt-dlp` supports thousands of extractors (including YouTube, TikTok, Instagram, Facebook, X/Twitter, Reddit, Twitch, SoundCloud, Vimeo, Dailymotion, and Bilibili).

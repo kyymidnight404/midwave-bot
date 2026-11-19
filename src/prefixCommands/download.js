@@ -65,8 +65,6 @@ function formatProgressStatusText(progress) {
  */
 export async function execute(interaction, context = {}) {
   const rawUrl = interaction.options?.getString?.('url', false);
-  const rawMode = interaction.options?.getString?.('mode', false);
-  const mode = rawMode === 'audio' ? 'audio' : 'video';
 
   if (typeof rawUrl !== 'string' || !rawUrl.trim()) {
     await interaction.reply({
@@ -128,7 +126,6 @@ export async function execute(interaction, context = {}) {
 
     result = await downloader({
       url: validated.normalizedUrl,
-      mode,
       guild: interaction.guild,
       config: runtimeConfig,
       onProgress: handleProgress,

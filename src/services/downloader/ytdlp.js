@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import fsSync from 'node:fs';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DOWNLOADER_ERROR_CODES, DownloaderError } from './errors.js';
@@ -7,11 +8,16 @@ import { DOWNLOADER_ERROR_CODES, DownloaderError } from './errors.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 export const YTDLP_SCRIPT_PATH = path.resolve(__dirname, '../../../scripts/downloader/download.py');
+export const YTDLP_OFFICIAL_ZIPAPP_URL =
+  'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp';
+const YTDLP_ZIPAPP_MIN_BYTES = 500_000;
 
 const MAX_STDIO_BYTES = 1024 * 1024;
 
 let cachedPythonBin = null;
 let cachedDenoBin = null;
+const pythonHasYtDlpCache = new Map();
+let pendingZipappDownload = null;
 
 /**
  * Redacts sensitive tokens, credentials, URLs, and paths from log output.
@@ -144,6 +150,171 @@ export function resolveDenoBinary(configuredPath) {
 }
 
 /**
+ * Resolves an optional local FFmpeg binary/directory override.
+ *
+ * @param {string | null | undefined} configuredPath
+ * @returns {string | null}
+ */
+export function resolveFfmpegLocation(configuredPath) {
+  const explicit = typeof configuredPath === 'string' ? configuredPath.trim() : '';
+  if (explicit) return explicit;
+
+  const binName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+  const localCandidates = [
+    path.resolve(process.cwd(), 'bin', binName),
+    path.resolve(process.cwd(), 'temp', 'bin', binName),
+  ];
+
+  for (const candidate of localCandidates) {
+    if (fsSync.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+/**
+ * Checks whether a Python interpreter already has the `yt_dlp` package installed.
+ * Cached per binary path for the lifetime of the process.
+ *
+ * @param {string} pythonBin
+ * @returns {boolean}
+ */
+export function hasPythonYtDlpModule(pythonBin) {
+  if (!pythonBin) return false;
+  if (pythonHasYtDlpCache.has(pythonBin)) {
+    return pythonHasYtDlpCache.get(pythonBin);
+  }
+  try {
+    const res = spawnSync(pythonBin, ['-c', 'import yt_dlp'], {
+      stdio: 'pipe',
+      timeout: 5_000,
+      windowsHide: true,
+    });
+    const ok = !res.error && res.status === 0;
+    pythonHasYtDlpCache.set(pythonBin, ok);
+    return ok;
+  } catch {
+    pythonHasYtDlpCache.set(pythonBin, false);
+    return false;
+  }
+}
+
+/**
+ * Resolves the target storage path for the standalone `yt-dlp` zipapp when no
+ * system/pip installation is present (e.g. managed Node.js containers like Wispbyte).
+ *
+ * @param {object} [config]
+ * @returns {string}
+ */
+export function getDefaultYtDlpZipappPath(config = {}) {
+  const explicit = typeof config.ytdlpPath === 'string' ? config.ytdlpPath.trim() : '';
+  if (explicit && (explicit.includes('/') || explicit.includes('\\') || explicit.endsWith('.pyz'))) {
+    return path.isAbsolute(explicit) ? explicit : path.resolve(process.cwd(), explicit);
+  }
+  const tempBase = config.tempBaseDir
+    ? path.resolve(config.tempBaseDir)
+    : path.resolve(process.cwd(), 'temp', 'downloads');
+  const tempParent = path.basename(tempBase) === 'downloads' ? path.dirname(tempBase) : tempBase;
+  return path.join(tempParent, 'bin', 'yt-dlp');
+}
+
+function isValidYtDlpZipappHeader(buf) {
+  if (!buf || buf.length < YTDLP_ZIPAPP_MIN_BYTES) return false;
+  const isShebang = buf[0] === 0x23 && buf[1] === 0x21; // #!
+  const isZip = buf[0] === 0x50 && buf[1] === 0x4b; // PK
+  return isShebang || isZip;
+}
+
+/**
+ * Ensures a standalone `yt-dlp` zipapp is available when Python lacks `pip install yt-dlp`.
+ * Downloads the official zipapp once (~3 MB, includes `yt-dlp-ejs`) and caches it locally.
+ *
+ * @param {object} [config]
+ * @param {{ fetchImpl?: typeof fetch, hasModuleFn?: (bin: string) => boolean }} [options]
+ * @returns {Promise<string | null>}
+ */
+export async function ensureYtDlpZipapp(config = {}, options = {}) {
+  const pythonBin = resolvePythonBinary(config.pythonPath);
+  const checkModule = options.hasModuleFn || hasPythonYtDlpModule;
+
+  const explicit = typeof config.ytdlpPath === 'string' ? config.ytdlpPath.trim() : '';
+  if (explicit && fsSync.existsSync(explicit) && fsSync.statSync(explicit).isFile()) {
+    return path.resolve(explicit);
+  }
+
+  const localCandidates = [
+    path.resolve(process.cwd(), 'bin', 'yt-dlp'),
+    getDefaultYtDlpZipappPath(config),
+  ];
+
+  for (const candidate of localCandidates) {
+    if (fsSync.existsSync(candidate) && fsSync.statSync(candidate).size >= YTDLP_ZIPAPP_MIN_BYTES) {
+      return candidate;
+    }
+  }
+
+  if (checkModule(pythonBin)) {
+    return null;
+  }
+
+  if (config.autoInstallYtDlp === false) {
+    return null;
+  }
+
+  if (pendingZipappDownload) {
+    return pendingZipappDownload;
+  }
+
+  const targetPath = getDefaultYtDlpZipappPath(config);
+  const fetchImpl = options.fetchImpl || fetch;
+
+  pendingZipappDownload = (async () => {
+    const targetDir = path.dirname(targetPath);
+    await fs.mkdir(targetDir, { recursive: true });
+    const partPath = `${targetPath}.${process.pid}.part`;
+
+    try {
+      const response = await fetchImpl(YTDLP_OFFICIAL_ZIPAPP_URL, {
+        method: 'GET',
+        redirect: 'follow',
+        headers: {
+          'User-Agent': 'MidwaveBot/1.0.0',
+        },
+        signal: AbortSignal.timeout(30_000),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = Buffer.from(await response.arrayBuffer());
+      if (!isValidYtDlpZipappHeader(data)) {
+        throw new Error('Downloaded yt-dlp zipapp failed integrity header/size check');
+      }
+
+      await fs.writeFile(partPath, data);
+      if (process.platform !== 'win32') {
+        await fs.chmod(partPath, 0o755).catch(() => {});
+      }
+      await fs.rename(partPath, targetPath);
+      return targetPath;
+    } catch (error) {
+      await fs.rm(partPath, { force: true }).catch(() => {});
+      throw new DownloaderError(
+        DOWNLOADER_ERROR_CODES.MISSING_DEPENDENCY,
+        'Engine downloader (`yt-dlp`) belum terpasang dan gagal diunduh otomatis. Periksa koneksi internet server atau pasang `yt-dlp` secara manual.',
+        { cause: error, details: sanitizeLogText(error?.message) },
+      );
+    } finally {
+      pendingZipappDownload = null;
+    }
+  })();
+
+  return pendingZipappDownload;
+}
+
+/**
  * Terminates a child process and its descendant tree safely across Windows and POSIX.
  *
  * @param {import('node:child_process').ChildProcess} child
@@ -234,7 +405,6 @@ export function mapWorkerFailureToError(result, stderrText = '') {
  *   url: string,
  *   jobDir: string,
  *   maxBytes: number,
- *   mode?: 'video' | 'audio',
  *   maxDurationSeconds?: number,
  *   timeoutMs?: number,
  *   config?: object,
@@ -248,7 +418,6 @@ export async function runYtDlpDownload(params) {
     url,
     jobDir,
     maxBytes,
-    mode = 'video',
     maxDurationSeconds = 900,
     timeoutMs = 60_000,
     config = {},
@@ -259,6 +428,11 @@ export async function runYtDlpDownload(params) {
 
   const pythonBin = resolvePythonBinary(config.pythonPath);
   const denoBin = resolveDenoBinary(config.denoPath);
+  const ffmpegLocation = resolveFfmpegLocation(config.ffmpegPath);
+  const isMockedSpawn = Boolean(params.spawnFn && params.spawnFn !== spawn);
+  const ytdlpZipapp = isMockedSpawn
+    ? (typeof config.ytdlpZipappPath === 'string' && config.ytdlpZipappPath ? config.ytdlpZipappPath : null)
+    : await ensureYtDlpZipapp(config);
 
   const args = [
     scriptPath,
@@ -268,19 +442,22 @@ export async function runYtDlpDownload(params) {
     jobDir,
     '--max-bytes',
     String(Math.max(1024, Math.floor(maxBytes))),
-    '--mode',
-    mode === 'audio' ? 'audio' : 'video',
     '--max-duration',
     String(Math.max(0, Math.floor(maxDurationSeconds))),
     '--timeout',
     String(Math.max(5, Math.ceil(timeoutMs / 1000))),
   ];
 
-  if (config.ffmpegPath) {
-    args.push('--ffmpeg-location', config.ffmpegPath);
+  if (ffmpegLocation) {
+    args.push('--ffmpeg-location', ffmpegLocation);
   }
   if (denoBin) {
     args.push('--deno-path', denoBin);
+  } else if (process.execPath) {
+    args.push('--node-path', process.execPath);
+  }
+  if (ytdlpZipapp) {
+    args.push('--ytdlp-path', ytdlpZipapp);
   }
 
   return new Promise((resolve, reject) => {

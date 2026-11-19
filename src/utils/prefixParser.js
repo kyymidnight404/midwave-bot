@@ -390,30 +390,14 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
         commandName,
         subcommand: null,
         options: {},
-        error: `Tautan \`url\` wajib diisi. Contoh: \`${prefix}download https://www.youtube.com/watch?v=...\` atau \`${prefix}download audio <link>\`.`,
+        error: `Tautan \`url\` wajib diisi. Contoh: \`${prefix}download https://www.youtube.com/watch?v=...\` atau \`${prefix}download https://vt.tiktok.com/...\`.`,
       };
-    }
-
-    const tokens = rawRest.split(/\s+/).filter(Boolean);
-    let mode = null;
-    let urlToken = rawRest;
-
-    if (tokens.length >= 2) {
-      const first = tokens[0].toLowerCase();
-      const last = tokens[tokens.length - 1].toLowerCase();
-      if (first === 'audio' || first === 'mp3' || first === '--audio') {
-        mode = 'audio';
-        urlToken = tokens.slice(1).join(' ');
-      } else if (last === 'audio' || last === 'mp3' || last === '--audio') {
-        mode = 'audio';
-        urlToken = tokens.slice(0, -1).join(' ');
-      }
     }
 
     return {
       commandName,
       subcommand: null,
-      options: mode ? { url: urlToken, mode } : { url: urlToken },
+      options: { url: rawRest },
     };
   }
 

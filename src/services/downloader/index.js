@@ -35,6 +35,7 @@ import {
 import { DownloadQueue, defaultDownloadQueue } from './queue.js';
 import {
   YTDLP_SCRIPT_PATH,
+  ensureYtDlpZipapp,
   resolveDenoBinary,
   resolvePythonBinary,
   runYtDlpDownload,
@@ -60,6 +61,7 @@ export {
   defaultDownloadQueue,
   detectMediaSignature,
   detectPlatformFromHost,
+  ensureYtDlpZipapp,
   extractInstagramShortcode,
   formatBytes,
   getDiscordUploadLimitBytes,
@@ -98,7 +100,6 @@ export function getActiveDownloadCount() {
  *
  * @param {{
  *   url: string,
- *   mode?: 'video' | 'audio',
  *   guild?: { premiumTier?: number } | null,
  *   maxBytesOverride?: number | null,
  *   config?: ReturnType<typeof getDownloaderConfig>,
@@ -118,7 +119,6 @@ export function getActiveDownloadCount() {
 export async function downloadMediaFromUrl(params) {
   const {
     url,
-    mode = 'video',
     guild = null,
     maxBytesOverride = null,
     config: rawConfig = getDownloaderConfig(),
@@ -171,7 +171,6 @@ export async function downloadMediaFromUrl(params) {
           url: resolved.normalizedUrl,
           jobDir,
           maxBytes,
-          mode: mode === 'audio' ? 'audio' : 'video',
           maxDurationSeconds: config.maxDurationSeconds,
           timeoutMs: config.timeoutMs,
           config,
@@ -193,7 +192,6 @@ export async function downloadMediaFromUrl(params) {
           jobDir,
           maxBytes,
           platform: resolved.platform,
-          isAudio: Boolean(ytdlpResult.is_audio || mode === 'audio'),
         });
 
         const resolvedLabel = resolvePlatformLabel(
