@@ -4,6 +4,7 @@ import {
   ButtonBuilder,
   ButtonStyle,
   Routes,
+  Status,
   version as discordJsVersion,
 } from 'discord.js';
 import { COLORS } from '../config/colors.js';
@@ -16,6 +17,13 @@ export const PING_REFRESH_CUSTOM_ID = 'ping:refresh';
 export const HEALTH_STATUS = Object.freeze({
   HEALTHY: 'healthy',
   DEGRADED: 'degraded',
+  UNHEALTHY: 'unhealthy',
+});
+
+export const WS_CONNECTION_STATUS = Object.freeze({
+  CONNECTED: 'connected',
+  CONNECTING: 'connecting',
+  DISCONNECTED: 'disconnected',
   UNAVAILABLE: 'unavailable',
 });
 
@@ -27,21 +35,54 @@ export const PING_THRESHOLDS = Object.freeze({
 });
 
 const DEFAULT_PROBE_TIMEOUT_MS = 4000;
+const DEFAULT_CPU_SAMPLE_WINDOW_MS = 100;
+
+const WS_CONNECTING_STATUSES = new Set([
+  Status.Connecting,
+  Status.Reconnecting,
+  Status.Nearly,
+  Status.WaitingForGuilds,
+  Status.Identifying,
+  Status.Resuming,
+]);
+
+const NETWORK_ERROR_CODES = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ETIMEDOUT',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_SOCKET',
+]);
+
+function delay(ms) {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    timer.unref?.();
+  });
+}
 
 /**
- * Runs an async probe with a hard timeout that cleans up its timer on completion.
+ * Runs an async probe with a hard timeout and optional AbortSignal, cleaning up timers on completion.
  * @template T
- * @param {() => Promise<T>} fn
+ * @param {(signal?: AbortSignal) => Promise<T>} fn
  * @param {number} timeoutMs
  * @returns {Promise<T>}
  */
 async function runWithTimeout(fn, timeoutMs) {
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
   let timerId = null;
   try {
     return await Promise.race([
-      Promise.resolve().then(fn),
+      Promise.resolve().then(() => fn(controller?.signal)),
       new Promise((_, reject) => {
         timerId = setTimeout(() => {
+          controller?.abort();
           const err = new Error('Diagnostic probe timed out');
           err.code = 'PROBE_TIMEOUT';
           reject(err);
@@ -92,66 +133,188 @@ export function formatMemoryMb(bytes) {
 }
 
 /**
- * Computes normalized process CPU usage percentage.
- * Uses the diagnostic probe window when long enough; otherwise falls back to process-lifetime CPU average.
+ * Computes normalized process CPU usage percentage strictly from a measured time interval.
+ * Returns `null` if the measurement interval was too short to avoid misrepresenting cumulative CPU.
  * @param {NodeJS.CpuUsage} cpuStart
  * @param {bigint} wallStartNs
- * @returns {number}
+ * @returns {{ cpuPercent: number | null, sampleWindowMs: number }}
  */
-export function computeCpuUsagePercent(cpuStart, wallStartNs) {
-  const cpuCores = Math.max(1, os.cpus()?.length || 1);
+export function computeCpuIntervalPercent(cpuStart, wallStartNs) {
   const elapsedUs = Number(process.hrtime.bigint() - wallStartNs) / 1000;
+  const sampleWindowMs = Math.max(0, Math.round(elapsedUs / 1000));
 
-  if (elapsedUs >= 20_000) {
-    const delta = process.cpuUsage(cpuStart);
-    const totalCpuUs = Math.max(0, delta.user + delta.system);
-    const pct = (totalCpuUs / (elapsedUs * cpuCores)) * 100;
-    return Number(Math.min(100, Math.max(0, pct)).toFixed(1));
+  if (elapsedUs < 20_000) {
+    return { cpuPercent: null, sampleWindowMs };
   }
 
-  const processUptimeUs = Math.max(1, process.uptime() * 1_000_000);
-  const current = process.cpuUsage();
-  const totalCpuUs = Math.max(0, current.user + current.system);
-  const pct = (totalCpuUs / (processUptimeUs * cpuCores)) * 100;
-  return Number(Math.min(100, Math.max(0, pct)).toFixed(1));
+  const cpuCores = Math.max(1, os.cpus()?.length || 1);
+  const delta = process.cpuUsage(cpuStart);
+  const totalCpuUs = Math.max(0, delta.user + delta.system);
+  const pct = (totalCpuUs / (elapsedUs * cpuCores)) * 100;
+
+  return {
+    cpuPercent: Number(Math.min(100, Math.max(0, pct)).toFixed(1)),
+    sampleWindowMs,
+  };
+}
+
+/**
+ * Inspects Discord.js client readiness, WebSocketManager status, and shard pings.
+ * Distinguishes Connected (including awaiting first heartbeat), Connecting, Disconnected, and Unavailable.
+ * @param {import('discord.js').Client | null | undefined} client
+ * @returns {{
+ *   connectionState: 'connected' | 'connecting' | 'disconnected' | 'unavailable',
+ *   clientReady: boolean,
+ *   pingMs: number | null,
+ * }}
+ */
+export function inspectWebSocketState(client) {
+  const ws = client?.ws;
+  if (!client || !ws) {
+    return {
+      connectionState: WS_CONNECTION_STATUS.UNAVAILABLE,
+      clientReady: false,
+      pingMs: null,
+    };
+  }
+
+  if (ws.destroyed === true || ws.status === Status.Disconnected) {
+    return {
+      connectionState: WS_CONNECTION_STATUS.DISCONNECTED,
+      clientReady: false,
+      pingMs: null,
+    };
+  }
+
+  const shards = ws.shards;
+  const shardList =
+    shards && typeof shards.values === 'function' ? Array.from(shards.values()) : [];
+
+  const validShardPings = shardList
+    .map((shard) => shard?.ping)
+    .filter((p) => typeof p === 'number' && Number.isFinite(p) && p >= 0);
+
+  let pingMs = null;
+  if (validShardPings.length > 0) {
+    const sum = validShardPings.reduce((acc, p) => acc + p, 0);
+    pingMs = Math.round(sum / validShardPings.length);
+  } else if (typeof ws.ping === 'number' && Number.isFinite(ws.ping) && ws.ping >= 0) {
+    pingMs = Math.round(ws.ping);
+  }
+
+  const clientReady =
+    typeof client.isReady === 'function'
+      ? Boolean(client.isReady())
+      : ws.status === Status.Ready || (ws.status === undefined && pingMs !== null);
+
+  if (shardList.length > 0 && shardList.every((s) => s?.status === Status.Disconnected)) {
+    return {
+      connectionState: WS_CONNECTION_STATUS.DISCONNECTED,
+      clientReady: false,
+      pingMs: null,
+    };
+  }
+
+  if (ws.status === Status.Ready || clientReady) {
+    return {
+      connectionState: WS_CONNECTION_STATUS.CONNECTED,
+      clientReady: true,
+      pingMs,
+    };
+  }
+
+  if (
+    WS_CONNECTING_STATUSES.has(ws.status) ||
+    shardList.some((s) => WS_CONNECTING_STATUSES.has(s?.status))
+  ) {
+    return {
+      connectionState: WS_CONNECTION_STATUS.CONNECTING,
+      clientReady: false,
+      pingMs,
+    };
+  }
+
+  if (ws.status === Status.Idle) {
+    return {
+      connectionState:
+        shardList.length === 0 ? WS_CONNECTION_STATUS.DISCONNECTED : WS_CONNECTION_STATUS.CONNECTING,
+      clientReady: false,
+      pingMs: null,
+    };
+  }
+
+  return {
+    connectionState: WS_CONNECTION_STATUS.UNAVAILABLE,
+    clientReady: false,
+    pingMs,
+  };
 }
 
 function classifyLatency(latencyMs, degradedThresholdMs) {
   if (typeof latencyMs !== 'number' || !Number.isFinite(latencyMs) || latencyMs < 0) {
-    return HEALTH_STATUS.UNAVAILABLE;
+    return 'unavailable';
   }
-  return latencyMs >= degradedThresholdMs ? HEALTH_STATUS.DEGRADED : HEALTH_STATUS.HEALTHY;
+  return latencyMs >= degradedThresholdMs ? 'degraded' : 'healthy';
 }
 
 function collectGuildStats(client) {
   const cache = client?.guilds?.cache;
   if (!cache || typeof cache.size !== 'number') {
-    return { guildCount: 0, memberCount: 0 };
+    return { guildCount: 0, memberCount: 0, isMemberEstimate: true };
   }
 
   let memberCount = 0;
+  let isMemberEstimate = false;
+
   for (const guild of cache.values()) {
-    const count = guild?.memberCount ?? guild?.members?.cache?.size ?? 0;
-    if (typeof count === 'number' && Number.isFinite(count) && count > 0) {
-      memberCount += count;
+    if (guild?.available === false) {
+      isMemberEstimate = true;
+    }
+
+    if (typeof guild?.memberCount === 'number' && Number.isFinite(guild.memberCount) && guild.memberCount >= 0) {
+      memberCount += guild.memberCount;
+    } else {
+      isMemberEstimate = true;
+      const cachedCount = guild?.members?.cache?.size ?? 0;
+      if (typeof cachedCount === 'number' && Number.isFinite(cachedCount) && cachedCount > 0) {
+        memberCount += cachedCount;
+      }
     }
   }
 
   return {
     guildCount: cache.size,
     memberCount,
+    isMemberEstimate,
   };
+}
+
+function classifyRestError(err) {
+  if (err?.code === 'PROBE_TIMEOUT' || err?.name === 'AbortError') {
+    return { status: 'degraded', timedOut: true, errorType: 'timeout' };
+  }
+  const statusCode = err?.status ?? err?.statusCode ?? err?.rawError?.code;
+  if (statusCode === 429) {
+    return { status: 'degraded', timedOut: false, errorType: 'rate_limit' };
+  }
+  if (typeof statusCode === 'number' && statusCode >= 400) {
+    return { status: 'unavailable', timedOut: false, errorType: 'http_error' };
+  }
+  if (NETWORK_ERROR_CODES.has(err?.code) || NETWORK_ERROR_CODES.has(err?.cause?.code)) {
+    return { status: 'unavailable', timedOut: false, errorType: 'network_error' };
+  }
+  return { status: 'unavailable', timedOut: false, errorType: 'error' };
 }
 
 async function measureDiscordRestLatency(client, { restProbe, timeoutMs }) {
   const start = performance.now();
   if (typeof restProbe === 'function') {
-    await runWithTimeout(() => restProbe(client), timeoutMs);
+    await runWithTimeout((signal) => restProbe(client, signal), timeoutMs);
     return Math.max(0, Math.round(performance.now() - start));
   }
 
   if (typeof client?.rest?.get === 'function') {
-    await runWithTimeout(() => client.rest.get(Routes.gateway()), timeoutMs);
+    await runWithTimeout((signal) => client.rest.get(Routes.gateway(), { signal }), timeoutMs);
     return Math.max(0, Math.round(performance.now() - start));
   }
 
@@ -179,35 +342,63 @@ async function measurePrismaDbLatency(prisma, { dbProbe, timeoutMs }) {
 }
 
 /**
- * Evaluates overall health status from collected connection probe results.
+ * Centralized overall health status classifier.
+ * Distinguishes Healthy, Degraded, and Unhealthy across connection states and critical dependencies.
  * @param {{
- *   messageLatencyMs: number | null,
- *   wsPingMs: number | null,
- *   restLatencyMs: number | null,
- *   dbLatencyMs: number | null,
- * }} metrics
- * @returns {'healthy' | 'degraded' | 'unavailable'}
+ *   clientReady?: boolean,
+ *   wsStatus?: 'connected' | 'connecting' | 'disconnected' | 'unavailable',
+ *   wsPingMs?: number | null,
+ *   restCheck?: { status: string, latencyMs: number | null, timedOut?: boolean, errorType?: string | null },
+ *   dbCheck?: { status: string, latencyMs: number | null, timedOut?: boolean, errorType?: string | null },
+ *   messageCheck?: { status: string, latencyMs: number | null },
+ * }} input
+ * @returns {'healthy' | 'degraded' | 'unhealthy'}
  */
-export function evaluateHealthStatus({ messageLatencyMs, wsPingMs, restLatencyMs, dbLatencyMs }) {
-  const wsStatus = classifyLatency(wsPingMs, PING_THRESHOLDS.wsDegradedMs);
-  const restStatus = classifyLatency(restLatencyMs, PING_THRESHOLDS.restDegradedMs);
-  const dbStatus = classifyLatency(dbLatencyMs, PING_THRESHOLDS.dbDegradedMs);
-  const msgStatus =
-    messageLatencyMs === null
-      ? HEALTH_STATUS.HEALTHY
-      : classifyLatency(messageLatencyMs, PING_THRESHOLDS.messageDegradedMs);
-
-  const discordUnavailable =
-    wsStatus === HEALTH_STATUS.UNAVAILABLE && restStatus === HEALTH_STATUS.UNAVAILABLE;
-  const allCoreUnavailable =
-    discordUnavailable && dbStatus === HEALTH_STATUS.UNAVAILABLE;
-
-  if (discordUnavailable || allCoreUnavailable) {
-    return HEALTH_STATUS.UNAVAILABLE;
+export function evaluateHealthStatus({
+  clientReady = false,
+  wsStatus = WS_CONNECTION_STATUS.UNAVAILABLE,
+  wsPingMs = null,
+  restCheck = { status: 'unavailable', latencyMs: null, timedOut: false, errorType: null },
+  dbCheck = { status: 'unavailable', latencyMs: null, timedOut: false, errorType: null },
+  messageCheck = { status: 'healthy', latencyMs: null },
+}) {
+  // Critical failures -> Unhealthy
+  if (wsStatus === WS_CONNECTION_STATUS.DISCONNECTED) {
+    return HEALTH_STATUS.UNHEALTHY;
+  }
+  if (dbCheck.status === 'unavailable' && !dbCheck.timedOut) {
+    return HEALTH_STATUS.UNHEALTHY;
+  }
+  if (
+    restCheck.status === 'unavailable' &&
+    !restCheck.timedOut &&
+    restCheck.errorType !== 'rate_limit'
+  ) {
+    return HEALTH_STATUS.UNHEALTHY;
   }
 
-  const statuses = [wsStatus, restStatus, dbStatus, msgStatus];
-  if (statuses.includes(HEALTH_STATUS.UNAVAILABLE) || statuses.includes(HEALTH_STATUS.DEGRADED)) {
+  // Non-critical / transient / unverified metrics -> Degraded
+  if (
+    !clientReady ||
+    wsStatus === WS_CONNECTION_STATUS.CONNECTING ||
+    wsStatus === WS_CONNECTION_STATUS.UNAVAILABLE
+  ) {
+    return HEALTH_STATUS.DEGRADED;
+  }
+
+  if (wsPingMs === null || wsPingMs >= PING_THRESHOLDS.wsDegradedMs) {
+    return HEALTH_STATUS.DEGRADED;
+  }
+
+  if (
+    restCheck.timedOut ||
+    restCheck.errorType === 'rate_limit' ||
+    restCheck.status !== 'healthy' ||
+    dbCheck.timedOut ||
+    dbCheck.status !== 'healthy' ||
+    messageCheck.status === 'degraded' ||
+    messageCheck.status === 'unavailable'
+  ) {
     return HEALTH_STATUS.DEGRADED;
   }
 
@@ -224,6 +415,7 @@ export function evaluateHealthStatus({ messageLatencyMs, wsPingMs, restLatencyMs
  *   dbProbe?: Function,
  *   restTimeoutMs?: number,
  *   dbTimeoutMs?: number,
+ *   minCpuSampleWindowMs?: number,
  * }} [options]
  */
 export async function collectPingDiagnostics(options = {}) {
@@ -235,6 +427,7 @@ export async function collectPingDiagnostics(options = {}) {
     dbProbe = null,
     restTimeoutMs = DEFAULT_PROBE_TIMEOUT_MS,
     dbTimeoutMs = DEFAULT_PROBE_TIMEOUT_MS,
+    minCpuSampleWindowMs = DEFAULT_CPU_SAMPLE_WINDOW_MS,
   } = options;
 
   const cpuStart = process.cpuUsage();
@@ -245,70 +438,100 @@ export async function collectPingDiagnostics(options = {}) {
     measurePrismaDbLatency(prisma, { dbProbe, timeoutMs: dbTimeoutMs }),
   ]);
 
-  const rawWsPing = client?.ws?.ping;
-  const wsPingMs =
-    typeof rawWsPing === 'number' && Number.isFinite(rawWsPing) && rawWsPing >= 0
-      ? Math.round(rawWsPing)
-      : null;
+  // Ensure a valid non-blocking measurement interval for process.cpuUsage()
+  const elapsedAfterProbesMs = Number(process.hrtime.bigint() - wallStartNs) / 1_000_000;
+  if (minCpuSampleWindowMs > 0 && elapsedAfterProbesMs < minCpuSampleWindowMs) {
+    await delay(Math.ceil(minCpuSampleWindowMs - elapsedAfterProbesMs));
+  }
 
-  const restLatencyMs = restResult.status === 'fulfilled' ? restResult.value : null;
-  const dbLatencyMs = dbResult.status === 'fulfilled' ? dbResult.value : null;
+  const { cpuPercent, sampleWindowMs } = computeCpuIntervalPercent(cpuStart, wallStartNs);
+  const wsState = inspectWebSocketState(client);
 
   const normalizedMessageLatencyMs =
     typeof messageLatencyMs === 'number' && Number.isFinite(messageLatencyMs) && messageLatencyMs >= 0
       ? Math.round(messageLatencyMs)
       : null;
 
-  const restTimedOut = restResult.status === 'rejected' && restResult.reason?.code === 'PROBE_TIMEOUT';
-  const dbTimedOut = dbResult.status === 'rejected' && dbResult.reason?.code === 'PROBE_TIMEOUT';
+  const messageCheck = {
+    latencyMs: normalizedMessageLatencyMs,
+    status:
+      normalizedMessageLatencyMs === null
+        ? 'unavailable'
+        : classifyLatency(normalizedMessageLatencyMs, PING_THRESHOLDS.messageDegradedMs),
+  };
 
-  const memoryUsage = process.memoryUsage();
-  const cpuPercent = computeCpuUsagePercent(cpuStart, wallStartNs);
-  const uptimeMs =
-    typeof client?.uptime === 'number' && Number.isFinite(client.uptime) && client.uptime >= 0
-      ? client.uptime
-      : Math.round(process.uptime() * 1000);
+  let restCheck;
+  if (restResult.status === 'fulfilled') {
+    restCheck = {
+      latencyMs: restResult.value,
+      status: classifyLatency(restResult.value, PING_THRESHOLDS.restDegradedMs),
+      timedOut: false,
+      errorType: null,
+    };
+  } else {
+    const classified = classifyRestError(restResult.reason);
+    restCheck = {
+      latencyMs: null,
+      status: classified.status,
+      timedOut: classified.timedOut,
+      errorType: classified.errorType,
+    };
+  }
 
-  const { guildCount, memberCount } = collectGuildStats(client);
+  let dbCheck;
+  if (dbResult.status === 'fulfilled') {
+    dbCheck = {
+      latencyMs: dbResult.value,
+      status: classifyLatency(dbResult.value, PING_THRESHOLDS.dbDegradedMs),
+      timedOut: false,
+      errorType: null,
+    };
+  } else {
+    const timedOut = dbResult.reason?.code === 'PROBE_TIMEOUT';
+    dbCheck = {
+      latencyMs: null,
+      status: timedOut ? 'degraded' : 'unavailable',
+      timedOut,
+      errorType: timedOut ? 'timeout' : 'disconnected',
+    };
+  }
 
-  const checks = {
-    message: {
-      latencyMs: normalizedMessageLatencyMs,
-      status:
-        normalizedMessageLatencyMs === null
-          ? HEALTH_STATUS.UNAVAILABLE
-          : classifyLatency(normalizedMessageLatencyMs, PING_THRESHOLDS.messageDegradedMs),
-    },
-    ws: {
-      latencyMs: wsPingMs,
-      status: classifyLatency(wsPingMs, PING_THRESHOLDS.wsDegradedMs),
-    },
-    rest: {
-      latencyMs: restLatencyMs,
-      status: classifyLatency(restLatencyMs, PING_THRESHOLDS.restDegradedMs),
-      timedOut: restTimedOut,
-    },
-    database: {
-      latencyMs: dbLatencyMs,
-      status: classifyLatency(dbLatencyMs, PING_THRESHOLDS.dbDegradedMs),
-      timedOut: dbTimedOut,
-    },
+  const wsCheck = {
+    latencyMs: wsState.pingMs,
+    connectionState: wsState.connectionState,
+    clientReady: wsState.clientReady,
+    status:
+      wsState.connectionState === WS_CONNECTION_STATUS.CONNECTED
+        ? wsState.pingMs === null
+          ? 'degraded'
+          : classifyLatency(wsState.pingMs, PING_THRESHOLDS.wsDegradedMs)
+        : wsState.connectionState === WS_CONNECTION_STATUS.CONNECTING ||
+            wsState.connectionState === WS_CONNECTION_STATUS.UNAVAILABLE
+          ? 'degraded'
+          : 'unavailable',
   };
 
   const overallStatus = evaluateHealthStatus({
-    messageLatencyMs: normalizedMessageLatencyMs,
-    wsPingMs,
-    restLatencyMs,
-    dbLatencyMs,
+    clientReady: wsState.clientReady,
+    wsStatus: wsState.connectionState,
+    wsPingMs: wsState.pingMs,
+    restCheck,
+    dbCheck,
+    messageCheck,
   });
 
-  const mainLatencyMs = wsPingMs ?? restLatencyMs ?? normalizedMessageLatencyMs ?? null;
+  const memoryUsage = process.memoryUsage();
+  const uptimeMs = Math.round(process.uptime() * 1000);
+  const { guildCount, memberCount, isMemberEstimate } = collectGuildStats(client);
+
+  const mainLatencyMs =
+    wsCheck.latencyMs ?? restCheck.latencyMs ?? messageCheck.latencyMs ?? null;
   const mainLatencySource =
-    wsPingMs !== null
+    wsCheck.latencyMs !== null
       ? 'WebSocket'
-      : restLatencyMs !== null
+      : restCheck.latencyMs !== null
         ? 'REST API'
-        : normalizedMessageLatencyMs !== null
+        : messageCheck.latencyMs !== null
           ? 'Message'
           : 'Unavailable';
 
@@ -316,13 +539,20 @@ export async function collectPingDiagnostics(options = {}) {
     overallStatus,
     mainLatencyMs,
     mainLatencySource,
-    checks,
+    checks: {
+      message: messageCheck,
+      ws: wsCheck,
+      rest: restCheck,
+      database: dbCheck,
+    },
     system: {
       memoryRssBytes: memoryUsage.rss,
       cpuPercent,
+      cpuSampleWindowMs: sampleWindowMs,
       uptimeMs,
       guildCount,
       memberCount,
+      isMemberEstimate,
       nodeVersion: process.version,
       discordJsVersion: `v${discordJsVersion}`,
     },
@@ -330,7 +560,7 @@ export async function collectPingDiagnostics(options = {}) {
   };
 }
 
-const STATUS_META = Object.freeze({
+const OVERALL_META = Object.freeze({
   [HEALTH_STATUS.HEALTHY]: Object.freeze({
     emoji: '🟢',
     label: 'Healthy',
@@ -341,34 +571,90 @@ const STATUS_META = Object.freeze({
     label: 'Degraded',
     color: COLORS.WARNING,
   }),
-  [HEALTH_STATUS.UNAVAILABLE]: Object.freeze({
+  [HEALTH_STATUS.UNHEALTHY]: Object.freeze({
     emoji: '🔴',
-    label: 'Unavailable',
+    label: 'Unhealthy',
     color: COLORS.ERROR,
   }),
 });
 
-function formatCheckLine(label, check) {
-  const meta = STATUS_META[check.status] ?? STATUS_META[HEALTH_STATUS.UNAVAILABLE];
-  if (check.latencyMs === null) {
-    const reason = check.timedOut ? 'Timeout' : 'Unavailable';
-    return `${meta.emoji} **${label}:** \`${reason}\``;
+const STATUS_BADGE = Object.freeze({
+  healthy: '🟢',
+  degraded: '🟡',
+  unavailable: '🔴',
+});
+
+function formatWsMainLatency(wsCheck) {
+  if (wsCheck.latencyMs !== null) {
+    return `\`${wsCheck.latencyMs} ms\``;
   }
-  return `${meta.emoji} **${label}:** \`${check.latencyMs} ms\``;
+  if (wsCheck.connectionState === WS_CONNECTION_STATUS.CONNECTED) {
+    return '`Awaiting heartbeat`';
+  }
+  if (wsCheck.connectionState === WS_CONNECTION_STATUS.CONNECTING) {
+    return '`Connecting`';
+  }
+  if (wsCheck.connectionState === WS_CONNECTION_STATUS.DISCONNECTED) {
+    return '`Disconnected`';
+  }
+  return '`Unavailable`';
 }
 
-function formatRequesterFooter(requester) {
-  if (!requester) {
-    return { text: 'Requested by Midwave User' };
+function formatGatewayLine(wsCheck) {
+  const emoji = STATUS_BADGE[wsCheck.status] ?? '🔴';
+  if (wsCheck.connectionState === WS_CONNECTION_STATUS.CONNECTED) {
+    return `${emoji} **Gateway:** \`Connected\``;
   }
-  const rawName = requester.globalName || requester.username || 'Midwave User';
-  const cleanName = String(rawName).replace(/[\x00-\x1F\x7F]/g, '').trim().slice(0, 64) || 'Midwave User';
+  if (wsCheck.connectionState === WS_CONNECTION_STATUS.CONNECTING) {
+    return `${emoji} **Gateway:** \`Connecting\``;
+  }
+  if (wsCheck.connectionState === WS_CONNECTION_STATUS.DISCONNECTED) {
+    return `${emoji} **Gateway:** \`Disconnected\``;
+  }
+  return `${emoji} **Gateway:** \`Unavailable\``;
+}
+
+function formatCheckLine(label, check) {
+  const emoji = STATUS_BADGE[check.status] ?? '🔴';
+  if (check.latencyMs === null) {
+    if (check.timedOut) return `${emoji} **${label}:** \`Timeout\``;
+    if (check.errorType === 'rate_limit') return `${emoji} **${label}:** \`Rate Limited\``;
+    if (check.errorType === 'http_error') return `${emoji} **${label}:** \`HTTP Error\``;
+    if (check.errorType === 'network_error') return `${emoji} **${label}:** \`Network Error\``;
+    if (check.errorType === 'disconnected') return `${emoji} **${label}:** \`Disconnected\``;
+    return `${emoji} **${label}:** \`Unavailable\``;
+  }
+  return `${emoji} **${label}:** \`${check.latencyMs} ms\``;
+}
+
+function formatCompactFooter(requester, uptimeMs) {
+  const uptimeText = `Uptime: ${formatUptime(uptimeMs)}`;
+  const rawName = requester?.globalName || requester?.username || 'Midwave User';
+  const cleanName =
+    String(rawName).replace(/[\x00-\x1F\x7F]/g, '').trim().slice(0, 64) || 'Midwave User';
   const iconURL =
-    typeof requester.displayAvatarURL === 'function'
+    typeof requester?.displayAvatarURL === 'function'
       ? requester.displayAvatarURL({ extension: 'png', size: 64 })
       : undefined;
 
-  return iconURL ? { text: `Requested by ${cleanName}`, iconURL } : { text: `Requested by ${cleanName}` };
+  const text = `${uptimeText} • Requested by ${cleanName}`;
+  return iconURL ? { text, iconURL } : { text };
+}
+
+/**
+ * Parses a ping Refresh button customId (`ping:refresh` or `ping:refresh:<ownerId>`).
+ * @param {string} customId
+ * @returns {{ valid: boolean, ownerId: string | null }}
+ */
+export function parsePingRefreshCustomId(customId) {
+  if (customId === PING_REFRESH_CUSTOM_ID) {
+    return { valid: true, ownerId: null };
+  }
+  if (typeof customId === 'string' && customId.startsWith(`${PING_REFRESH_CUSTOM_ID}:`)) {
+    const ownerId = customId.slice(`${PING_REFRESH_CUSTOM_ID}:`.length).trim();
+    return { valid: ownerId.length > 0, ownerId: ownerId || null };
+  }
+  return { valid: false, ownerId: null };
 }
 
 /**
@@ -377,8 +663,8 @@ function formatRequesterFooter(requester) {
  */
 export function buildPingCheckingEmbed() {
   return createBaseEmbed({
-    title: 'MIDWAVE — CONNECTION DIAGNOSTICS',
-    description: '🔄 **Mengukur latensi koneksi dan kesehatan sistem...**',
+    title: 'MIDWAVE — PONG!',
+    description: '🔄 **Checking connection diagnostics...**',
     color: COLORS.PRIMARY,
     includeThumbnail: false,
     timestamp: true,
@@ -386,57 +672,50 @@ export function buildPingCheckingEmbed() {
 }
 
 /**
- * Builds the clean Midwave Ping & Connection Diagnostics embed.
+ * Builds the compact, minimalist Midwave Ping & Connection Diagnostics embed.
+ * Displays only overall status, WebSocket latency, 2-column connection diagnostics, uptime, requester, and timestamp.
  * @param {Awaited<ReturnType<typeof collectPingDiagnostics>>} report
  * @param {{ requester?: import('discord.js').User | null, includeThumbnail?: boolean }} [options]
  * @returns {import('discord.js').EmbedBuilder}
  */
 export function buildPingEmbed(report, { requester = null, includeThumbnail = true } = {}) {
-  const overallMeta = STATUS_META[report.overallStatus] ?? STATUS_META[HEALTH_STATUS.UNAVAILABLE];
-  const mainLatencyText =
-    report.mainLatencyMs !== null
-      ? `\`${report.mainLatencyMs} ms\` (${report.mainLatencySource})`
-      : '`Unavailable`';
+  const overallMeta = OVERALL_META[report.overallStatus] ?? OVERALL_META[HEALTH_STATUS.UNHEALTHY];
+  const wsMainText = formatWsMainLatency(report.checks.ws);
 
   const descriptionLines = [
-    `**Overall Status:** ${overallMeta.emoji} **${overallMeta.label}**`,
-    `**Main Latency:** ${mainLatencyText}`,
+    `**Status:** ${overallMeta.emoji} **${overallMeta.label}**`,
+    `**WebSocket:** **${wsMainText}**`,
   ];
 
-  const connectionLines = [
-    formatCheckLine('Message Response', report.checks.message),
-    formatCheckLine('Discord WebSocket', report.checks.ws),
-    formatCheckLine('Discord REST API', report.checks.rest),
-    formatCheckLine('Database (Prisma)', report.checks.database),
-  ];
+  const leftColumn = [
+    formatCheckLine('Message', report.checks.message),
+    formatCheckLine('REST API', report.checks.rest),
+  ].join('\n');
 
-  const systemLines = [
-    `• **Memory (RSS):** \`${formatMemoryMb(report.system.memoryRssBytes)}\``,
-    `• **CPU Usage:** \`${report.system.cpuPercent.toFixed(1)}%\``,
-    `• **Bot Uptime:** \`${formatUptime(report.system.uptimeMs)}\``,
-    `• **Guilds / Members:** \`${report.system.guildCount.toLocaleString('en-US')}\` guilds / \`~${report.system.memberCount.toLocaleString('en-US')}\` members`,
-    `• **Runtime:** \`Node.js ${report.system.nodeVersion}\` • \`discord.js ${report.system.discordJsVersion}\``,
-  ];
+  const rightColumn = [
+    formatCheckLine('Database', report.checks.database),
+    formatGatewayLine(report.checks.ws),
+  ].join('\n');
 
   const embed = createBaseEmbed({
-    title: 'MIDWAVE — CONNECTION DIAGNOSTICS',
+    title: 'MIDWAVE — PONG!',
     description: descriptionLines.join('\n'),
     color: overallMeta.color,
     includeThumbnail,
-    footer: formatRequesterFooter(requester),
+    footer: formatCompactFooter(requester, report.system.uptimeMs),
     timestamp: report.checkedAt ?? true,
   });
 
   embed.addFields(
     {
       name: '📡 Connection Diagnostics',
-      value: connectionLines.join('\n'),
-      inline: false,
+      value: leftColumn,
+      inline: true,
     },
     {
-      name: '⚙️ System Information',
-      value: systemLines.join('\n'),
-      inline: false,
+      name: '\u200B',
+      value: rightColumn,
+      inline: true,
     },
   );
 
@@ -445,13 +724,14 @@ export function buildPingEmbed(report, { requester = null, includeThumbnail = tr
 
 /**
  * Builds the interactive Refresh button row for `/ping` and `!ping`.
- * @param {{ disabled?: boolean }} [options]
+ * @param {{ disabled?: boolean, requesterId?: string | null }} [options]
  * @returns {ActionRowBuilder<ButtonBuilder>}
  */
-export function buildPingComponents({ disabled = false } = {}) {
+export function buildPingComponents({ disabled = false, requesterId = null } = {}) {
+  const customId = requesterId ? `${PING_REFRESH_CUSTOM_ID}:${requesterId}` : PING_REFRESH_CUSTOM_ID;
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(PING_REFRESH_CUSTOM_ID)
+      .setCustomId(customId)
       .setLabel('Refresh')
       .setEmoji('🔄')
       .setStyle(ButtonStyle.Primary)

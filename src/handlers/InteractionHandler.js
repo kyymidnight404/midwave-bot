@@ -97,6 +97,7 @@ export class InteractionHandler {
     if (!interaction) {
       return;
     }
+    const handlerStartTime = performance.now();
 
     const isFeedbackComponent =
       typeof interaction.customId === 'string' &&
@@ -148,6 +149,7 @@ export class InteractionHandler {
         ...this.context,
         cooldowns: this.cooldowns,
         logger: this.logger,
+        handlerStartTime,
       });
       return;
     }
@@ -211,7 +213,11 @@ export class InteractionHandler {
     }
 
     try {
-      await command.execute(interaction, this.context);
+      const execContext =
+        interaction.commandName === 'ping'
+          ? { ...this.context, handlerStartTime }
+          : this.context;
+      await command.execute(interaction, execContext);
     } catch (err) {
       if (IGNORED_DISCORD_ERROR_CODES.has(err?.code)) {
         this.logger.warn?.(`[InteractionHandler] Ignored Discord interaction timing error (${err.code}) on /${interaction.commandName}`);

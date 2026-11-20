@@ -265,6 +265,7 @@ export class PrefixCommandHandler {
     ) {
       return;
     }
+    const handlerStartTime = performance.now();
 
     if (await handleQuizChatAnswer(message, this.context)) {
       return;
@@ -357,7 +358,11 @@ export class PrefixCommandHandler {
     });
 
     try {
-      await command.execute(adapter, this.context);
+      const execContext =
+        parsed.commandName === 'ping'
+          ? { ...this.context, handlerStartTime }
+          : this.context;
+      await command.execute(adapter, execContext);
     } catch (err) {
       this.logger.error(
         `[PrefixCommandHandler] Error executing ${this.prefix}${parsed.commandName}:`,
