@@ -57,6 +57,7 @@ export class MessageCommandAdapter {
    *   isSecretChoice?: boolean,
    *   canManageMessages?: boolean,
    *   canEmbedLinks?: boolean,
+   *   canAttachFiles?: boolean,
    * }} params
    */
   constructor({
@@ -66,6 +67,7 @@ export class MessageCommandAdapter {
     isSecretChoice = false,
     canManageMessages = false,
     canEmbedLinks = true,
+    canAttachFiles = true,
   }) {
     this.message = message;
     this.parsed = parsed;
@@ -73,8 +75,10 @@ export class MessageCommandAdapter {
     this.isSecretChoice = isSecretChoice;
     this.canManageMessages = canManageMessages;
     this.canEmbedLinks = canEmbedLinks;
+    this.canAttachFiles = canAttachFiles;
 
     this.id = message.id ?? null;
+    this.client = message.client ?? null;
     this.commandName = parsed.commandName;
     this.user = message.author;
     this.member = message.member ?? null;

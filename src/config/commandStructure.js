@@ -114,6 +114,19 @@ export const commandStructure = {
       },
     },
     {
+      name: 'ping',
+      description: 'Cek latensi dan diagnostik koneksi serta sistem Midwave',
+      enabled: true,
+      type: 'standalone',
+      handler: 'ping',
+      help: {
+        category: 'general',
+        usage: 'ping',
+        prefixUsage: '{prefix}ping',
+        description: 'Cek latensi bot Midwave & diagnostik koneksi',
+      },
+    },
+    {
       name: 'media',
       description: 'Utilitas media Midwave: QC, Brat, Lyrics Finder, dan Downloader',
       enabled: true,

@@ -16,6 +16,7 @@ import { ANIME_COOLDOWN_MS } from '../services/animeService.js';
 import { AI_COOLDOWN_MS } from '../services/gemini.js';
 import { LYRICS_COOLDOWN_MS } from '../services/lyricsService.js';
 import { SOCIAL_COOLDOWN_MS, SOCIAL_INTERACTIONS } from '../services/otakuGifsService.js';
+import { PING_COOLDOWN_MS } from '../services/pingService.js';
 import { WEATHER_COOLDOWN_MS } from '../services/weatherService.js';
 import { handleQuizChatAnswer } from '../events/gameInteraction.js';
 import { GAME_TYPES } from '../utils/constants.js';
@@ -38,6 +39,7 @@ const PREFIX_EXECUTORS = new Map([
   ['math', { execute: DEFAULT_HANDLER_REGISTRY.math }],
   ['menu', { execute: DEFAULT_HANDLER_REGISTRY.help }],
   ['donate', { execute: DEFAULT_HANDLER_REGISTRY.donate }],
+  ['ping', { execute: DEFAULT_HANDLER_REGISTRY.ping }],
   ['knowledge', { execute: DEFAULT_HANDLER_REGISTRY.knowledge }],
   ['weather', { execute: DEFAULT_HANDLER_REGISTRY.weather }],
   [animePrefixCommand.name, animePrefixCommand],
@@ -80,6 +82,7 @@ const COMMAND_COOLDOWNS = Object.freeze({
   anime: ANIME_COOLDOWN_MS,
   download: DOWNLOAD_COOLDOWN_MS,
   lyrics: LYRICS_COOLDOWN_MS,
+  ping: PING_COOLDOWN_MS,
   say: SAY_COOLDOWN_MS,
   weather: WEATHER_COOLDOWN_MS,
   ...Object.fromEntries(Object.keys(SOCIAL_INTERACTIONS).map((cmd) => [cmd, SOCIAL_COOLDOWN_MS])),
@@ -202,47 +205,49 @@ export class PrefixCommandHandler {
    */
   async _checkPermissions(message, commandName, subcommand, isGameCenterChallenge = false) {
     if (!message.guild || typeof message.channel?.permissionsFor !== 'function') {
-      return { allowed: true, canManageMessages: false, canEmbedLinks: true };
+      return { allowed: true, canManageMessages: false, canEmbedLinks: true, canAttachFiles: true };
     }
 
     const botMember =
       message.guild.members?.me ??
       (message.client?.user?.id ? message.guild.members?.cache?.get?.(message.client.user.id) : null);
     if (!botMember) {
-      return { allowed: true, canManageMessages: false, canEmbedLinks: true };
+      return { allowed: true, canManageMessages: false, canEmbedLinks: true, canAttachFiles: true };
     }
 
     const perms = message.channel.permissionsFor(botMember);
     if (!perms) {
-      return { allowed: true, canManageMessages: false, canEmbedLinks: true };
+      return { allowed: true, canManageMessages: false, canEmbedLinks: true, canAttachFiles: true };
     }
 
     if (!perms.has(PermissionFlagsBits.ViewChannel) || !perms.has(PermissionFlagsBits.SendMessages)) {
-      return { allowed: false, canManageMessages: false, canEmbedLinks: false };
+      return { allowed: false, canManageMessages: false, canEmbedLinks: false, canAttachFiles: false };
     }
 
     const canEmbedLinks = Boolean(perms.has(PermissionFlagsBits.EmbedLinks));
+    const canAttachFiles = Boolean(perms.has(PermissionFlagsBits.AttachFiles));
     if (commandName !== 'say' && !canEmbedLinks) {
       await this._safeReplyPlain(
         message,
         `Bot memerlukan izin **Embed Links** di channel ini untuk menjalankan \`${this.prefix}${commandName}\`.`,
       );
-      return { allowed: false, canManageMessages: false, canEmbedLinks: false };
+      return { allowed: false, canManageMessages: false, canEmbedLinks: false, canAttachFiles };
     }
 
-    if (requiresAttachFiles(commandName, subcommand, isGameCenterChallenge) && !perms.has(PermissionFlagsBits.AttachFiles)) {
+    if (requiresAttachFiles(commandName, subcommand, isGameCenterChallenge) && !canAttachFiles) {
       await this._safeReplyError(
         message,
         `Bot memerlukan izin **Attach Files** di channel ini untuk menjalankan \`${this.prefix}${commandName}\`.`,
         canEmbedLinks,
       );
-      return { allowed: false, canManageMessages: false, canEmbedLinks };
+      return { allowed: false, canManageMessages: false, canEmbedLinks, canAttachFiles: false };
     }
 
     return {
       allowed: true,
       canManageMessages: Boolean(perms.has(PermissionFlagsBits.ManageMessages)),
       canEmbedLinks,
+      canAttachFiles,
     };
   }
 
@@ -348,6 +353,7 @@ export class PrefixCommandHandler {
       isSecretChoice,
       canManageMessages: permCheck.canManageMessages,
       canEmbedLinks: permCheck.canEmbedLinks,
+      canAttachFiles: permCheck.canAttachFiles,
     });
 
     try {

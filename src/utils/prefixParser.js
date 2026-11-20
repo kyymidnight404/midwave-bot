@@ -13,6 +13,7 @@ const COMMAND_ALIASES = Object.freeze({
   lirik: 'lyrics',
   menu: 'menu',
   donate: 'donate',
+  ping: 'ping',
   brat: 'brat',
   download: 'download',
   dl: 'download',
@@ -268,7 +269,7 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
     return { commandName: 'quiz', subcommand: null, options: { category, difficulty } };
   }
 
-  if (commandName === 'donate' || commandName === 'menu') {
+  if (commandName === 'donate' || commandName === 'menu' || commandName === 'ping') {
     return { commandName, subcommand: null, options: {} };
   }
 

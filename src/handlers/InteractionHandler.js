@@ -5,6 +5,11 @@ import { AI_COOLDOWN_MS } from '../services/gemini.js';
 import { LYRICS_COOLDOWN_MS } from '../services/lyricsService.js';
 import { SOCIAL_COOLDOWN_MS } from '../services/otakuGifsService.js';
 import {
+  PING_COOLDOWN_MS,
+  PING_CUSTOM_ID_PREFIX,
+  handlePingInteraction,
+} from '../commands/ping.js';
+import {
   FEEDBACK_CUSTOM_ID_PREFIX,
   handleFeedbackInteraction,
 } from '../services/feedbackService.js';
@@ -25,6 +30,7 @@ const COMMAND_COOLDOWNS = Object.freeze({
   anime: ANIME_COOLDOWN_MS,
   download: DOWNLOAD_COOLDOWN_MS,
   lyrics: LYRICS_COOLDOWN_MS,
+  ping: PING_COOLDOWN_MS,
   social: SOCIAL_COOLDOWN_MS,
 });
 
@@ -129,6 +135,20 @@ export class InteractionHandler {
 
     if (isCoinflipComponent) {
       await handleCoinflipInteraction(interaction, this.context);
+      return;
+    }
+
+    const isPingComponent =
+      typeof interaction.customId === 'string' &&
+      interaction.customId.startsWith(`${PING_CUSTOM_ID_PREFIX}:`) &&
+      Boolean(interaction.isButton?.());
+
+    if (isPingComponent) {
+      await handlePingInteraction(interaction, {
+        ...this.context,
+        cooldowns: this.cooldowns,
+        logger: this.logger,
+      });
       return;
     }
 
