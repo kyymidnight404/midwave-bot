@@ -13,30 +13,14 @@ import {
   sanitizeLogText,
   validateMediaUrl,
 } from '../services/downloader.js';
-import { COLORS } from '../config/colors.js';
-import { buildErrorEmbed, createBaseEmbed } from '../utils/embeds.js';
+import {
+  DOWNLOAD_SAFE_MENTION_OPTIONS,
+  formatDownloadErrorMessage,
+  formatDownloadSuccessMessage,
+} from '../utils/downloadFormatter.js';
 import { detectFirstMediaUrl } from '../utils/urlDetector.js';
 
 export const AUTO_DOWNLOAD_COOLDOWN_MS = 10_000;
-
-const PLATFORM_META = Object.freeze({
-  tiktok: { label: 'TikTok', icon: '🎵' },
-  instagram: { label: 'Instagram', icon: '📸' },
-});
-
-/**
- * Truncates caption/title safely for Discord embed descriptions.
- *
- * @param {string} text
- * @param {number} [maxLength]
- * @returns {string}
- */
-function truncateText(text, maxLength = 220) {
-  const cleaned = String(text || '').replace(/\s+/g, ' ').trim();
-  if (!cleaned) return '';
-  if (cleaned.length <= maxLength) return cleaned;
-  return `${cleaned.slice(0, maxLength - 3)}...`;
-}
 
 /**
  * Sends a message safely as a reply (with channel.send fallback).
@@ -45,14 +29,15 @@ function truncateText(text, maxLength = 220) {
  * @param {object} payload
  */
 async function sendMessageReply(message, payload) {
+  const safePayload = {
+    ...payload,
+    allowedMentions: payload.allowedMentions ?? DOWNLOAD_SAFE_MENTION_OPTIONS,
+  };
   if (typeof message.reply === 'function') {
-    return message.reply({
-      ...payload,
-      allowedMentions: { repliedUser: false },
-    });
+    return message.reply(safePayload);
   }
   if (typeof message.channel?.send === 'function') {
-    return message.channel.send(payload);
+    return message.channel.send(safePayload);
   }
   return null;
 }
@@ -80,47 +65,6 @@ function checkBotChannelPermissions(message) {
     perms.has(PermissionFlagsBits.EmbedLinks);
   const canAttach = perms.has(PermissionFlagsBits.AttachFiles);
   return { canSend, canAttach };
-}
-
-/**
- * Builds the Midwave embed for successful auto-downloaded attachments.
- *
- * @param {{
- *   platform: string,
- *   author?: string,
- *   title?: string,
- *   formattedSize: string,
- *   attachmentCount: number,
- *   truncatedCount?: number,
- *   requesterId: string,
- * }} params
- */
-function buildAutoDownloadEmbed(params) {
-  const meta = PLATFORM_META[params.platform] || { label: params.platform, icon: '🎬' };
-  const lines = [`${meta.icon} **${meta.label} Auto-Downloader**`];
-
-  if (params.author) {
-    lines.push(`• **Kreator:** ${truncateText(params.author, 80)}`);
-  }
-  if (params.title) {
-    lines.push(`• **Keterangan:** ${truncateText(params.title, 180)}`);
-  }
-  lines.push(`• **Ukuran Total:** ${params.formattedSize} (${params.attachmentCount} file)`);
-
-  if (params.truncatedCount > 0) {
-    lines.push(
-      `⚠️ *${params.truncatedCount} item lainnya dilewati karena batas maksimal ${MAX_DISCORD_ATTACHMENTS} lampiran atau batas ukuran unggahan.*`,
-    );
-  }
-
-  lines.push('', `Diminta oleh: <@${params.requesterId}>`);
-
-  return createBaseEmbed({
-    title: 'MIDWAVE AUTO DOWNLOADER',
-    description: lines.join('\n'),
-    color: COLORS.SUCCESS,
-    includeThumbnail: false,
-  });
 }
 
 /**
@@ -193,12 +137,8 @@ export class AutoDownloaderHandler {
 
     if (!perms.canAttach) {
       await sendMessageReply(message, {
-        embeds: [
-          buildErrorEmbed(
-            'Bot memerlukan izin `Attach Files` di channel ini untuk mengirim hasil unduhan.',
-            'Izin Tidak Mencukupi',
-          ),
-        ],
+        content: formatDownloadErrorMessage('Missing Attach Files permission'),
+        allowedMentions: DOWNLOAD_SAFE_MENTION_OPTIONS,
       }).catch(() => {});
       return true;
     }
@@ -235,17 +175,23 @@ export class AutoDownloaderHandler {
         .slice(0, MAX_DISCORD_ATTACHMENTS)
         .map((item) => new AttachmentBuilder(item.filePath || item.buffer, { name: item.fileName }));
 
-      const embed = buildAutoDownloadEmbed({
-        platform: result.platform || validated.platform,
+      const content = formatDownloadSuccessMessage({
         author: result.author,
+        platformLabel: result.platformLabel,
+        platform: result.platform || validated.platform,
+        extractor: result.extractor,
         title: result.title,
+        fileFormat: result.fileFormat,
         formattedSize: result.formattedSize,
-        attachmentCount: files.length,
-        truncatedCount: result.truncatedCount,
-        requesterId: message.author.id,
+        totalBytes: result.totalBytes,
+        items: items.slice(0, MAX_DISCORD_ATTACHMENTS),
       });
 
-      await sendMessageReply(message, { embeds: [embed], files });
+      await sendMessageReply(message, {
+        content,
+        files,
+        allowedMentions: DOWNLOAD_SAFE_MENTION_OPTIONS,
+      });
 
       if (typeof message.suppressEmbeds === 'function') {
         await message.suppressEmbeds(true).catch(() => {});
@@ -258,13 +204,9 @@ export class AutoDownloaderHandler {
         sanitizeLogText(error instanceof Error ? error.message : error),
       );
 
-      const userMessage =
-        error instanceof DownloaderError
-          ? error.userMessage
-          : 'Gagal mengunduh media dari tautan tersebut. Pastikan postingan bersifat publik.';
-
       await sendMessageReply(message, {
-        embeds: [buildErrorEmbed(userMessage, 'Gagal Mengunduh Media')],
+        content: formatDownloadErrorMessage(error),
+        allowedMentions: DOWNLOAD_SAFE_MENTION_OPTIONS,
       }).catch(() => {});
       return true;
     } finally {

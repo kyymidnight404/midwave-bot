@@ -8,49 +8,11 @@ import {
   validateMediaUrl,
 } from '../services/downloader.js';
 import {
-  buildDownloadProcessingEmbed,
-  buildDownloadSuccessEmbed,
-  buildErrorEmbed,
-} from '../utils/embeds.js';
-
-/**
- * Formats upload failures from Discord REST API into safe user-facing messages.
- *
- * @param {unknown} error
- * @returns {string}
- */
-function resolveUploadErrorMessage(error) {
-  if (error instanceof DownloaderError) {
-    return error.userMessage;
-  }
-
-  const discordCode = error?.code ?? error?.rawError?.code;
-  if (discordCode === 40005 || String(error?.message || '').includes('Request entity too large')) {
-    return 'Ukuran media melebihi batas unggahan file Discord pada server ini.';
-  }
-  if (discordCode === 50013) {
-    return 'Bot tidak memiliki izin `Attach Files` atau `Send Messages` di channel ini.';
-  }
-
-  return 'Gagal mengunggah file media ke Discord. Silakan coba lagi beberapa saat lagi.';
-}
-
-function formatProgressStatusText(progress) {
-  if (!progress) return null;
-  if (progress.stage === 'queued') {
-    return `Dalam antrean unduhan (posisi #${progress.position || 1})...`;
-  }
-  if (progress.stage === 'downloading') {
-    if (typeof progress.percent === 'number' && progress.percent > 0) {
-      return `Mengunduh media (${progress.percent.toFixed(0)}%)...`;
-    }
-    return 'Mengunduh media melalui yt-dlp...';
-  }
-  if (progress.stage === 'processing') {
-    return 'Memproses & memvalidasi file media (FFmpeg)...';
-  }
-  return null;
-}
+  DOWNLOAD_SAFE_MENTION_OPTIONS,
+  formatDownloadErrorMessage,
+  formatDownloadProcessingMessage,
+  formatDownloadSuccessMessage,
+} from '../utils/downloadFormatter.js';
 
 /**
  * Executes media download for `/media action:download` and `!download` using the yt-dlp pipeline.
@@ -68,13 +30,9 @@ export async function execute(interaction, context = {}) {
 
   if (typeof rawUrl !== 'string' || !rawUrl.trim()) {
     await interaction.reply({
-      embeds: [
-        buildErrorEmbed(
-          'Tautan `url` wajib diisi untuk mengunduh media. Contoh: `/media action:download url:https://www.youtube.com/watch?v=...` atau `!download https://vt.tiktok.com/...`.',
-          'Tautan Tidak Valid',
-        ),
-      ],
+      content: formatDownloadErrorMessage('Missing URL'),
       flags: MessageFlags.Ephemeral,
+      allowedMentions: DOWNLOAD_SAFE_MENTION_OPTIONS,
     });
     return;
   }
@@ -83,13 +41,10 @@ export async function execute(interaction, context = {}) {
   try {
     validated = validateMediaUrl(rawUrl);
   } catch (error) {
-    const message =
-      error instanceof DownloaderError
-        ? error.userMessage
-        : 'Tautan tidak valid. Gunakan URL publik HTTP/HTTPS yang valid.';
     await interaction.reply({
-      embeds: [buildErrorEmbed(message, 'Tautan Tidak Valid')],
+      content: formatDownloadErrorMessage(error),
       flags: MessageFlags.Ephemeral,
+      allowedMentions: DOWNLOAD_SAFE_MENTION_OPTIONS,
     });
     return;
   }
@@ -109,19 +64,20 @@ export async function execute(interaction, context = {}) {
     if (!isQueued && now - lastProgressUpdateAt < 2_500) {
       return;
     }
-    const statusText = formatProgressStatusText(progress);
-    if (!statusText) return;
+    const statusText = formatDownloadProcessingMessage({ platformLabel, progress });
     lastProgressUpdateAt = now;
     await interaction
       .editReply({
-        embeds: [buildDownloadProcessingEmbed({ platformLabel, statusText })],
+        content: statusText,
+        allowedMentions: DOWNLOAD_SAFE_MENTION_OPTIONS,
       })
       .catch(() => {});
   };
 
   try {
     await interaction.editReply({
-      embeds: [buildDownloadProcessingEmbed({ platformLabel })],
+      content: formatDownloadProcessingMessage({ platformLabel }),
+      allowedMentions: DOWNLOAD_SAFE_MENTION_OPTIONS,
     });
 
     result = await downloader({
@@ -132,24 +88,27 @@ export async function execute(interaction, context = {}) {
       deps: context.deps,
     });
 
-    const attachments = result.items.map(
-      (item) => new AttachmentBuilder(item.filePath, { name: item.fileName }),
+    const rawItems = result.items || result.attachments || [];
+    const attachments = rawItems.map(
+      (item) => new AttachmentBuilder(item.filePath || item.buffer, { name: item.fileName }),
     );
 
-    const successEmbed = buildDownloadSuccessEmbed({
+    const content = formatDownloadSuccessMessage({
+      author: result.author,
       platformLabel: result.platformLabel,
-      mediaType: result.mediaType,
+      platform: result.platform || validated.platform,
+      extractor: result.extractor,
+      title: result.title,
       fileFormat: result.fileFormat,
       formattedSize: result.formattedSize,
-      requesterId: interaction.user.id,
-      title: result.title,
-      author: result.author,
-      truncatedCount: result.truncatedCount,
+      totalBytes: result.totalBytes,
+      items: rawItems,
     });
 
     await interaction.editReply({
-      embeds: [successEmbed],
+      content,
       files: attachments,
+      allowedMentions: DOWNLOAD_SAFE_MENTION_OPTIONS,
     });
   } catch (error) {
     const safeErrorCode = error instanceof DownloaderError ? error.code : 'UPLOAD_OR_INTERNAL_ERROR';
@@ -158,11 +117,11 @@ export async function execute(interaction, context = {}) {
       sanitizeLogText(error instanceof Error ? error.message : error),
     );
 
-    const userMessage = resolveUploadErrorMessage(error);
     await interaction
       .editReply({
-        embeds: [buildErrorEmbed(userMessage, 'Gagal Mengunduh Media')],
+        content: formatDownloadErrorMessage(error),
         files: [],
+        allowedMentions: DOWNLOAD_SAFE_MENTION_OPTIONS,
       })
       .catch(() => {});
   } finally {

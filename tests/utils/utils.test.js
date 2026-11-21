@@ -11,8 +11,6 @@ import {
 } from '../../src/utils/validators.js';
 import { CooldownManager } from '../../src/utils/cooldown.js';
 import {
-  buildDownloadProcessingEmbed,
-  buildDownloadSuccessEmbed,
   buildErrorEmbed,
   buildGameEmbed,
   buildGamesListEmbed,
@@ -193,33 +191,6 @@ describe('Embed Design System', () => {
         expiresAt: Date.now() + 60_000,
       }).toJSON().color,
       CONFIG_COLORS.PRIMARY,
-    );
-
-    assert.equal(
-      buildDownloadProcessingEmbed({ platformLabel: 'TikTok' }).toJSON().color,
-      CONFIG_COLORS.INFO,
-    );
-    const dlSuccessEmbed = buildDownloadSuccessEmbed({
-      platformLabel: 'TikTok',
-      mediaType: 'Video',
-      fileFormat: 'MP4',
-      formattedSize: '1.2 MB',
-      requesterId: '100',
-      title: 'Contoh Video',
-      author: 'Kreator Midwave',
-    }).toJSON();
-    assert.equal(dlSuccessEmbed.color, CONFIG_COLORS.SUCCESS);
-    assert.equal(
-      dlSuccessEmbed.description,
-      [
-        '✅ **Download Selesai**',
-        '',
-        '**Judul:** Contoh Video',
-        '**Kreator:** Kreator Midwave',
-        '🎵 TikTok • MP4 • 1.2 MB',
-        '',
-        'Diminta oleh: <@100>',
-      ].join('\n'),
     );
 
     assert.equal(

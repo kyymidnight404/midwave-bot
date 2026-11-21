@@ -288,6 +288,8 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     await app.interactionHandler.handle(slashInteraction);
     const slashLast = slashInteraction.getReplies().at(-1);
     assert.equal(slashLast.type, 'editReply');
+    assert.equal(slashLast.payload.embeds, undefined);
+    assert.equal(slashLast.payload.content, '✅ TikTok\n\nMP4 · 1.2 MB');
     assert.equal(slashLast.payload.files.length, 1);
 
     const replies = [];
@@ -311,6 +313,8 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     };
     await app.prefixCommandHandler.handle(prefixMessage);
     assert.ok(replies.length >= 1);
+    assert.equal(replies.at(-1).embeds, undefined);
+    assert.equal(replies.at(-1).content, '✅ TikTok\n\nMP4 · 1.2 MB');
     assert.equal(replies.at(-1).files.length, 1);
 
     app.shutdown();

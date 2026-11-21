@@ -34,6 +34,11 @@ import {
   resolveAndValidateRedirects,
   resolvePlatformLabel,
 } from '../../src/services/downloader/platform.js';
+import {
+  DOWNLOAD_SAFE_MENTION_OPTIONS,
+  formatDownloadErrorMessage,
+  formatDownloadSuccessMessage,
+} from '../../src/utils/downloadFormatter.js';
 import { CooldownManager } from '../../src/utils/cooldown.js';
 import { parsePrefixInvocation } from '../../src/utils/prefixParser.js';
 
@@ -689,22 +694,25 @@ describe('Downloader — Discord Commands (/media action:download & !download) &
     assert.ok(parsePrefixInvocation('!download')?.error);
   });
 
-  it('replies ephemerally on missing or unsafe URL without deferring', async () => {
+  it('replies ephemerally with compact plain text on missing or unsafe URL without deferring', async () => {
     const missingUrl = createMockDownloadInteraction({ url: null });
     await executeDownload(missingUrl);
     assert.equal(missingUrl.deferred, false);
     assert.equal(missingUrl.replied, true);
     assert.equal(missingUrl.getEvents()[0].payload.flags, MessageFlags.Ephemeral);
+    assert.equal(missingUrl.getEvents()[0].payload.embeds, undefined);
+    assert.equal(missingUrl.getEvents()[0].payload.content, '❌ Download failed · Missing URL');
 
     const unsafeHost = createMockDownloadInteraction({ url: 'https://127.0.0.1/video.mp4' });
     await executeDownload(unsafeHost);
     assert.equal(unsafeHost.deferred, false);
     assert.equal(unsafeHost.replied, true);
     assert.equal(unsafeHost.getEvents()[0].payload.flags, MessageFlags.Ephemeral);
-    assert.match(unsafeHost.getEvents()[0].payload.embeds[0].data.description, /tidak diizinkan/i);
+    assert.equal(unsafeHost.getEvents()[0].payload.embeds, undefined);
+    assert.equal(unsafeHost.getEvents()[0].payload.content, '❌ Download failed · Blocked URL');
   });
 
-  it('defers, uploads attachment with Midwave embed, and deletes temp dir afterwards', async () => {
+  it('defers, sends ultra-compact plain-text output with native video attachment (YouTube), and deletes temp dir', async () => {
     const jobDir = await createJobTempDir();
     const mediaPath = path.join(jobDir, 'youtube_video.mp4');
     await fs.writeFile(mediaPath, FAKE_MP4_HEADER);
@@ -745,27 +753,182 @@ describe('Downloader — Discord Commands (/media action:download & !download) &
     const edits = interaction.getEvents().filter((e) => e.type === 'editReply');
     assert.equal(edits.length, 2);
 
+    assert.equal(edits[0].payload.embeds, undefined);
+    assert.equal(edits[0].payload.content, '⏳ YouTube · Downloading...');
+
     const finalPayload = edits[1].payload;
+    assert.equal(finalPayload.embeds, undefined);
+    assert.deepEqual(finalPayload.allowedMentions, DOWNLOAD_SAFE_MENTION_OPTIONS);
     assert.equal(finalPayload.files.length, 1);
     assert.equal(finalPayload.files[0].name, 'youtube_video.mp4');
-    assert.equal(finalPayload.embeds[0].data.title, 'MIDWAVE MEDIA DOWNLOADER');
-    assert.equal(
-      finalPayload.embeds[0].data.description,
-      [
-        '✅ **Download Selesai**',
-        '',
-        '**Judul:** Demo Video',
-        '**Kreator:** Midwave',
-        '📺 YouTube • MP4 • 16 B',
-        '',
-        'Diminta oleh: <@u-999>',
-      ].join('\n'),
-    );
+    assert.equal(finalPayload.files[0].attachment, mediaPath);
+    assert.equal(finalPayload.content, '✅ @Midwave · YouTube\n\nDemo Video · MP4 · 16 B');
 
     await assert.rejects(fs.stat(jobDir));
   });
 
-  it('surfaces Discord 40005 entity-too-large failure cleanly and still cleans temp dir', async () => {
+  it('supports TikTok and Instagram video downloads with exact compact output and native video attachments', async () => {
+    const jobDir = await createJobTempDir();
+    try {
+      const tiktokPath = path.join(jobDir, 'tiktok_video.mp4');
+      const igPath = path.join(jobDir, 'instagram_video.mp4');
+      await fs.writeFile(tiktokPath, FAKE_MP4_HEADER);
+      await fs.writeFile(igPath, FAKE_MP4_HEADER);
+
+      const tiktokInteraction = createMockDownloadInteraction({
+        url: 'https://www.tiktok.com/@creator/video/123456',
+      });
+      await executeDownload(tiktokInteraction, {
+        config: getDownloaderConfig({}),
+        cleanupDir: async () => {},
+        downloadMedia: async () => ({
+          jobDir,
+          platform: PLATFORMS.TIKTOK,
+          platformLabel: 'TikTok',
+          author: 'creator',
+          title: '#trending #foryou',
+          fileFormat: 'MP4',
+          totalBytes: Math.round(392.2 * 1024),
+          formattedSize: formatBytes(Math.round(392.2 * 1024)),
+          items: [
+            {
+              filePath: tiktokPath,
+              fileName: 'tiktok_video.mp4',
+              sizeBytes: Math.round(392.2 * 1024),
+              kind: 'video',
+              mime: 'video/mp4',
+              format: 'MP4',
+            },
+          ],
+        }),
+      });
+
+      const tiktokPayload = tiktokInteraction.getEvents().filter((e) => e.type === 'editReply').at(-1).payload;
+      assert.equal(tiktokPayload.embeds, undefined);
+      assert.equal(tiktokPayload.files.length, 1);
+      assert.equal(tiktokPayload.files[0].name, 'tiktok_video.mp4');
+      assert.equal(
+        tiktokPayload.content,
+        '✅ @creator · TikTok\n\n#trending #foryou · MP4 · 392.2 KB',
+      );
+
+      const igInteraction = createMockDownloadInteraction({
+        url: 'https://www.instagram.com/reel/Cop84x6u7CP/',
+      });
+      await executeDownload(igInteraction, {
+        config: getDownloaderConfig({}),
+        cleanupDir: async () => {},
+        downloadMedia: async () => ({
+          jobDir,
+          platform: PLATFORMS.INSTAGRAM,
+          platformLabel: 'Instagram',
+          author: '@username',
+          title: 'Original video title',
+          fileFormat: 'MP4',
+          totalBytes: Math.round(2.4 * 1024 * 1024),
+          formattedSize: formatBytes(Math.round(2.4 * 1024 * 1024)),
+          items: [
+            {
+              filePath: igPath,
+              fileName: 'instagram_video.mp4',
+              sizeBytes: Math.round(2.4 * 1024 * 1024),
+              kind: 'video',
+              mime: 'video/mp4',
+              format: 'MP4',
+            },
+          ],
+        }),
+      });
+
+      const igPayload = igInteraction.getEvents().filter((e) => e.type === 'editReply').at(-1).payload;
+      assert.equal(igPayload.embeds, undefined);
+      assert.equal(igPayload.files.length, 1);
+      assert.equal(igPayload.files[0].name, 'instagram_video.mp4');
+      assert.equal(
+        igPayload.content,
+        '✅ @username · Instagram\n\nOriginal video title · MP4 · 2.4 MB',
+      );
+    } finally {
+      await fs.rm(jobDir, { recursive: true, force: true });
+    }
+  });
+
+  it('gracefully omits missing or placeholder creator/title metadata and formats KB/MB sizes', () => {
+    assert.equal(
+      formatDownloadSuccessMessage({
+        author: undefined,
+        platformLabel: 'TikTok',
+        title: 'Cool video',
+        fileFormat: 'MP4',
+        totalBytes: 392.2 * 1024,
+      }),
+      '✅ TikTok\n\nCool video · MP4 · 392.2 KB',
+    );
+
+    assert.equal(
+      formatDownloadSuccessMessage({
+        author: 'null',
+        platformLabel: 'Instagram',
+        title: 'undefined',
+        fileFormat: 'MP4',
+        totalBytes: 2.4 * 1024 * 1024,
+      }),
+      '✅ Instagram\n\nMP4 · 2.4 MB',
+    );
+
+    assert.equal(
+      formatDownloadSuccessMessage({
+        author: '@creator',
+        platformLabel: 'YouTube',
+        title: '',
+        fileFormat: 'MP4',
+        formattedSize: '15.75 MB',
+      }),
+      '✅ @creator · YouTube\n\nMP4 · 15.75 MB',
+    );
+
+    assert.equal(
+      formatDownloadSuccessMessage({
+        author: 'creator',
+        platformLabel: 'Threads',
+        title: null,
+        fileFormat: null,
+        formattedSize: '',
+      }),
+      '✅ @creator · Threads',
+    );
+  });
+
+  it('formats all downloader errors as compact plain text without embeds', async () => {
+    assert.equal(
+      formatDownloadErrorMessage({ code: DOWNLOADER_ERROR_CODES.UNSUPPORTED_PLATFORM }),
+      '❌ Download failed · Unsupported URL',
+    );
+    assert.equal(
+      formatDownloadErrorMessage({ code: DOWNLOADER_ERROR_CODES.NOT_FOUND }),
+      '❌ Download failed · Media unavailable',
+    );
+
+    const interaction = createMockDownloadInteraction({
+      url: 'https://www.youtube.com/watch?v=missing123',
+    });
+    await executeDownload(interaction, {
+      config: getDownloaderConfig({}),
+      downloadMedia: async () => {
+        const err = new Error('not found');
+        err.code = DOWNLOADER_ERROR_CODES.NOT_FOUND;
+        throw err;
+      },
+    });
+
+    const edits = interaction.getEvents().filter((e) => e.type === 'editReply');
+    const errorEdit = edits.at(-1).payload;
+    assert.equal(errorEdit.embeds, undefined);
+    assert.deepEqual(errorEdit.files, []);
+    assert.equal(errorEdit.content, '❌ Download failed · Media unavailable');
+  });
+
+  it('surfaces Discord 40005 entity-too-large failure cleanly in plain text and still cleans temp dir', async () => {
     const jobDir = await createJobTempDir();
     const mediaPath = path.join(jobDir, 'reel.mp4');
     await fs.writeFile(mediaPath, FAKE_MP4_HEADER);
@@ -812,8 +975,8 @@ describe('Downloader — Discord Commands (/media action:download & !download) &
 
     const edits = interaction.getEvents().filter((e) => e.type === 'editReply');
     const errorEdit = edits[edits.length - 1].payload;
-    assert.equal(errorEdit.embeds[0].data.title, 'Gagal Mengunduh Media');
-    assert.match(errorEdit.embeds[0].data.description, /melebihi batas unggahan file Discord/i);
+    assert.equal(errorEdit.embeds, undefined);
+    assert.equal(errorEdit.content, '❌ Download failed · File exceeds Discord upload limit');
     await assert.rejects(fs.stat(jobDir));
   });
 

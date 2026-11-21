@@ -173,7 +173,7 @@ describe('AutoDownloader — yt-dlp Integration & Discord Handling', () => {
     assert.equal(disabledMsg.getEvents().length, 0);
   });
 
-  it('sends typing indicator, attaches downloaded carousel files, and suppresses original embeds', async () => {
+  it('sends typing indicator, attaches downloaded carousel files with compact plain text, and suppresses original embeds', async () => {
     const handler = new AutoDownloaderHandler({
       cooldowns: new CooldownManager(1_000),
       getConfig: () => getDownloaderConfig({}),
@@ -202,13 +202,49 @@ describe('AutoDownloader — yt-dlp Integration & Discord Handling', () => {
     const events = msg.getEvents();
     assert.equal(events[0].type, 'typing');
     assert.equal(events[1].type, 'reply');
+    assert.equal(events[1].payload.embeds, undefined);
     assert.equal(events[1].payload.files.length, 2);
-    assert.equal(events[1].payload.embeds[0].data.title, 'MIDWAVE AUTO DOWNLOADER');
+    assert.equal(
+      events[1].payload.content,
+      '✅ @midwave_user · Instagram\n\nCarousel Test · JPG · 32 B',
+    );
     assert.equal(events[2].type, 'suppressEmbeds');
     assert.equal(events[2].value, true);
   });
 
-  it('informs user cleanly when file exceeds Discord limit instead of posting external links', async () => {
+  it('sends TikTok auto-download video attachment with compact plain text and handles missing metadata gracefully', async () => {
+    const handler = new AutoDownloaderHandler({
+      cooldowns: new CooldownManager(0),
+      getConfig: () => getDownloaderConfig({}),
+      downloadFn: async () => ({
+        mode: 'attachments',
+        platform: 'tiktok',
+        platformLabel: 'TikTok',
+        title: '#trending #foryou',
+        author: '',
+        fileFormat: 'MP4',
+        formattedSize: '392.2 KB',
+        items: [
+          { buffer: FAKE_MP4, fileName: 'tiktok_video.mp4', sizeBytes: Math.round(392.2 * 1024), format: 'MP4' },
+        ],
+      }),
+    });
+
+    const msg = createMockMessage({
+      content: 'https://vt.tiktok.com/ZS2abcd/',
+    });
+
+    const handled = await handler.handle(msg);
+    assert.equal(handled, true);
+
+    const reply = msg.getEvents().find((e) => e.type === 'reply').payload;
+    assert.equal(reply.embeds, undefined);
+    assert.equal(reply.files.length, 1);
+    assert.equal(reply.files[0].name, 'tiktok_video.mp4');
+    assert.equal(reply.content, '✅ TikTok\n\n#trending #foryou · MP4 · 392.2 KB');
+  });
+
+  it('informs user cleanly in compact plain text when file exceeds Discord limit instead of posting external links', async () => {
     const handler = new AutoDownloaderHandler({
       cooldowns: new CooldownManager(1_000),
       getConfig: () => getDownloaderConfig({}),
@@ -231,8 +267,8 @@ describe('AutoDownloader — yt-dlp Integration & Discord Handling', () => {
     const reply = msg.getEvents().find((e) => e.type === 'reply').payload;
     assert.equal(reply.files, undefined);
     assert.equal(reply.components, undefined);
-    assert.equal(reply.embeds[0].data.title, 'Gagal Mengunduh Media');
-    assert.match(reply.embeds[0].data.description, /melebihi batas unggahan/i);
+    assert.equal(reply.embeds, undefined);
+    assert.equal(reply.content, '❌ Download failed · File exceeds Discord upload limit');
   });
 
   it('wires AutoDownloaderHandler into createBotApp and messageCreate event cleanly', async () => {
