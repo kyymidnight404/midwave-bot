@@ -10,7 +10,7 @@ import { InviteManager } from './managers/InviteManager.js';
 import { GameManager } from './managers/GameManager.js';
 import { AiConversationManager } from './managers/AiConversationManager.js';
 import { CooldownManager } from './utils/cooldown.js';
-import { sanitizeError } from './utils/errorSanitizer.js';
+import { redactSensitiveText, sanitizeError } from './utils/errorSanitizer.js';
 import { GAME_TYPES } from './utils/constants.js';
 import { resolvePrefix } from './utils/prefixParser.js';
 import { CoinFlipGame } from './games/CoinFlipGame.js';
@@ -39,6 +39,7 @@ export function registerDefaultGames(gameManager) {
  * Creates and wires the Midwave Discord bot application without logging in.
  */
 export async function createBotApp(options = {}) {
+  const logger = options.logger ?? console;
   const client =
     options.client ??
     new Client({
@@ -74,12 +75,14 @@ export async function createBotApp(options = {}) {
     gameManager,
     aiConversationManager,
     prisma: options.prisma ?? defaultPrisma,
+    logger,
   };
 
   const interactionHandler = new InteractionHandler({
     commandHandler,
     cooldowns,
     context,
+    logger,
   });
   context.interactionHandler = interactionHandler;
 
@@ -88,6 +91,7 @@ export async function createBotApp(options = {}) {
     cooldowns,
     prefix,
     context,
+    logger,
   });
   context.prefixCommandHandler = prefixCommandHandler;
 
@@ -112,8 +116,34 @@ export async function createBotApp(options = {}) {
     }
   }
 
-  client.on('error', (err) => {
-    console.error('[Midwave] Discord client error:', sanitizeError(err));
+  client.on?.('error', (err) => {
+    logger.error?.('[Midwave] Discord client error:', sanitizeError(err));
+  });
+
+  client.on?.('warn', (message) => {
+    logger.warn?.('[Midwave] Discord client warning:', redactSensitiveText(message));
+  });
+
+  client.on?.('shardDisconnect', (event, shardId) => {
+    logger.warn?.(`[Midwave] Shard ${shardId} disconnected (code=${event?.code ?? 'unknown'}).`);
+  });
+
+  client.on?.('shardReconnecting', (shardId) => {
+    logger.log?.(`[Midwave] Shard ${shardId} reconnecting to Discord Gateway...`);
+  });
+
+  client.on?.('shardError', (err, shardId) => {
+    logger.error?.(`[Midwave] Shard ${shardId} error:`, sanitizeError(err));
+  });
+
+  client.rest?.on?.('rateLimited', (info) => {
+    const retrySec =
+      typeof info?.retryAfter === 'number' && Number.isFinite(info.retryAfter)
+        ? (info.retryAfter / 1000).toFixed(1)
+        : 'unknown';
+    logger.warn?.(
+      `[Midwave] Discord REST rate-limited (route=${info?.route ?? 'unknown'}, scope=${info?.scope ?? 'unknown'}, global=${Boolean(info?.global)}, retryAfter=${retrySec}s)`,
+    );
   });
 
   return {
@@ -173,7 +203,16 @@ export async function startBot() {
     console.error('[Midwave] Uncaught exception:', sanitizeError(err));
   });
 
-  await app.client.login(token);
+  console.log(
+    `[Midwave] Starting bot (prefix=${app.prefix}, commands=${app.commandHandler.commands.size}) — connecting to Discord Gateway...`,
+  );
+
+  try {
+    await app.client.login(token);
+  } catch (err) {
+    app.shutdown();
+    throw err;
+  }
   return app;
 }
 

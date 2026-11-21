@@ -43,7 +43,35 @@ describe('CommandHandler & InteractionHandler', () => {
     const app = await createBotApp();
     assert.ok(app.commandHandler.get('donate'));
     assert.ok(app.commandHandler.get('help'));
+    assert.ok(app.commandHandler.get('ping'));
     assert.ok(app.commandHandler.toJSON().length >= 2);
+    app.shutdown();
+  });
+
+  it('logs sanitized Discord REST rateLimited and shard lifecycle events cleanly', async () => {
+    const logs = { log: [], warn: [], error: [] };
+    const fakeLogger = {
+      log: (...args) => logs.log.push(args.join(' ')),
+      warn: (...args) => logs.warn.push(args.join(' ')),
+      error: (...args) => logs.error.push(args.join(' ')),
+    };
+
+    const app = await createBotApp({ logger: fakeLogger });
+    app.client.rest.emit('rateLimited', {
+      route: '/gateway/bot',
+      scope: 'shared',
+      global: false,
+      retryAfter: 2760_000,
+    });
+    app.client.emit('shardReconnecting', 0);
+    app.client.emit('shardDisconnect', { code: 1006 }, 0);
+    app.client.emit('warn', 'Authorization: Bot secret_12345');
+
+    assert.ok(logs.warn.some((msg) => msg.includes('Discord REST rate-limited') && msg.includes('2760.0s')));
+    assert.ok(logs.log.some((msg) => msg.includes('Shard 0 reconnecting')));
+    assert.ok(logs.warn.some((msg) => msg.includes('Shard 0 disconnected (code=1006)')));
+    assert.ok(logs.warn.some((msg) => msg.includes('[REDACTED]') && !msg.includes('secret_12345')));
+
     app.shutdown();
   });
 
