@@ -3,6 +3,7 @@ import { DEFAULT_HANDLER_REGISTRY } from '../config/commandRegistry.js';
 import aboutPrefixCommand from '../prefixCommands/about.js';
 import animePrefixCommand from '../commands/prefix/anime.js';
 import bratPrefixCommand from '../prefixCommands/brat.js';
+import clearPrefixCommand, { CLEAR_COOLDOWN_MS } from '../prefixCommands/clear.js';
 import downloadPrefixCommand from '../prefixCommands/download.js';
 import feedbackPrefixCommand from '../prefixCommands/feedback.js';
 import igfCommand from '../prefixCommands/igf.js';
@@ -34,6 +35,7 @@ const PREFIX_EXECUTORS = new Map([
   [aboutPrefixCommand.name, aboutPrefixCommand],
   [igfCommand.name, igfCommand],
   [bratPrefixCommand.name, bratPrefixCommand],
+  [clearPrefixCommand.name, clearPrefixCommand],
   [downloadPrefixCommand.name, downloadPrefixCommand],
   [pinPrefixCommand.name, pinPrefixCommand],
   [qcPrefixCommand.name, qcPrefixCommand],
@@ -86,6 +88,7 @@ registerPrefixCommandNames(PREFIX_EXECUTORS.keys());
 const COMMAND_COOLDOWNS = Object.freeze({
   ai: AI_COOLDOWN_MS,
   anime: ANIME_COOLDOWN_MS,
+  clear: CLEAR_COOLDOWN_MS,
   download: DOWNLOAD_COOLDOWN_MS,
   lyrics: LYRICS_COOLDOWN_MS,
   pin: PIN_COOLDOWN_MS,

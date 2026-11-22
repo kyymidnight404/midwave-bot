@@ -107,7 +107,7 @@ npm start
 ## Quick Command Reference
 
 * **General & Sessions:** `/games`, `/help`, `/game status`, `/game cancel`, `/invite accept`, `/invite decline`
-* **Utilities:** `/ai <question>`, `/download <url>`, `/lyrics <title> [artist]`, `/brat <text>`, `!igf [caption]`
+* **Utilities:** `/ai <question>`, `/download <url>`, `/lyrics <title> [artist]`, `/brat <text>`, `!igf [caption]`, `!clear <jumlah>` *(Administrator Only)*
 * **Games (Solo / Challenge):** `/guess`, `/rps`, `/trivia`, `/coinflip`, `/dice`, `/tictactoe`, `/connect4` *(all also available via `!` prefix)*
 
 ---

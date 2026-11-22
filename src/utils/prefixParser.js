@@ -22,6 +22,7 @@ const COMMAND_ALIASES = Object.freeze({
   igf: 'igf',
   qc: 'qc',
   say: 'say',
+  clear: 'clear',
   feedback: 'feedback',
   servers: 'servers',
   guilds: 'servers',
@@ -310,6 +311,14 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
       commandName,
       subcommand: null,
       options: rawRest ? { caption: rawRest } : {},
+    };
+  }
+
+  if (commandName === 'clear') {
+    return {
+      commandName: 'clear',
+      subcommand: null,
+      options: rawRest ? { amountRaw: rawRest } : {},
     };
   }
 

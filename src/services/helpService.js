@@ -43,6 +43,14 @@ export const PREFIX_ONLY_METADATA = Object.freeze({
     description: 'Kirim ulang pesan teks melalui bot',
     visibility: 'public',
   }),
+  clear: Object.freeze({
+    name: 'clear',
+    category: 'media_utilities',
+    usage: 'clear <jumlah>',
+    description: 'Hapus 1–100 pesan terbaru di channel (Administrator Only)',
+    visibility: 'admin',
+    requiredPermissions: PermissionFlagsBits.Administrator,
+  }),
   feedback: Object.freeze({
     name: 'feedback',
     category: 'general',
