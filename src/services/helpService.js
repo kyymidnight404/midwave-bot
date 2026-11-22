@@ -21,6 +21,13 @@ const MENU_ICON_ATTACHMENT_URL = 'attachment://menu.png';
 export const HELP_SELECT_CUSTOM_ID = 'midwave:help:category';
 
 export const PREFIX_ONLY_METADATA = Object.freeze({
+  about: Object.freeze({
+    name: 'about',
+    category: 'information',
+    usage: 'about',
+    description: 'Informasi tentang Midwave',
+    visibility: 'public',
+  }),
   igf: Object.freeze({
     name: 'igf',
     category: 'media_utilities',
@@ -138,6 +145,12 @@ export const HELP_CATEGORIES = Object.freeze([
     label: 'General',
     emoji: '<:pin:1571472304645345300>',
     description: 'Informasi & panduan command Midwave',
+  },
+  {
+    key: 'information',
+    label: 'Information',
+    emoji: 'ℹ️',
+    description: 'Informasi mengenai Midwave',
   },
 ]);
 

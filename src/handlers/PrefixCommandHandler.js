@@ -1,5 +1,6 @@
 import { PermissionFlagsBits } from 'discord.js';
 import { DEFAULT_HANDLER_REGISTRY } from '../config/commandRegistry.js';
+import aboutPrefixCommand from '../prefixCommands/about.js';
 import animePrefixCommand from '../commands/prefix/anime.js';
 import bratPrefixCommand from '../prefixCommands/brat.js';
 import downloadPrefixCommand from '../prefixCommands/download.js';
@@ -30,6 +31,7 @@ import { executeSocialAction } from '../utils/socialCommand.js';
 import { MessageCommandAdapter, resolveUserFromMessage } from './MessageCommandAdapter.js';
 
 const PREFIX_EXECUTORS = new Map([
+  [aboutPrefixCommand.name, aboutPrefixCommand],
   [igfCommand.name, igfCommand],
   [bratPrefixCommand.name, bratPrefixCommand],
   [downloadPrefixCommand.name, downloadPrefixCommand],

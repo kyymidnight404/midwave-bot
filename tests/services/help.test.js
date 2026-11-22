@@ -26,12 +26,15 @@ test('Help Embed: single embed with Midnight Ocean visual identity & all 5 categ
   assert.equal(json.footer, undefined);
 
   const fieldNames = json.fields.map((f) => f.name);
-  assert.equal(new Set(fieldNames).size, 5);
+  assert.equal(new Set(fieldNames).size, 6);
   assert.ok(fieldNames.some((n) => n.startsWith('<:bot:1571472389592584344> AI & Knowledge')));
   assert.ok(fieldNames.some((n) => n.startsWith('<:game:1571472414875844618> Mini Games')));
   assert.ok(fieldNames.some((n) => n.startsWith('<:star:1571472439962107985> Social Interactions (11)')));
   assert.ok(fieldNames.some((n) => n.startsWith('<:tools:1571472462787641414> Media & Utilities')));
   assert.ok(fieldNames.some((n) => n.startsWith('<:pin:1571472304645345300> General')));
+  const infoField = json.fields.find((f) => f.name.includes('Information'));
+  assert.ok(infoField);
+  assert.equal(infoField.value, '`about`');
 
   const socialField = json.fields.find((f) => f.name.includes('Social Interactions'));
   assert.ok(socialField);
@@ -247,5 +250,5 @@ test('Help Embed & SelectMenu: respects Discord embed length & component limits'
 
   const menuRow = buildHelpCategoryMenu().toJSON();
   assert.equal(menuRow.components[0].type, 3);
-  assert.equal(menuRow.components[0].options.length, 6);
+  assert.equal(menuRow.components[0].options.length, 7);
 });

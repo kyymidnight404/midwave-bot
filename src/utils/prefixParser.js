@@ -6,6 +6,7 @@ import {
 import { SOLO_SOCIAL_COMMANDS, TARGETED_SOCIAL_COMMANDS } from '../services/otakuGifsService.js';
 
 const COMMAND_ALIASES = Object.freeze({
+  about: 'about',
   ai: 'ai',
   anime: 'anime',
   lyrics: 'lyrics',
@@ -272,7 +273,7 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
     return { commandName: 'quiz', subcommand: null, options: { category, difficulty } };
   }
 
-  if (commandName === 'donate' || commandName === 'menu' || commandName === 'ping') {
+  if (commandName === 'about' || commandName === 'donate' || commandName === 'menu' || commandName === 'ping') {
     return { commandName, subcommand: null, options: {} };
   }
 
