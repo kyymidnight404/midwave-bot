@@ -66,8 +66,8 @@ export function buildBotJoinEmbed(guild, { prefix = '!', includeThumbnail = true
       `Ketik \`${prefix}menu\` atau \`/help\` untuk melihat daftar fitur yang tersedia:\n` +
       `• ${getEmoji('ai')} **AI:** \`${prefix}ai\` atau \`/ai\`\n` +
       `• 🌤️ **Cuaca BMKG:** \`${prefix}weather <lokasi>\` atau \`/weather\`\n` +
-      `• 🎮 **Mini Games:** \`${prefix}coinflip\`, \`${prefix}rps\`, \`${prefix}ttt @teman\`, \`${prefix}quiz\`\n` +
-      `• 🛠️ **Media & Utilitas:** \`${prefix}qc\`, \`${prefix}brat\`, \`${prefix}lyrics\`, \`${prefix}download\`, \`${prefix}math\`, \`${prefix}igf\``,
+      `• ${getEmoji('game')} **Mini Games:** \`${prefix}coinflip\`, \`${prefix}rps\`, \`${prefix}ttt @teman\`, \`${prefix}quiz\`\n` +
+      `• ${getEmoji('tools')} **Media & Utilitas:** \`${prefix}qc\`, \`${prefix}brat\`, \`${prefix}lyrics\`, \`${prefix}download\`, \`${prefix}math\`, \`${prefix}igf\``,
     color: COLORS.PRIMARY,
     includeThumbnail,
     iconName: 'join',

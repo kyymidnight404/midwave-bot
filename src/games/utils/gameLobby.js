@@ -8,6 +8,7 @@ import {
   UserSelectMenuBuilder,
 } from 'discord.js';
 import { COLORS } from '../../config/colors.js';
+import { getEmoji } from '../../config/emojis.js';
 import { prisma as defaultPrisma } from '../../services/prisma.js';
 import { buildCoinflipBoardEmbed, buildCoinflipChoiceComponents, buildCoinflipSoloPromptPayload } from '../../utils/coinflipComponents.js';
 import { GAME_TYPES, RPS_CHOICES } from '../../utils/constants.js';
@@ -293,10 +294,10 @@ export function buildUnifiedLobbyMessage({
   let extraStatus = '';
   if (statusOverride === 'expired') {
     color = COLORS.WARNING;
-    extraStatus = '\n\n⏱️ Lobby kedaluwarsa karena tidak digunakan.';
+    extraStatus = `\n\n${getEmoji('timer')} Lobby kedaluwarsa karena tidak digunakan.`;
   } else if (statusOverride === 'cancelled') {
     color = COLORS.ERROR;
-    extraStatus = '\n\n❌ Lobby dibatalkan oleh Host.';
+    extraStatus = `\n\n${getEmoji('error')} Lobby dibatalkan oleh Host.`;
   }
 
   const embed = new EmbedBuilder()
@@ -389,7 +390,7 @@ function buildRpsSoloResultEmbed(ownerId, state, result, { includeThumbnail = tr
   let headline = '🤝 **Seri!**';
   if (result?.winnerId === ownerId) {
     color = COLORS.SUCCESS;
-    headline = `🏆 **Menang!** <@${ownerId}> mengalahkan bot!`;
+    headline = `${getEmoji('trophy')} **Menang!** <@${ownerId}> mengalahkan bot!`;
   } else if (result?.winnerId && result.winnerId !== ownerId) {
     color = COLORS.DANGER;
     headline = `😔 **Kalah!** Bot menang ronde ini.`;
@@ -397,7 +398,7 @@ function buildRpsSoloResultEmbed(ownerId, state, result, { includeThumbnail = tr
 
   return createBaseEmbed({
     title: 'Rock Paper Scissors — Hasil',
-    description: `${headline}\n\n<@${ownerId}>: **${playerChoice}** vs 🤖 Bot: **${botChoice}**`,
+    description: `${headline}\n\n<@${ownerId}>: **${playerChoice}** vs ${getEmoji('ai')} Bot: **${botChoice}**`,
     color,
     includeThumbnail,
     iconName: 'rps',

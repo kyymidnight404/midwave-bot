@@ -29,7 +29,7 @@ test('Help Embed: single embed with Midnight Ocean visual identity & all 5 categ
   const fieldNames = json.fields.map((f) => f.name);
   assert.equal(new Set(fieldNames).size, 6);
   assert.ok(fieldNames.some((n) => n.startsWith(`${EMOJIS.ai} AI & Knowledge`)));
-  assert.ok(fieldNames.some((n) => n.startsWith('<:game:1571472414875844618> Mini Games')));
+  assert.ok(fieldNames.some((n) => n.startsWith(`${EMOJIS.game} Mini Games`)));
   assert.ok(fieldNames.some((n) => n.startsWith(`${EMOJIS.users} Social Interactions (11)`)));
   assert.ok(fieldNames.some((n) => n.startsWith(`${EMOJIS.folder} Media & Utilities`)));
   assert.ok(fieldNames.some((n) => n.startsWith(`${EMOJIS.home} General`)));

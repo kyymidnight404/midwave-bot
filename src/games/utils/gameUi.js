@@ -67,7 +67,7 @@ export function buildChallengeMessage({
   const embed = applyMidwaveBranding(
     new EmbedBuilder()
       .setColor(color)
-      .setTitle(`🎮 Tantangan ${gameTitle}`)
+      .setTitle(`${getEmoji('game')} Tantangan ${gameTitle}`)
       .setDescription(description),
     includeThumbnail,
     gameType,
@@ -110,16 +110,16 @@ export function buildTicTacToeMessage({
   let color = COLORS.PRIMARY;
 
   if (forfeitedById) {
-    statusLine = `🏳️ <@${forfeitedById}> menyerah! Pemenang: <@${state.winnerId}>`;
+    statusLine = `${getEmoji('surrender')} <@${forfeitedById}> menyerah! Pemenang: <@${state.winnerId}>`;
     color = COLORS.SUCCESS;
   } else if (state.winnerId) {
-    statusLine = `🏆 Pemenang: <@${state.winnerId}> (${state.winnerSymbol === 'X' ? '❌' : '⭕'})!`;
+    statusLine = `${getEmoji('trophy')} Pemenang: <@${state.winnerId}> (${state.winnerSymbol === 'X' ? '❌' : '⭕'})!`;
     color = COLORS.SUCCESS;
   } else if (state.isDraw) {
     statusLine = '🤝 Pertandingan berakhir **Seri**!';
     color = COLORS.WARNING;
   } else if (status === 'expired') {
-    statusLine = '⏱️ Pertandingan berakhir karena tidak ada aktivitas.';
+    statusLine = `${getEmoji('timer')} Pertandingan berakhir karena tidak ada aktivitas.`;
     color = COLORS.MUTED;
   }
 
@@ -172,7 +172,7 @@ export function buildTicTacToeMessage({
         new ButtonBuilder()
           .setCustomId(buildGameCustomId('ttt', sessionId, 'forfeit'))
           .setLabel('Menyerah')
-          .setEmoji('🏳️')
+          .setEmoji(getComponentEmoji('surrender'))
           .setStyle(ButtonStyle.Secondary),
       ),
     );
@@ -213,13 +213,13 @@ export function buildRpsMessage({
   let color = COLORS.PRIMARY;
 
   if (forfeitedById) {
-    statusText = `🏳️ <@${forfeitedById}> menyerah! Pemenang: <@${state.winnerId}>`;
+    statusText = `${getEmoji('surrender')} <@${forfeitedById}> menyerah! Pemenang: <@${state.winnerId}>`;
     color = COLORS.SUCCESS;
   } else if (state.winnerId) {
-    statusText = `🏆 Pertandingan Selesai! Pemenang: <@${state.winnerId}>`;
+    statusText = `${getEmoji('trophy')} Pertandingan Selesai! Pemenang: <@${state.winnerId}>`;
     color = COLORS.SUCCESS;
   } else if (status === 'expired') {
-    statusText = '⏱️ Pertandingan berakhir karena timeout.';
+    statusText = `${getEmoji('timer')} Pertandingan berakhir karena timeout.`;
     color = COLORS.MUTED;
   }
 
@@ -227,7 +227,7 @@ export function buildRpsMessage({
   const lastRoundLine = lastRound
     ? `\n\n**Hasil Ronde ${lastRound.round}:**\n` +
       `<@${p1}> (${RPS_EMOJI[lastRound.choices[p1]]}) vs <@${p2}> (${RPS_EMOJI[lastRound.choices[p2]]}) → ` +
-      (lastRound.isDraw ? '🤝 Seri!' : `🏆 <@${lastRound.winnerId}> menang ronde!`)
+      (lastRound.isDraw ? '🤝 Seri!' : `${getEmoji('trophy')} <@${lastRound.winnerId}> menang ronde!`)
     : '';
 
   const embed = applyMidwaveBranding(
@@ -264,7 +264,7 @@ export function buildRpsMessage({
     new ButtonBuilder()
       .setCustomId(buildGameCustomId('rps', sessionId, 'forfeit'))
       .setLabel('Menyerah')
-      .setEmoji('🏳️')
+      .setEmoji(getComponentEmoji('surrender'))
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(isFinished || status === 'expired'),
   );
@@ -290,7 +290,7 @@ export function buildQuizLobbyMessage({
   const embed = applyMidwaveBranding(
     new EmbedBuilder()
       .setColor(cancelledText ? COLORS.ERROR : COLORS.PRIMARY)
-      .setTitle('🧠 Quiz Battle — Lobi')
+      .setTitle(`${getEmoji('quiz')} Quiz Battle — Lobi`)
       .setDescription(
         cancelledText ??
           `**Host:** <@${state.hostId}>\n` +
@@ -306,7 +306,7 @@ export function buildQuizLobbyMessage({
     new ButtonBuilder()
       .setCustomId(buildGameCustomId('quiz', sessionId, 'join'))
       .setLabel('Gabung')
-      .setEmoji('🎮')
+      .setEmoji(getComponentEmoji('game'))
       .setStyle(ButtonStyle.Success)
       .setDisabled(disabled || state.players.length >= QUIZ_MAX_PLAYERS),
     new ButtonBuilder()
@@ -347,10 +347,10 @@ export function buildGlobalQuizLobbyMessage({
 
   if (statusOverride === 'expired') {
     color = COLORS.WARNING;
-    description = `${description}\n\n⏱️ Lobby kedaluwarsa karena tidak digunakan.`;
+    description = `${description}\n\n${getEmoji('timer')} Lobby kedaluwarsa karena tidak digunakan.`;
   } else if (statusOverride === 'cancelled') {
     color = COLORS.ERROR;
-    description = `${description}\n\n❌ Quiz dibatalkan.`;
+    description = `${description}\n\n${getEmoji('error')} Quiz dibatalkan.`;
   }
 
   const embed = applyMidwaveBranding(
@@ -389,13 +389,13 @@ export function buildQuizQuestionMessage({
   const embed = applyMidwaveBranding(
     new EmbedBuilder()
       .setColor(COLORS.PRIMARY)
-      .setTitle(`🧠 Quiz Battle — Pertanyaan ${state.round}/${state.totalQuestions}`)
+      .setTitle(`${getEmoji('quiz')} Quiz Battle — Pertanyaan ${state.round}/${state.totalQuestions}`)
       .setDescription(
         `📚 **Kategori:** \`${formatQuizCategory(q.category)}\` | ⚡ **Kesulitan:** \`${formatQuizDifficulty(q.difficulty)}\`\n` +
           `${getEmoji('clock')} **Berakhir:** <t:${endsUnix}:R>\n\n` +
           `**${q.question}**\n\n` +
           `${optionsText}\n\n` +
-          '💬 Ketik **a**, **b**, **c**, atau **d** langsung di chat untuk menjawab!',
+          `${getEmoji('chat')} Ketik **a**, **b**, **c**, atau **d** langsung di chat untuk menjawab!`,
       ),
     includeThumbnail,
     'quiz',
@@ -410,7 +410,7 @@ export function buildQuizQuestionMessage({
     new ButtonBuilder()
       .setCustomId(buildGameCustomId('quiz', sessionId, 'cancel'))
       .setLabel('Hentikan Quiz')
-      .setEmoji('🛑')
+      .setEmoji(getComponentEmoji('stop'))
       .setStyle(ButtonStyle.Danger),
   );
 
@@ -478,13 +478,13 @@ export function buildQuizFinalMessage({
   const headerLine = isSolo
     ? `🏁 **Quiz Selesai!** Jawaban benar <@${standings[0]?.userId ?? state.hostId}>: **${standings[0]?.score ?? 0}/${totalQuestions}**.`
     : state.winnerId
-      ? `🏆 **Pemenang Quiz Battle:** <@${state.winnerId}>!`
+      ? `${getEmoji('trophy')} **Pemenang Quiz Battle:** <@${state.winnerId}>!`
       : '🤝 **Quiz Battle berakhir Seri!**';
 
   const embed = applyMidwaveBranding(
     new EmbedBuilder()
       .setColor(COLORS.SUCCESS)
-      .setTitle('🏆 Quiz Battle — Hasil Akhir')
+      .setTitle(`${getEmoji('trophy')} Quiz Battle — Hasil Akhir`)
       .setDescription(`${headerLine}\n\n**Ringkasan Jawaban:**\n${leaderboardLines}`),
     includeThumbnail,
     'quiz',
@@ -504,7 +504,7 @@ export function buildQuizCancelledMessage({
   const embed = applyMidwaveBranding(
     new EmbedBuilder()
       .setColor(COLORS.DANGER)
-      .setTitle('🧠 Quiz Battle — Dihentikan')
+      .setTitle(`${getEmoji('quiz')} Quiz Battle — Dihentikan`)
       .setDescription(`${getEmoji('error')} Quiz dihentikan oleh Host (<@${cancelledById ?? state?.hostId}>) pada ronde ${state?.round ?? 1}/${state?.totalQuestions ?? QUIZ_TOTAL_QUESTIONS}.`),
     includeThumbnail,
     'quiz',

@@ -28,23 +28,38 @@ export const FEEDBACK_CUSTOM_ID_PREFIX = 'feedback';
 export const FEEDBACK_CATEGORIES = Object.freeze({
   bug: Object.freeze({
     id: 'bug',
-    emoji: '🐛',
+    emojiKey: 'bug',
+    get emoji() {
+      return getEmoji('bug');
+    },
     label: 'Bug Report',
-    display: '🐛 Bug Report',
+    get display() {
+      return `${getEmoji('bug')} Bug Report`;
+    },
     description: 'Laporkan error, crash, atau perilaku bot yang tidak sesuai.',
   }),
   feature: Object.freeze({
     id: 'feature',
-    emoji: '💡',
+    emojiKey: 'idea',
+    get emoji() {
+      return getEmoji('idea');
+    },
     label: 'Feature Suggestion',
-    display: '💡 Feature Suggestion',
+    get display() {
+      return `${getEmoji('idea')} Feature Suggestion`;
+    },
     description: 'Usulkan fitur baru atau peningkatan command yang ada.',
   }),
   general: Object.freeze({
     id: 'general',
-    emoji: '💬',
+    emojiKey: 'chat',
+    get emoji() {
+      return getEmoji('chat');
+    },
     label: 'General Feedback',
-    display: '💬 General Feedback',
+    get display() {
+      return `${getEmoji('chat')} General Feedback`;
+    },
     description: 'Bagikan pendapat, pengalaman, atau masukan umum.',
   }),
   other: Object.freeze({

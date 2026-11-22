@@ -1,4 +1,5 @@
 import { COLORS } from '../config/colors.js';
+import { getEmoji } from '../config/emojis.js';
 import { sanitizeError } from './errorSanitizer.js';
 import { GAME_METADATA, GAME_TYPES } from './constants.js';
 import {
@@ -155,8 +156,8 @@ export function createInviteExpireHandler(client) {
     const embed =
       expiredInvite.gameType === GAME_TYPES.COINFLIP
         ? createBaseEmbed({
-            title: '🪙 Coin Flip',
-            description: '⏱️ **Kedaluwarsa** — Tantangan berakhir tanpa jawaban.',
+            title: `${getEmoji('coin')} Coin Flip`,
+            description: `${getEmoji('timer')} **Kedaluwarsa** — Tantangan berakhir tanpa jawaban.`,
             color: COLORS.WARNING,
             iconName: 'coinflip',
           })

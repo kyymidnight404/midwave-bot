@@ -1,4 +1,5 @@
 import { MessageFlags } from 'discord.js';
+import { getEmoji } from '../config/emojis.js';
 import { prisma as defaultPrisma } from '../services/prisma.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
 import { sanitizeError } from '../utils/errorSanitizer.js';
@@ -273,7 +274,7 @@ async function handleMissingOrExpiredSession(interaction, session, prisma) {
           hostId: session.hostId,
           opponentId: opp?.userId ?? session.hostId,
           disabled: true,
-          statusText: '⏱️ Tantangan telah kedaluwarsa.',
+          statusText: `${getEmoji('timer')} Tantangan telah kedaluwarsa.`,
         }),
         true,
       );
@@ -290,7 +291,7 @@ async function handleMissingOrExpiredSession(interaction, session, prisma) {
               sessionId: session.id,
               state: updated.state,
               disabled: true,
-              cancelledText: '⏱️ Lobby Quiz Battle kedaluwarsa.',
+              cancelledText: `${getEmoji('timer')} Lobby Quiz Battle kedaluwarsa.`,
             }),
         true,
       );
@@ -342,7 +343,7 @@ async function handleChallengeInteraction(interaction, parsed, context) {
           hostId: session.hostId,
           opponentId: opponent.userId,
           disabled: true,
-          statusText: `❌ <@${opponent.userId}> menolak tantangan ini.`,
+          statusText: `${getEmoji('error')} <@${opponent.userId}> menolak tantangan ini.`,
         }),
         true,
       );
@@ -710,7 +711,7 @@ async function handleQuizInteraction(interaction, parsed, context) {
           sessionId,
           state: updated.state,
           disabled: res.cancelled,
-          cancelledText: res.cancelled ? '❌ Lobby dibatalkan karena semua pemain keluar.' : null,
+          cancelledText: res.cancelled ? `${getEmoji('error')} Lobby dibatalkan karena semua pemain keluar.` : null,
         }),
         true,
       );
@@ -737,7 +738,7 @@ async function handleQuizInteraction(interaction, parsed, context) {
               sessionId,
               state: updated.state,
               disabled: true,
-              cancelledText: `❌ Quiz Battle dibatalkan oleh Host (<@${userId}>).`,
+              cancelledText: `${getEmoji('error')} Quiz Battle dibatalkan oleh Host (<@${userId}>).`,
             }),
         true,
       );
@@ -1088,7 +1089,7 @@ export async function recoverGameCenterSessions(context = {}) {
               hostId: session.hostId,
               opponentId: opp?.userId ?? session.hostId,
               disabled: true,
-              statusText: '⏱️ Tantangan telah kedaluwarsa.',
+              statusText: `${getEmoji('timer')} Tantangan telah kedaluwarsa.`,
             }),
             false,
           );
@@ -1105,7 +1106,7 @@ export async function recoverGameCenterSessions(context = {}) {
                   sessionId: session.id,
                   state: session.state,
                   disabled: true,
-                  cancelledText: '⏱️ Lobby Quiz Battle kedaluwarsa.',
+                  cancelledText: `${getEmoji('timer')} Lobby Quiz Battle kedaluwarsa.`,
                 }),
             false,
           );

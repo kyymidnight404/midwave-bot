@@ -1,5 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
 import { COLORS } from '../config/colors.js';
+import { getComponentEmoji, getEmoji } from '../config/emojis.js';
 import { BOT_PLAYER_ID, GAME_TYPES } from './constants.js';
 import {
   buildErrorEmbed,
@@ -51,11 +52,11 @@ export function buildCoinflipInviteEmbed({
     description = `🔴 **Ditolak** — <@${rejectedById ?? opponentId}> menolak tantangan ini.`;
   } else if (status === 'expired') {
     color = COLORS.WARNING;
-    description = '⏱️ **Kedaluwarsa** — Tantangan berakhir tanpa jawaban.';
+    description = `${getEmoji('timer')} **Kedaluwarsa** — Tantangan berakhir tanpa jawaban.`;
   }
 
   return createBaseEmbed({
-    title: '🪙 Coin Flip',
+    title: `${getEmoji('coin')} Coin Flip`,
     description,
     color,
     includeThumbnail,
@@ -71,10 +72,10 @@ export function buildCoinflipInviteEmbed({
 export function buildCoinflipBoardEmbed(state, { includeThumbnail = true } = {}) {
   const playerLines = (state?.players ?? [])
     .filter((p) => p !== BOT_PLAYER_ID)
-    .map((p) => `• <@${p}>: ${state?.choices?.[p] ? '✅ Sudah memilih (rahasia)' : '⏳ Menunggu pilihan...'}`);
+    .map((p) => `• <@${p}>: ${state?.choices?.[p] ? `${getEmoji('success')} Sudah memilih (rahasia)` : `${getEmoji('loading')} Menunggu pilihan...`}`);
 
   return createBaseEmbed({
-    title: '🪙 Coin Flip',
+    title: `${getEmoji('coin')} Coin Flip`,
     description: `${playerLines.join('\n')}\n\nPilih **Heads** atau **Tails** secara rahasia di bawah.`,
     color: COLORS.PRIMARY,
     includeThumbnail,
@@ -100,7 +101,7 @@ export function buildCoinflipResultEmbed(state, { includeThumbnail = true } = {}
       : `😔 **Kalah!** <@${playerId}> menebak **${formatCoinChoice(picked)}** — Koin mendarat di **${coin}**.`;
 
     return createBaseEmbed({
-      title: '🪙 Coin Flip — Hasil Akhir',
+      title: `${getEmoji('coin')} Coin Flip — Hasil Akhir`,
       description: summary,
       color: won ? COLORS.SUCCESS : COLORS.DANGER,
       includeThumbnail,
@@ -114,8 +115,8 @@ export function buildCoinflipResultEmbed(state, { includeThumbnail = true } = {}
 
   if (state?.result?.isDraw) {
     return createBaseEmbed({
-      title: '🪙 Coin Flip — Hasil Akhir',
-      description: `🤝 **Draw** (<@${p1}> vs <@${p2}>)\n🪙 Hasil Koin: **${coin}** · Kedua pemain memilih **${c1}**`,
+      title: `${getEmoji('coin')} Coin Flip — Hasil Akhir`,
+      description: `🤝 **Draw** (<@${p1}> vs <@${p2}>)\n${getEmoji('coin')} Hasil Koin: **${coin}** · Kedua pemain memilih **${c1}**`,
       color: COLORS.WARNING,
       includeThumbnail,
       iconName: 'coinflip',
@@ -124,8 +125,8 @@ export function buildCoinflipResultEmbed(state, { includeThumbnail = true } = {}
 
   const winnerId = state?.result?.winnerId;
   return createBaseEmbed({
-    title: '🪙 Coin Flip — Hasil Akhir',
-    description: `🏆 **Pemenang:** <@${winnerId}>\n🪙 Hasil Koin: **${coin}** · <@${p1}>: **${c1}** · <@${p2}>: **${c2}**`,
+    title: `${getEmoji('coin')} Coin Flip — Hasil Akhir`,
+    description: `${getEmoji('trophy')} **Pemenang:** <@${winnerId}>\n${getEmoji('coin')} Hasil Koin: **${coin}** · <@${p1}>: **${c1}** · <@${p2}>: **${c2}**`,
     color: COLORS.SUCCESS,
     includeThumbnail,
     iconName: 'coinflip',
@@ -142,12 +143,12 @@ export function buildCoinflipInviteComponents(inviteId) {
       new ButtonBuilder()
         .setCustomId(`${COINFLIP_CUSTOM_ID_PREFIX}:invite:accept:${inviteId}`)
         .setLabel('Accept')
-        .setEmoji('✅')
+        .setEmoji(getComponentEmoji('success'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId(`${COINFLIP_CUSTOM_ID_PREFIX}:invite:reject:${inviteId}`)
         .setLabel('Reject')
-        .setEmoji('❌')
+        .setEmoji(getComponentEmoji('error'))
         .setStyle(ButtonStyle.Danger),
     ),
   ];
@@ -163,12 +164,12 @@ export function buildCoinflipChoiceComponents(sessionId) {
       new ButtonBuilder()
         .setCustomId(`${COINFLIP_CUSTOM_ID_PREFIX}:choose:heads:${sessionId}`)
         .setLabel('Heads')
-        .setEmoji('🪙')
+        .setEmoji(getComponentEmoji('coin'))
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId(`${COINFLIP_CUSTOM_ID_PREFIX}:choose:tails:${sessionId}`)
         .setLabel('Tails')
-        .setEmoji('🌗')
+        .setEmoji(getComponentEmoji('tails'))
         .setStyle(ButtonStyle.Secondary),
     ),
   ];
@@ -180,7 +181,7 @@ export function buildCoinflipChoiceComponents(sessionId) {
  */
 export function buildCoinflipSoloPromptPayload(userId) {
   const embed = createBaseEmbed({
-    title: '🪙 Coin Flip',
+    title: `${getEmoji('coin')} Coin Flip`,
     description: 'Pilih **Heads** atau **Tails** untuk melempar koin.',
     color: COLORS.PRIMARY,
     iconName: 'coinflip',
@@ -189,12 +190,12 @@ export function buildCoinflipSoloPromptPayload(userId) {
     new ButtonBuilder()
       .setCustomId(`${COINFLIP_CUSTOM_ID_PREFIX}:solo:heads:${userId}`)
       .setLabel('Heads')
-      .setEmoji('🪙')
+      .setEmoji(getComponentEmoji('coin'))
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId(`${COINFLIP_CUSTOM_ID_PREFIX}:solo:tails:${userId}`)
       .setLabel('Tails')
-      .setEmoji('🌗')
+      .setEmoji(getComponentEmoji('tails'))
       .setStyle(ButtonStyle.Secondary),
   );
   return { embeds: [embed], components: [row], files: getIconFiles('coinflip') };

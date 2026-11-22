@@ -129,7 +129,10 @@ export const HELP_CATEGORIES = Object.freeze([
   Object.freeze({
     key: 'mini_games',
     label: 'Mini Games',
-    emoji: '<:game:1571472414875844618>',
+    emojiKey: 'game',
+    get emoji() {
+      return getEmoji('game');
+    },
     description: 'Permainan solo & multiplayer',
   }),
   Object.freeze({
@@ -530,7 +533,7 @@ export function buildHelpCategoryMenu({
       .setLabel('Semua Kategori')
       .setValue('all')
       .setDescription('Tampilkan seluruh panduan command Midwave')
-      .setEmoji('🌊')
+      .setEmoji(getComponentEmoji('wave'))
       .setDefault(selectedCategory === 'all'),
     ...HELP_CATEGORIES.map((category) =>
       new StringSelectMenuOptionBuilder()

@@ -2,6 +2,7 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { ComponentType, MessageFlags, PermissionFlagsBits } from 'discord.js';
 import { COLORS } from '../../src/config/colors.js';
+import { EMOJIS } from '../../src/config/emojis.js';
 import { createBotApp } from '../../src/index.js';
 import { prisma } from '../../src/services/prisma.js';
 import { clearAllGameCenterTimers, getPersistedSession } from '../../src/games/services/sessionService.js';
@@ -523,7 +524,7 @@ describe('MIDWAVE Unified Prefix Game Lobby System', () => {
         }),
       );
 
-      assert.equal(cfMsg.payload.embeds[0].toJSON().title, '🪙 Coin Flip');
+      assert.equal(cfMsg.payload.embeds[0].toJSON().title, `${EMOJIS.coin} Coin Flip`);
       assert.equal(cfMsg.payload.components[0].toJSON().components[0].label, 'Heads');
       assert.equal(app.sessionManager.activeGames.size, 1);
       app.sessionManager.clearAll();

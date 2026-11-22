@@ -153,7 +153,7 @@ export function buildAnimeEmbed(anime, options = {}) {
   }
 
   const scoreText = typeof anime?.averageScore === 'number'
-    ? `⭐ ${anime.averageScore}% (${(anime.averageScore / 10).toFixed(1)}/10)`
+    ? `${getEmoji('star')} ${anime.averageScore}% (${(anime.averageScore / 10).toFixed(1)}/10)`
     : 'Belum ada rating';
   const episodesText = typeof anime?.episodes === 'number'
     ? `${anime.episodes} Episode`
@@ -164,13 +164,13 @@ export function buildAnimeEmbed(anime, options = {}) {
     : '-';
 
   embed.addFields(
-    { name: '🆔 ID Anime', value: `\`${anime?.id || '-'}\``, inline: true },
+    { name: `${getEmoji('id')} ID Anime`, value: `\`${anime?.id || '-'}\``, inline: true },
     { name: `${getEmoji('video')} Format`, value: formatAnimeFormat(anime?.format), inline: true },
-    { name: '📡 Status', value: formatAnimeStatus(anime?.status), inline: true },
-    { name: '⭐ Rating', value: scoreText, inline: true },
+    { name: `${getEmoji('status')} Status`, value: formatAnimeStatus(anime?.status), inline: true },
+    { name: `${getEmoji('star')} Rating`, value: scoreText, inline: true },
     { name: `${getEmoji('analytics')} Jumlah Episode`, value: episodesText, inline: true },
     { name: `${getEmoji('calendar')} Tahun Rilis`, value: yearText, inline: true },
-    { name: '🏷️ Genre', value: genresText, inline: false },
+    { name: `${getEmoji('tag')} Genre`, value: genresText, inline: false },
   );
 
   if (typeof anime?.duration === 'number' && anime.duration > 0) {
@@ -183,7 +183,7 @@ export function buildAnimeEmbed(anime, options = {}) {
 
   if (Array.isArray(anime?.studios) && anime.studios.length > 0) {
     embed.addFields({
-      name: '🏢 Studio',
+      name: `${getEmoji('studio')} Studio`,
       value: anime.studios.join(', '),
       inline: true,
     });

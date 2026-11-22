@@ -75,6 +75,29 @@ const EXPECTED_EMOJI_KEYS = [
   'video',
   'music',
   'shield',
+  'game',
+  'timer',
+  'trophy',
+  'surrender',
+  'stop',
+  'quiz',
+  'coin',
+  'tails',
+  'bug',
+  'idea',
+  'chat',
+  'wave',
+  'tools',
+  'id',
+  'status',
+  'star',
+  'tag',
+  'studio',
+  'location',
+  'source',
+  'temperature',
+  'humidity',
+  'wind',
 ];
 
 function collectJsFiles(dir) {
@@ -96,9 +119,9 @@ describe('MIDWAVE Custom Application Emoji System', () => {
     resetEmojiValidationCache();
   });
 
-  it('registers all 30 mw_* emojis with verified unique Discord snowflake IDs and zero placeholders', () => {
+  it('registers all 53 mw_* emojis with verified unique Discord snowflake IDs and zero placeholders', () => {
     const registeredKeys = Object.keys(EMOJI_IDS);
-    assert.equal(registeredKeys.length, 30);
+    assert.equal(registeredKeys.length, 53);
     assert.deepEqual([...registeredKeys].sort(), [...EXPECTED_EMOJI_KEYS].sort());
 
     const seenIds = new Set();
@@ -121,7 +144,7 @@ describe('MIDWAVE Custom Application Emoji System', () => {
       assert.deepEqual(getComponentEmoji(key), { id, name });
     }
 
-    assert.equal(seenIds.size, 30);
+    assert.equal(seenIds.size, 53);
     assert.equal(hasCustomEmojisAvailable(), true);
   });
 
@@ -152,7 +175,7 @@ describe('MIDWAVE Custom Application Emoji System', () => {
     });
     assert.equal(status.validated, true);
     assert.equal(status.availableCount, 2);
-    assert.equal(status.missingKeys.length, 28);
+    assert.equal(status.missingKeys.length, 51);
     assert.equal(getEmoji('success'), EMOJIS.success);
     assert.equal(getEmoji('ai'), EMOJIS.ai);
     assert.equal(getEmoji('error'), EMOJI_FALLBACKS.error);
@@ -173,7 +196,7 @@ describe('MIDWAVE Custom Application Emoji System', () => {
     assert.equal(getEmojiValidationStatus().validated, false);
   });
 
-  it('integrates every single one of the 30 mw_* emoji keys across src/ without placeholders', () => {
+  it('integrates every single one of the 53 mw_* emoji keys across src/ without placeholders or external custom emojis', () => {
     const srcDir = path.resolve(process.cwd(), 'src');
     const srcFiles = collectJsFiles(srcDir).filter((f) => !f.endsWith(`${path.sep}config${path.sep}emojis.js`));
     const combinedSrc = srcFiles.map((f) => fs.readFileSync(f, 'utf8')).join('\n');
@@ -185,6 +208,7 @@ describe('MIDWAVE Custom Application Emoji System', () => {
 
     assert.equal(combinedSrc.includes('EMOJI_ID_PLACEHOLDER'), false);
     assert.equal(combinedSrc.includes('<:mw_ai:>'), false);
+    assert.equal(combinedSrc.includes('<:game:1571472414875844618>'), false);
   });
 
   it('renders custom emojis cleanly across status embeds, commands, and UI components', () => {
@@ -194,13 +218,16 @@ describe('MIDWAVE Custom Application Emoji System', () => {
 
     const helpEmbed = buildDynamicHelpEmbed({ prefix: '!' }).toJSON();
     assert.ok(helpEmbed.fields.some((f) => f.name.startsWith(`${EMOJIS.ai} AI & Knowledge`)));
+    assert.ok(helpEmbed.fields.some((f) => f.name.startsWith(`${EMOJIS.game} Mini Games`)));
     assert.ok(helpEmbed.fields.some((f) => f.name.startsWith(`${EMOJIS.users} Social Interactions`)));
     assert.ok(helpEmbed.fields.some((f) => f.name.startsWith(`${EMOJIS.folder} Media & Utilities`)));
     assert.ok(helpEmbed.fields.some((f) => f.name.startsWith(`${EMOJIS.home} General`)));
     assert.ok(helpEmbed.fields.some((f) => f.name.startsWith(`${EMOJIS.info} Information`)));
 
     const helpMenu = buildHelpCategoryMenu().toJSON();
+    assert.equal(helpMenu.components[0].options[0].emoji.id, EMOJI_IDS.wave);
     assert.equal(helpMenu.components[0].options[1].emoji.id, EMOJI_IDS.ai);
+    assert.equal(helpMenu.components[0].options[2].emoji.id, EMOJI_IDS.game);
 
     const aiEmbed = buildWebSearchEmbed({
       description: 'Jawaban AI',
@@ -278,6 +305,11 @@ describe('MIDWAVE Custom Application Emoji System', () => {
       upcoming: [{ local_datetime: '2026-11-22 18:00:00', weather_desc: 'Cerah Berawan', t: 29, hu: 70 }],
     }).toJSON();
     assert.ok(weatherEmbed.title.startsWith('☀️ Prakiraan Cuaca'));
+    assert.ok(weatherEmbed.description.includes(EMOJIS.location));
+    assert.ok(weatherEmbed.description.includes(EMOJIS.source));
+    assert.ok(weatherEmbed.fields.some((f) => f.name === `${EMOJIS.temperature} Suhu`));
+    assert.ok(weatherEmbed.fields.some((f) => f.name === `${EMOJIS.humidity} Kelembapan`));
+    assert.ok(weatherEmbed.fields.some((f) => f.name === `${EMOJIS.wind} Angin`));
     assert.ok(weatherEmbed.fields.some((f) => f.name === `${EMOJIS.clock} Waktu Prakiraan`));
     assert.ok(weatherEmbed.fields.some((f) => f.name === `${EMOJIS.calendar} Prakiraan Berikutnya (Per 3 Jam)`));
 
@@ -313,11 +345,16 @@ describe('MIDWAVE Custom Application Emoji System', () => {
 
     const joinEmbed = buildBotJoinEmbed({ name: 'Test Guild' }).toJSON();
     assert.ok(joinEmbed.description.includes(`${EMOJIS.ai} **AI:**`));
+    assert.ok(joinEmbed.description.includes(`${EMOJIS.game} **Mini Games:**`));
+    assert.ok(joinEmbed.description.includes(`${EMOJIS.tools} **Media & Utilitas:**`));
     assert.ok(joinEmbed.title.includes('👋'));
 
     const feedbackPrompt = buildFeedbackPromptEmbed({ attachmentUrl: 'https://cdn.discordapp.com/a.png' }).toJSON();
     assert.ok(feedbackPrompt.description.includes(EMOJIS.image));
     const feedbackComps = buildFeedbackPromptComponents('p1', 'u1')[0].toJSON();
+    assert.equal(feedbackComps.components[0].options[0].emoji.id, EMOJI_IDS.bug);
+    assert.equal(feedbackComps.components[0].options[1].emoji.id, EMOJI_IDS.idea);
+    assert.equal(feedbackComps.components[0].options[2].emoji.id, EMOJI_IDS.chat);
     assert.equal(feedbackComps.components[0].options[3].emoji.id, EMOJI_IDS.warning);
     const feedbackReport = buildFeedbackReportEmbed({
       reportId: 'MW-1',

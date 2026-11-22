@@ -486,19 +486,19 @@ export function buildWeatherEmbed(weatherData, { includeThumbnail = true } = {})
   const embed = createBaseEmbed({
     title: `${emoji} Prakiraan Cuaca — ${headlinePlace}`,
     description:
-      `📍 **Lokasi:** ${locationLabel}\n` +
+      `${getEmoji('location')} **Lokasi:** ${locationLabel}\n` +
       `☁️ **Kondisi Saat Ini:** ${emoji} **${current.weather_desc ?? '-'}**\n` +
-      `🏛️ **Sumber:** BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)`,
+      `${getEmoji('source')} **Sumber:** BMKG (Badan Meteorologi, Klimatologi, dan Geofisika)`,
     color: COLORS.PRIMARY,
     includeThumbnail,
     iconName: 'weather',
   });
 
   embed.addFields(
-    { name: '🌡️ Suhu', value: `${current.t ?? '-'}°C`, inline: true },
-    { name: '💧 Kelembapan', value: `${current.hu ?? '-'}%`, inline: true },
+    { name: `${getEmoji('temperature')} Suhu`, value: `${current.t ?? '-'}°C`, inline: true },
+    { name: `${getEmoji('humidity')} Kelembapan`, value: `${current.hu ?? '-'}%`, inline: true },
     {
-      name: '💨 Angin',
+      name: `${getEmoji('wind')} Angin`,
       value: `${current.ws ?? '-'} km/jam${current.wd ? ` (${current.wd})` : ''}`,
       inline: true,
     },
@@ -510,7 +510,7 @@ export function buildWeatherEmbed(weatherData, { includeThumbnail = true } = {})
     const lines = upcoming.map((slot) => {
       const slotEmoji = getWeatherEmoji(slot.weather_desc);
       const timeStr = formatLocalSlotTime(slot);
-      return `• **${timeStr}** — ${slotEmoji} ${slot.weather_desc ?? '-'} · **${slot.t ?? '-'}°C** · 💧 ${slot.hu ?? '-'}%`;
+      return `• **${timeStr}** — ${slotEmoji} ${slot.weather_desc ?? '-'} · **${slot.t ?? '-'}°C** · ${getEmoji('humidity')} ${slot.hu ?? '-'}%`;
     });
     embed.addFields({
       name: `${getEmoji('calendar')} Prakiraan Berikutnya (Per 3 Jam)`,

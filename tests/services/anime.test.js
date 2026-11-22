@@ -329,15 +329,15 @@ describe('Anime Search (/anime & !anime) via AniList GraphQL', () => {
     assert.ok(embed.description.includes('葬送のフリーレン'));
 
     const fieldMap = Object.fromEntries(embed.fields.map((f) => [f.name, f.value]));
-    assert.equal(fieldMap['🆔 ID Anime'], '`154587`');
+    assert.equal(fieldMap[`${EMOJIS.id} ID Anime`], '`154587`');
     assert.equal(fieldMap[`${EMOJIS.video} Format`], 'TV Series');
-    assert.match(fieldMap['📡 Status'], /Finished/);
-    assert.match(fieldMap['⭐ Rating'], /91%/);
+    assert.match(fieldMap[`${EMOJIS.status} Status`], /Finished/);
+    assert.match(fieldMap[`${EMOJIS.star} Rating`], /91%/);
     assert.equal(fieldMap[`${EMOJIS.analytics} Jumlah Episode`], '28 Episode');
     assert.equal(fieldMap[`${EMOJIS.calendar} Tahun Rilis`], '2023');
-    assert.equal(fieldMap['🏷️ Genre'], 'Adventure, Drama, Fantasy');
+    assert.equal(fieldMap[`${EMOJIS.tag} Genre`], 'Adventure, Drama, Fantasy');
     assert.equal(fieldMap[`${EMOJIS.clock} Durasi Episode`], '24 menit / eps');
-    assert.equal(fieldMap['🏢 Studio'], 'MADHOUSE');
+    assert.equal(fieldMap[`${EMOJIS.studio} Studio`], 'MADHOUSE');
     assert.equal(fieldMap[`${EMOJIS.calendar} Tanggal Rilis`], '29 Sep 2023');
     assert.equal(fieldMap['🌐 Tautan & Trailer'], undefined);
     assert.equal(
