@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { prisma as defaultPrisma } from '../../services/prisma.js';
+import { sanitizeQuizImageUrl } from '../engines/quizBattle.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -183,6 +184,7 @@ export async function getPreparedQuizQuestions({
   return picked.map((row) => {
     const parsedOptions = JSON.parse(row.optionsJson);
     const { options, correctIndex } = shuffleQuestionOptions(parsedOptions, row.correctIndex, rng);
+    const imageUrl = sanitizeQuizImageUrl(row.imageUrl ?? row.image);
     return {
       id: row.id,
       category: row.category,
@@ -190,6 +192,7 @@ export async function getPreparedQuizQuestions({
       question: row.question,
       options,
       correctIndex,
+      ...(imageUrl ? { imageUrl } : {}),
     };
   });
 }

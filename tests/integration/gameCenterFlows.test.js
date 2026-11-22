@@ -13,7 +13,17 @@ import {
   updatePersistedSession,
 } from '../../src/games/services/sessionService.js';
 import { ensureQuizQuestionsSeeded } from '../../src/games/services/questionService.js';
-import { recoverGameCenterSessions } from '../../src/events/gameInteraction.js';
+import {
+  handleQuizChatAnswer,
+  recoverGameCenterSessions,
+} from '../../src/events/gameInteraction.js';
+import {
+  createDirectQuizState,
+  createQuizLobbyState,
+  startQuizBattle,
+} from '../../src/games/engines/quizBattle.js';
+import { buildQuizQuestionMessage } from '../../src/games/utils/gameUi.js';
+import quizCommand from '../../src/commands/quiz.js';
 import { createRpsMatchState } from '../../src/games/engines/rockPaperScissors.js';
 import { buildGameCustomId } from '../../src/games/utils/customId.js';
 import { createTicTacToeState } from '../../src/games/engines/ticTacToe.js';
@@ -70,6 +80,7 @@ function createFakeGuildChannel(channelId = 'ch-gc-1') {
 function createFakeMessage({ content, author, channel, guildId = TEST_GUILD_1, mentions = [], client }) {
   const mentionMap = new Map(mentions.map((u) => [u.id, u]));
   const replies = [];
+  const reactions = [];
   return {
     id: `msg-${Math.random().toString(36).slice(2, 8)}`,
     content,
@@ -91,6 +102,10 @@ function createFakeMessage({ content, author, channel, guildId = TEST_GUILD_1, m
     client,
     mentions: { users: mentionMap },
     deletable: true,
+    async react(emoji) {
+      reactions.push(emoji);
+    },
+    getReactions: () => reactions,
     async delete() {},
     async reply(payload) {
       const sent = await channel.send(payload);
@@ -362,7 +377,7 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     assert.doesNotMatch(rpsEmbed.description, /poin/i);
   });
 
-  it('starts Quiz Battle immediately on !quiz and accepts direct chat answers (a/b/c/d) without prefix or slash', async () => {
+  it('opens Quiz Lobby on !quiz -> host clicks Start Quiz -> Global Channel Gameplay with direct chat answers (a/b/c/d)', async () => {
     await cleanupTestGuilds();
     const h = await createGameCenterHarness({ quizRoundDurationMs: 2500, quizIntermissionMs: 30 });
     const [host, p2, p3] = [...h.users.values()];
@@ -375,24 +390,70 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     });
     await h.prefixHandler.handle(msg);
     const quizMsg = msg.getReplies()[0];
+
+    // Step 1: Quiz Lobby UI matches specification (no opponent select, no player counts)
+    const lobbyEmbed = quizMsg.payload.embeds[0].toJSON();
+    assert.equal(lobbyEmbed.title, 'Quiz');
+    assert.equal(
+      lobbyEmbed.description,
+      'Test your knowledge with exciting questions! Answer correctly and compete with others in this channel.',
+    );
+    assert.equal(lobbyEmbed.thumbnail?.url, 'attachment://quiz.png');
+    assert.equal(quizMsg.payload.components.length, 1);
+    assert.equal(quizMsg.payload.components[0].components.length, 1);
+    const startQuizBtn = quizMsg.payload.components[0].components[0];
+    assert.equal(startQuizBtn.data.label, 'Start Quiz');
+    const startQuizId = startQuizBtn.data.custom_id;
+    const sessionId = startQuizId.split(':')[2];
+    assert.ok(startQuizId.endsWith(':start_global'));
+
+    // Non-creator cannot click Start Quiz
+    const nonHostStart = createFakeButtonInteraction({
+      customId: startQuizId,
+      user: p2,
+      message: quizMsg,
+      client: h.client,
+    });
+    await h.interactionHandler.handle(nonHostStart);
+    assert.equal(nonHostStart.getResponses()[0].payload.flags, MessageFlags.Ephemeral);
+
+    // Duplicate !quiz lobby in the same channel is blocked while pending
+    const dupPendingMsg = createFakeMessage({
+      content: '!quiz',
+      author: p2,
+      channel: h.channel,
+      client: h.client,
+    });
+    await h.prefixHandler.handle(dupPendingMsg);
+    assert.match(dupPendingMsg.getReplies()[0].payload.embeds[0].data.description, /Quiz Lobby/i);
+
+    // Host clicks Start Quiz -> updates SAME message to Question 1/10!
+    await h.interactionHandler.handle(
+      createFakeButtonInteraction({
+        customId: startQuizId,
+        user: host,
+        message: quizMsg,
+        client: h.client,
+      }),
+    );
+
     const stopId = quizMsg.payload.components[0].components[0].data.custom_id;
-    const sessionId = stopId.split(':')[2];
     assert.equal(quizMsg.payload.components[0].components.length, 1);
     assert.ok(stopId.endsWith(':cancel'));
 
-    // Starts immediately as active Question 1 without needing a lobby or 2 players
     let session = await getPersistedSession(sessionId, prisma);
     assert.equal(session.status, 'active');
     assert.equal(session.state.phase, 'question');
     assert.equal(session.state.round, 1);
     assert.equal(session.state.questions.length, 10);
 
-    // Verify answer is NOT exposed, A/B/C/D options have no emoji, and footer is omitted
+    // Verify answer is NOT exposed, no participant answered count/progress, A/B/C/D options clean, no footer
     const q1Embed = quizMsg.payload.embeds[0].toJSON();
     const q1Desc = q1Embed.description;
     assert.equal(q1Embed.footer, undefined);
     assert.equal(q1Embed.timestamp, undefined);
     assert.equal(q1Desc.includes('Jawaban Benar'), false);
+    assert.equal(q1Desc.includes('Sudah menjawab'), false);
     assert.doesNotMatch(q1Desc, /[🇦🇧🇨🇩]/u);
     assert.match(q1Desc, /\*\*A\.\*\* /);
     assert.match(q1Desc, /Ketik \*\*a\*\*, \*\*b\*\*, \*\*c\*\*, atau \*\*d\*\* langsung di chat/i);
@@ -426,7 +487,7 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
       const correctIdx = session.state.questions[round - 1].correctIndex;
       const wrongIdx = (correctIdx + 1) % 4;
 
-      // p2 answers first via uppercase chat letter (B/A/C/D) -> auto-joins and waits for host
+      // p2 answers first via uppercase chat letter (wrong) -> gets ❌ reaction, question stays active & p2 can retry
       const p2Chat = createFakeMessage({
         content: letters[wrongIdx].toUpperCase(),
         author: p2,
@@ -434,22 +495,27 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
         client: h.client,
       });
       await h.prefixHandler.handle(p2Chat);
+      assert.deepEqual(p2Chat.getReactions(), ['❌']);
 
-      // Duplicate answer by p2 in the same round must NOT overwrite p2's first answer
+      // Retry with another wrong option on round 1 -> still ❌ and round does NOT advance
       if (round === 1) {
-        await h.prefixHandler.handle(
-          createFakeMessage({
-            content: letters[correctIdx],
-            author: p2,
-            channel: h.channel,
-            client: h.client,
-          }),
-        );
-        const locked = await getPersistedSession(sessionId, prisma);
-        assert.equal(locked.state.roundAnswers[p2.id], wrongIdx);
+        const wrongIdx2 = (correctIdx + 2) % 4;
+        const p2RetryWrong = createFakeMessage({
+          content: letters[wrongIdx2],
+          author: p2,
+          channel: h.channel,
+          client: h.client,
+        });
+        await h.prefixHandler.handle(p2RetryWrong);
+        assert.deepEqual(p2RetryWrong.getReactions(), ['❌']);
+        const stillRound1 = await getPersistedSession(sessionId, prisma);
+        assert.equal(stillRound1.state.round, 1);
+        assert.equal(stillRound1.state.phase, 'question');
+        assert.equal(stillRound1.state.roundResolved, false);
+        assert.equal(stillRound1.state.scores[p2.id], 0);
       }
 
-      // Host answers via lowercase chat letter (a/b/c/d) -> resolves round immediately
+      // Host answers via lowercase chat letter (a/b/c/d) -> gets ✅, scores +1, resolves round
       const hostChat = createFakeMessage({
         content: letters[correctIdx],
         author: host,
@@ -457,6 +523,7 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
         client: h.client,
       });
       await h.prefixHandler.handle(hostChat);
+      assert.deepEqual(hostChat.getReactions(), ['✅']);
     }
 
     // Round 10: let timeout resolve automatically (host finishes with 9 correct answers, zero bonus)
@@ -478,7 +545,7 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     assert.equal(quizFinalEmbed.thumbnail?.url, 'attachment://quiz.png');
     assert.doesNotMatch(quizFinalEmbed.description, /poin|bonus/i);
 
-    // Quick test: non-host cannot click Stop Quiz, host CAN stop active quiz early
+    // Quick test: non-host cannot click Stop Quiz, host CAN stop active quiz early (after starting Quiz Lobby)
     const msg2 = createFakeMessage({
       content: '!quiz science easy',
       author: p3,
@@ -487,8 +554,18 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     });
     await h.prefixHandler.handle(msg2);
     const quizMsg2 = msg2.getReplies()[0];
+    const startId2 = quizMsg2.payload.components[0].components[0].data.custom_id;
+    const sessionId2 = startId2.split(':')[2];
+
+    await h.interactionHandler.handle(
+      createFakeButtonInteraction({
+        customId: startId2,
+        user: p3,
+        message: quizMsg2,
+        client: h.client,
+      }),
+    );
     const stopId2 = quizMsg2.payload.components[0].components[0].data.custom_id;
-    const sessionId2 = stopId2.split(':')[2];
 
     const nonHostStop = createFakeButtonInteraction({
       customId: stopId2,
@@ -727,5 +804,204 @@ describe('Game Center Integration Flows (Prisma + SQLite + Buttons)', () => {
     assert.equal(recoveredQuiz.winnerId, p1.id);
     assert.equal(recoveredQuiz.state.scores[p1.id], 4);
     assert.equal(await prisma.gameStats.count({ where: { guildId: TEST_GUILD_1 } }), 0);
+  });
+
+  it('validates Quiz System Bug Fix & UI: wrong retry ❌, single-score race safety ✅, embed image, and outsider protection', async () => {
+    await cleanupTestGuilds();
+    const h = await createGameCenterHarness({ quizRoundDurationMs: 5000, quizIntermissionMs: 25 });
+    const [p1, p2, outsider] = [...h.users.values()];
+
+    // Scenario 1-7: Wrong answers react ❌ without advancing, retries allowed, correct answer reacts ✅ once with race protection
+    const questions = [
+      {
+        id: 901,
+        category: 'general',
+        difficulty: 'easy',
+        question: 'What is the capital of Japan?',
+        options: ['Seoul', 'Tokyo', 'Beijing', 'Bangkok'],
+        correctIndex: 1,
+        imageUrl: 'https://cdn.example.com/quiz/japan.png',
+      },
+      {
+        id: 902,
+        category: 'science',
+        difficulty: 'easy',
+        question: 'Simbol kimia air adalah?',
+        options: ['CO2', 'H2O', 'O2', 'NaCl'],
+        correctIndex: 1,
+        imageUrl: 'javascript:alert(1)',
+      },
+    ];
+
+    const sid1 = 'quiz-bugfix-1';
+    const initialState = createDirectQuizState({
+      hostId: p1.id,
+      preparedQuestions: questions,
+      roundDurationMs: 5000,
+    });
+    const initialPayload = buildQuizQuestionMessage({ sessionId: sid1, state: initialState });
+    const quizMsg1 = await h.channel.send({
+      ...initialPayload,
+      attachments: new Map([['quiz.png', { name: 'quiz.png' }]]),
+    });
+    quizMsg1.attachments = new Map([['quiz.png', { name: 'quiz.png' }]]);
+
+    // Scenario 8 & 9: Valid image appears on Embed, invalid URL omitted safely without breaking quiz
+    const q1Json = quizMsg1.payload.embeds[0].toJSON();
+    assert.equal(q1Json.image?.url, 'https://cdn.example.com/quiz/japan.png');
+    assert.equal(q1Json.thumbnail?.url, 'attachment://quiz.png');
+
+    const invalidImgPayload = buildQuizQuestionMessage({
+      sessionId: sid1,
+      state: { ...initialState, round: 2 },
+    });
+    assert.equal(invalidImgPayload.embeds[0].toJSON().image, undefined);
+
+    await createPersistedSession({
+      prisma,
+      id: sid1,
+      guildId: TEST_GUILD_1,
+      channelId: h.channel.id,
+      gameType: 'quiz',
+      status: 'active',
+      hostId: p1.id,
+      state: initialState,
+      participants: [{ userId: p1.id, username: p1.username, role: 'host' }],
+      ttlMs: 60_000,
+    });
+    await updatePersistedSession(sid1, { messageId: quizMsg1.id }, prisma);
+
+    // Wrong answer #1: A (0) -> ❌, stays on Question 1/2, edits NOT triggered, no score change
+    const editsBeforeWrong = quizMsg1.edits.length;
+    const wrong1 = createFakeMessage({ content: 'a', author: p1, channel: h.channel, client: h.client });
+    await h.prefixHandler.handle(wrong1);
+    assert.deepEqual(wrong1.getReactions(), ['❌']);
+    assert.equal(quizMsg1.edits.length, editsBeforeWrong);
+
+    let s1 = await getPersistedSession(sid1, prisma);
+    assert.equal(s1.state.round, 1);
+    assert.equal(s1.state.phase, 'question');
+    assert.equal(s1.state.roundResolved, false);
+    assert.equal(s1.state.scores[p1.id], 0);
+
+    // Wrong answer #2 (retry still works): C (2) -> ❌, stays on Question 1/2
+    const wrong2 = createFakeMessage({ content: 'C', author: p1, channel: h.channel, client: h.client });
+    await h.prefixHandler.handle(wrong2);
+    assert.deepEqual(wrong2.getReactions(), ['❌']);
+    s1 = await getPersistedSession(sid1, prisma);
+    assert.equal(s1.state.round, 1);
+
+    // Same message ID dispatched twice does not react twice
+    const dupMsg = createFakeMessage({ content: 'd', author: p1, channel: h.channel, client: h.client });
+    await h.prefixHandler.handle(dupMsg);
+    await h.prefixHandler.handle(dupMsg);
+    assert.deepEqual(dupMsg.getReactions(), ['❌']);
+
+    // Race condition check: 3 concurrent correct answers ('b') -> ONLY 1 ✅, score increments strictly +1!
+    const correctRace1 = createFakeMessage({ content: 'b', author: p1, channel: h.channel, client: h.client });
+    const correctRace2 = createFakeMessage({ content: 'B', author: p1, channel: h.channel, client: h.client });
+    const correctRace3 = createFakeMessage({ content: 'b', author: p2, channel: h.channel, client: h.client });
+    await Promise.all([
+      handleQuizChatAnswer(correctRace1, { prisma, client: h.client, quizIntermissionMs: 25 }),
+      handleQuizChatAnswer(correctRace2, { prisma, client: h.client, quizIntermissionMs: 25 }),
+      handleQuizChatAnswer(correctRace3, { prisma, client: h.client, quizIntermissionMs: 25 }),
+    ]);
+
+    const winnerReactions = [correctRace1, correctRace2, correctRace3]
+      .map((m) => m.getReactions())
+      .filter((r) => r.length > 0);
+    assert.deepEqual(winnerReactions, [['✅']]);
+
+    // No redundant file re-uploads on intermission / round update
+    assert.equal(quizMsg1.edits.every((e) => !e.files), true);
+
+    s1 = await getPersistedSession(sid1, prisma);
+    assert.equal((s1.state.scores[p1.id] ?? 0) + (s1.state.scores[p2.id] ?? 0), 1);
+    assert.equal(s1.state.roundResolved, true);
+    assert.equal(s1.state.phase, 'intermission');
+
+    // Wait briefly for intermission -> advances to Question 2/2 without Q1's image leaking or breaking
+    for (let wait = 0; wait < 30; wait += 1) {
+      s1 = await getPersistedSession(sid1, prisma);
+      if (s1.state.round === 2 && s1.state.phase === 'question') break;
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    assert.equal(s1.state.round, 2);
+    assert.equal(s1.state.phase, 'question');
+    const q2Embed = quizMsg1.payload.embeds[0].toJSON();
+    assert.match(q2Embed.title, /Pertanyaan 2\/2/);
+    assert.equal(q2Embed.image, undefined);
+    assert.equal(q2Embed.thumbnail?.url, 'attachment://quiz.png');
+
+    // Scenario 9: safeUpdateMessage strips missing attachment:// when message has 0 attachments; reply failure falls back safely
+    const emptyAttMsg = await h.channel.send({ embeds: [] });
+    emptyAttMsg.attachments = new Map();
+    const sidFallback = 'quiz-no-attach-fallback';
+    const noAttachInteraction = {
+      guildId: TEST_GUILD_1,
+      channelId: h.channel.id,
+      user: p2,
+      client: h.client,
+      canAttachFiles: true,
+      options: { getString: () => 'all' },
+      replyCalls: 0,
+      async reply(payload) {
+        this.replyCalls += 1;
+        if (payload.files?.length > 0) {
+          throw new Error('Attachment blocked');
+        }
+        return h.channel.send(payload);
+      },
+    };
+    await cleanupTestGuilds();
+    const fallbackSession = await quizCommand.execute(noAttachInteraction, { prisma });
+    assert.ok(fallbackSession);
+    assert.equal(noAttachInteraction.replyCalls, 2);
+    clearAllGameCenterTimers();
+
+    // Scenario 10: Outsider cannot disrupt non-autoJoin / lobby quiz session & finished session ignores late answers
+    await cleanupTestGuilds();
+    let lobbyState = createQuizLobbyState({ hostId: p1.id });
+    lobbyState = {
+      ...lobbyState,
+      players: [p1.id, p2.id],
+      scores: { [p1.id]: 0, [p2.id]: 0 },
+    };
+    const started = startQuizBattle(lobbyState, p1.id, questions);
+    const sidLocked = 'quiz-locked-participants';
+    const lockedMsg = await h.channel.send(buildQuizQuestionMessage({ sessionId: sidLocked, state: started.state }));
+    await createPersistedSession({
+      prisma,
+      id: sidLocked,
+      guildId: TEST_GUILD_1,
+      channelId: h.channel.id,
+      gameType: 'quiz',
+      status: 'active',
+      hostId: p1.id,
+      state: started.state,
+      participants: [
+        { userId: p1.id, username: p1.username, role: 'host' },
+        { userId: p2.id, username: p2.username, role: 'player' },
+      ],
+      ttlMs: 60_000,
+    });
+    await updatePersistedSession(sidLocked, { messageId: lockedMsg.id }, prisma);
+
+    const outsiderMsg = createFakeMessage({ content: 'b', author: outsider, channel: h.channel, client: h.client });
+    const wasHandled = await handleQuizChatAnswer(outsiderMsg, { prisma, client: h.client });
+    assert.equal(wasHandled, false);
+    assert.deepEqual(outsiderMsg.getReactions(), []);
+    const unchanged = await getPersistedSession(sidLocked, prisma);
+    assert.equal(unchanged.state.round, 1);
+    assert.equal(unchanged.state.roundResolved, false);
+    assert.equal(unchanged.state.players.includes(outsider.id), false);
+
+    // After session finished, late answers are ignored cleanly
+    await updatePersistedSession(sidLocked, { status: 'finished' }, prisma);
+    const lateMsg = createFakeMessage({ content: 'b', author: p1, channel: h.channel, client: h.client });
+    const lateHandled = await handleQuizChatAnswer(lateMsg, { prisma, client: h.client });
+    assert.equal(lateHandled, false);
+    assert.deepEqual(lateMsg.getReactions(), []);
+    assert.ok(sidFallback);
   });
 });

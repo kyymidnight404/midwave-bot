@@ -20,6 +20,7 @@ import {
   handleSessionActionCommand,
   handleSoloSessionStart,
 } from './gameCommandHelpers.js';
+import { launchUnifiedGameLobby } from '../games/utils/gameLobby.js';
 import {
   isValidCoinChoice,
   isValidDifficulty,
@@ -28,6 +29,7 @@ import {
 } from './validators.js';
 
 export const GAME_ACTION_CHOICES = Object.freeze([
+  'lobby',
   'solo',
   'challenge',
   'choose',
@@ -37,9 +39,9 @@ export const GAME_ACTION_CHOICES = Object.freeze([
 ]);
 
 export const VALID_ACTIONS_BY_GAME = Object.freeze({
-  [GAME_TYPES.COINFLIP]: new Set(['solo', 'challenge', 'choose', 'status', 'cancel']),
-  [GAME_TYPES.RPS]: new Set(['solo', 'challenge', 'choose', 'status', 'cancel']),
-  [GAME_TYPES.TICTACTOE]: new Set(['solo', 'challenge', 'move', 'status', 'cancel']),
+  [GAME_TYPES.COINFLIP]: new Set(['lobby', 'solo', 'challenge', 'choose', 'status', 'cancel']),
+  [GAME_TYPES.RPS]: new Set(['lobby', 'solo', 'challenge', 'choose', 'status', 'cancel']),
+  [GAME_TYPES.TICTACTOE]: new Set(['lobby', 'solo', 'challenge', 'move', 'status', 'cancel']),
 });
 
 const SESSION_PLAY_ACTIONS = new Set(['choose', 'move']);
@@ -218,6 +220,15 @@ async function handleCancelAction(interaction, context, { gameType, gameId }) {
 }
 
 async function dispatchCoinFlip(interaction, context, actionName) {
+  if (actionName === 'lobby') {
+    await launchUnifiedGameLobby({
+      interaction,
+      context,
+      gameType: GAME_TYPES.COINFLIP,
+    });
+    return;
+  }
+
   if (actionName === 'challenge') {
     await handleChallengeCommand(interaction, context, { gameType: GAME_TYPES.COINFLIP });
     return;

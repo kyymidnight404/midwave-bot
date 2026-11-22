@@ -112,9 +112,9 @@ const GAME_CENTER_CHALLENGE_EXECUTORS = new Map([
   [GAME_TYPES.RPS, rpsCenterCommand],
 ]);
 
-function isGameCenterDirectChallenge(parsed) {
+function isGameCenterDirectOrLobby(parsed) {
   return (
-    parsed?.subcommand === 'challenge' &&
+    (parsed?.subcommand === 'challenge' || parsed?.subcommand === 'lobby') &&
     GAME_CENTER_CHALLENGE_EXECUTORS.has(parsed.commandName)
   );
 }
@@ -288,15 +288,15 @@ export class PrefixCommandHandler {
       return;
     }
 
-    const isGcChallenge = isGameCenterDirectChallenge(parsed);
-    const command = isGcChallenge
+    const isGcDirectOrLobby = isGameCenterDirectOrLobby(parsed);
+    const command = isGcDirectOrLobby
       ? GAME_CENTER_CHALLENGE_EXECUTORS.get(parsed.commandName)
       : (PREFIX_EXECUTORS.get(parsed.commandName) ?? this.commandHandler.get(parsed.commandName));
     if (!command) {
       return;
     }
 
-    const permCheck = await this._checkPermissions(message, parsed.commandName, parsed.subcommand, isGcChallenge);
+    const permCheck = await this._checkPermissions(message, parsed.commandName, parsed.subcommand, isGcDirectOrLobby);
     if (!permCheck.allowed) {
       return;
     }

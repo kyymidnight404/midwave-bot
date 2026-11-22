@@ -27,6 +27,10 @@ import {
   handleGameCenterInteraction,
 } from '../events/gameInteraction.js';
 import {
+  GAME_LOBBY_CUSTOM_ID_PREFIX,
+  handleGameLobbyInteraction,
+} from '../games/utils/gameLobby.js';
+import {
   COINFLIP_CUSTOM_ID_PREFIX,
   handleCoinflipInteraction,
 } from '../utils/coinflipComponents.js';
@@ -132,6 +136,20 @@ export class InteractionHandler {
 
     if (isGameCenterComponent) {
       await handleGameCenterInteraction(interaction, {
+        ...this.context,
+        cooldowns: this.cooldowns,
+        logger: this.logger,
+      });
+      return;
+    }
+
+    const isGameLobbyComponent =
+      typeof interaction.customId === 'string' &&
+      interaction.customId.startsWith(`${GAME_LOBBY_CUSTOM_ID_PREFIX}:`) &&
+      Boolean(interaction.isButton?.() || interaction.isUserSelectMenu?.());
+
+    if (isGameLobbyComponent) {
+      await handleGameLobbyInteraction(interaction, {
         ...this.context,
         cooldowns: this.cooldowns,
         logger: this.logger,

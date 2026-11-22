@@ -464,9 +464,8 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
     if (args.length === 0) {
       return {
         commandName,
-        subcommand: null,
+        subcommand: 'lobby',
         options: {},
-        error: `Gunakan \`${prefix}rps <rock|paper|scissors>\` atau \`${prefix}rps @teman\`.`,
       };
     }
 
@@ -527,7 +526,7 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
     if (args.length === 0) {
       return {
         commandName,
-        subcommand: 'solo',
+        subcommand: 'lobby',
         options: {},
       };
     }
@@ -589,9 +588,8 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
     if (args.length === 0) {
       return {
         commandName,
-        subcommand: null,
+        subcommand: 'lobby',
         options: {},
-        error: `Tic Tac Toe hanya bisa dimainkan bersama teman (bukan bot). Mention lawanmu, contoh: \`${prefix}ttt @teman\`.`,
       };
     }
 

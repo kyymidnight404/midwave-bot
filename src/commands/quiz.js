@@ -2,30 +2,28 @@ import { MessageFlags } from 'discord.js';
 import { prisma as defaultPrisma } from '../services/prisma.js';
 import { buildErrorEmbed, getIconFiles } from '../utils/embeds.js';
 import {
-  DEFAULT_QUIZ_ROUND_MS,
-  scheduleQuizRoundTimer,
-} from '../events/gameInteraction.js';
-import {
-  createDirectQuizState,
+  createGlobalQuizLobbyState,
   QUIZ_TOTAL_QUESTIONS,
 } from '../games/engines/quizBattle.js';
 import { ensureQuizQuestionsSeeded, getPreparedQuizQuestions } from '../games/services/questionService.js';
 import { GAME_CENTER_TYPES } from '../games/services/scoreService.js';
 import {
+  CHALLENGE_TTL_MS,
   createPersistedSession,
   findActiveChannelQuizSession,
   findActiveUserSession,
-  GAME_INACTIVITY_TTL_MS,
+  setSessionTimer,
   updatePersistedSession,
   withSessionLock,
 } from '../games/services/sessionService.js';
-import { buildQuizQuestionMessage } from '../games/utils/gameUi.js';
+import { buildGlobalQuizLobbyMessage } from '../games/utils/gameUi.js';
+import { sanitizeError } from '../utils/errorSanitizer.js';
 
 export default {
   name: 'quiz',
   /**
-   * Executes `!quiz [category] [difficulty]` and starts Round 1 immediately.
-   * Players answer by typing `a`, `b`, `c`, or `d` directly in chat.
+   * Executes `!quiz [category] [difficulty]` and opens the Global Channel Quiz Lobby.
+   * Only the session creator can start the quiz via the Start Quiz button.
    * @param {import('../handlers/MessageCommandAdapter.js').MessageCommandAdapter} interaction
    * @param {object} [context]
    */
@@ -43,16 +41,22 @@ export default {
     const hostUser = interaction.user;
     const category = interaction.options?.getString?.('category', false) ?? 'all';
     const difficulty = interaction.options?.getString?.('difficulty', false) ?? 'all';
-    const roundDurationMs = context.quizRoundDurationMs ?? DEFAULT_QUIZ_ROUND_MS;
-    let activeState = null;
+    const lobbyTtlMs = context.quizLobbyTtlMs ?? context.lobbyTtlMs ?? CHALLENGE_TTL_MS;
+    let lobbyState = null;
 
     const session = await withSessionLock(`quiz:channel:${guildId}:${interaction.channelId}`, async () => {
-      const existingChannelQuiz = await findActiveChannelQuizSession(interaction.channelId, prisma);
+      const existingChannelQuiz = await findActiveChannelQuizSession(
+        interaction.channelId,
+        prisma,
+        { includePending: true },
+      );
       if (existingChannelQuiz) {
         await interaction.reply({
           embeds: [
             buildErrorEmbed(
-              'Masih ada sesi Quiz yang sedang berlangsung di channel ini. Ketik `a`, `b`, `c`, atau `d` di chat untuk ikut menjawab!',
+              existingChannelQuiz.status === 'pending'
+                ? 'Sudah ada Quiz Lobby yang terbuka di channel ini. Tunggu pembuat sesi menekan **Start Quiz**.'
+                : 'Masih ada sesi Quiz yang sedang berlangsung di channel ini. Ketik `a`, `b`, `c`, atau `d` di chat untuk ikut menjawab!',
             ),
           ],
           flags: MessageFlags.Ephemeral,
@@ -76,13 +80,11 @@ export default {
         difficulty,
         count: QUIZ_TOTAL_QUESTIONS,
       });
-      activeState = createDirectQuizState({
+      lobbyState = createGlobalQuizLobbyState({
         hostId: hostUser.id,
         category,
         difficulty,
         preparedQuestions: prepared,
-        nowMs: Date.now(),
-        roundDurationMs,
       });
 
       return createPersistedSession({
@@ -90,13 +92,13 @@ export default {
         guildId,
         channelId: interaction.channelId,
         gameType: GAME_CENTER_TYPES.QUIZ,
-        status: 'active',
+        status: 'pending',
         hostId: hostUser.id,
-        state: activeState,
+        state: lobbyState,
         participants: [
           { userId: hostUser.id, username: hostUser.username ?? null, role: 'host' },
         ],
-        ttlMs: GAME_INACTIVITY_TTL_MS,
+        ttlMs: lobbyTtlMs,
       });
     });
 
@@ -105,25 +107,77 @@ export default {
     }
 
     const canAttach = interaction.canAttachFiles !== false;
-    const payload = buildQuizQuestionMessage({
+    const iconFiles = canAttach ? getIconFiles('quiz') : [];
+    const hasIcon = iconFiles.length > 0;
+    const payload = buildGlobalQuizLobbyMessage({
       sessionId: session.id,
-      state: activeState,
-      includeThumbnail: canAttach,
+      includeThumbnail: hasIcon,
     });
 
-    const sentMsg = await interaction.reply({
-      ...payload,
-      files: canAttach ? getIconFiles('quiz') : [],
-    });
+    let sentMsg;
+    try {
+      sentMsg = await interaction.reply({
+        ...payload,
+        files: iconFiles,
+      });
+    } catch (replyErr) {
+      if (iconFiles.length === 0) {
+        throw replyErr;
+      }
+      sentMsg = await interaction.reply(
+        buildGlobalQuizLobbyMessage({
+          sessionId: session.id,
+          includeThumbnail: false,
+        }),
+      );
+    }
 
     if (sentMsg?.id) {
       await updatePersistedSession(session.id, { messageId: sentMsg.id }, prisma);
     }
 
-    scheduleQuizRoundTimer(session.id, activeState.round, {
-      ...context,
-      client: interaction.client ?? interaction.message?.client ?? context.client,
-    });
+    const client = interaction.client ?? interaction.message?.client ?? context.client;
+    if (lobbyTtlMs > 0) {
+      setSessionTimer(
+        session.id,
+        'lobby_expire',
+        async () => {
+          await withSessionLock(session.id, async () => {
+            try {
+              const latest = await prisma.gameSession.findUnique({ where: { id: session.id } });
+              if (!latest || latest.status !== 'pending') return;
+              await updatePersistedSession(session.id, { status: 'expired', ttlMs: null }, prisma);
+              if (typeof sentMsg?.edit === 'function') {
+                await sentMsg.edit(
+                  buildGlobalQuizLobbyMessage({
+                    sessionId: session.id,
+                    disabled: true,
+                    statusOverride: 'expired',
+                    includeThumbnail: hasIcon,
+                  }),
+                ).catch(() => {});
+              } else if (client?.channels?.fetch && latest.channelId && latest.messageId) {
+                const ch = await client.channels.fetch(latest.channelId).catch(() => null);
+                const msg = await ch?.messages?.fetch?.(latest.messageId).catch(() => null);
+                if (msg) {
+                  await msg.edit(
+                    buildGlobalQuizLobbyMessage({
+                      sessionId: session.id,
+                      disabled: true,
+                      statusOverride: 'expired',
+                      includeThumbnail: hasIcon,
+                    }),
+                  ).catch(() => {});
+                }
+              }
+            } catch (err) {
+              context.logger?.warn?.('[QuizLobby] Expire cleanup error:', sanitizeError(err));
+            }
+          });
+        },
+        lobbyTtlMs,
+      );
+    }
 
     return session;
   },

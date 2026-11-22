@@ -295,22 +295,54 @@ describe('CoinFlip Interactive Button Flow', () => {
     }
   });
 
-  it('shows Heads and Tails buttons for solo !coinflip without arguments', async () => {
+  it('opens Coin Flip Lobby on !coinflip and transitions in-place through Solo Mode -> Start -> Heads/Tails -> Result', async () => {
     const channel = createFakeChannel();
     const client = createFakeClient(channel);
     const app = await createBotApp({ client, prisma: {}, cooldowns: new CooldownManager(0) });
     const p1 = { id: '100000000000000001', username: 'kyy', bot: false };
 
     try {
-      const soloMsg = createPrefixMessage({
+      const lobbyTrigger = createPrefixMessage({
         content: '!coinflip',
         author: p1,
         channel,
         client,
       });
-      await app.prefixCommandHandler.handle(soloMsg);
-      const promptMsg = soloMsg.getReplies()[0];
-      const buttons = promptMsg.payload.components[0].components;
+      await app.prefixCommandHandler.handle(lobbyTrigger);
+      const lobbyMsg = lobbyTrigger.getReplies()[0];
+      assert.equal(lobbyMsg.payload.embeds[0].toJSON().title, 'Coin Flip');
+      assert.equal(lobbyMsg.payload.components.length, 2);
+
+      const actionButtons = lobbyMsg.payload.components[1].components;
+      const soloBtn = actionButtons[0];
+      const startBtn = actionButtons[1];
+      assert.equal(soloBtn.data.label, 'Solo Mode');
+      assert.equal(startBtn.data.label, 'Start');
+      assert.equal(startBtn.data.disabled, true);
+
+      // Select Solo Mode -> Start enables on the same message
+      await app.interactionHandler.handle(
+        createButtonInteraction({
+          customId: soloBtn.data.custom_id,
+          user: p1,
+          message: lobbyMsg,
+          channel,
+          client,
+        }),
+      );
+      assert.equal(lobbyMsg.payload.components[1].components[1].data.disabled, false);
+
+      // Click Start -> updates SAME message into Heads/Tails prompt
+      await app.interactionHandler.handle(
+        createButtonInteraction({
+          customId: lobbyMsg.payload.components[1].components[1].data.custom_id,
+          user: p1,
+          message: lobbyMsg,
+          channel,
+          client,
+        }),
+      );
+      const buttons = lobbyMsg.payload.components[0].components;
       assert.equal(buttons.length, 2);
       assert.equal(buttons[0].data.label, 'Heads');
       assert.equal(buttons[1].data.label, 'Tails');
@@ -318,13 +350,13 @@ describe('CoinFlip Interactive Button Flow', () => {
       const clickHeads = createButtonInteraction({
         customId: buttons[0].data.custom_id,
         user: p1,
-        message: promptMsg,
+        message: lobbyMsg,
         channel,
         client,
       });
       await app.interactionHandler.handle(clickHeads);
-      assert.deepEqual(promptMsg.payload.components, []);
-      const soloResultJson = promptMsg.payload.embeds[0].toJSON();
+      assert.deepEqual(lobbyMsg.payload.components, []);
+      const soloResultJson = lobbyMsg.payload.embeds[0].toJSON();
       assert.equal(soloResultJson.fields, undefined);
       assert.match(soloResultJson.description, /Menang!|Kalah!/);
     } finally {

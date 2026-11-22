@@ -1,7 +1,11 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import { COLORS } from '../../config/colors.js';
 import { GAME_CENTER_LABELS } from '../services/scoreService.js';
-import { QUIZ_MAX_PLAYERS, QUIZ_TOTAL_QUESTIONS } from '../engines/quizBattle.js';
+import {
+  QUIZ_MAX_PLAYERS,
+  QUIZ_TOTAL_QUESTIONS,
+  sanitizeQuizImageUrl,
+} from '../engines/quizBattle.js';
 import { getIconAttachmentUrl } from '../../utils/embeds.js';
 import { buildGameCustomId } from './customId.js';
 
@@ -328,16 +332,54 @@ export function buildQuizLobbyMessage({
 }
 
 /**
- * Quiz Battle Active Question UI (answer is strictly hidden).
+ * Global Channel Quiz Lobby UI (no opponent selection, no participant counts).
+ */
+export function buildGlobalQuizLobbyMessage({
+  sessionId,
+  disabled = false,
+  statusOverride = null,
+  includeThumbnail = true,
+}) {
+  let color = COLORS.PRIMARY;
+  let description =
+    'Test your knowledge with exciting questions! Answer correctly and compete with others in this channel.';
+
+  if (statusOverride === 'expired') {
+    color = COLORS.WARNING;
+    description = `${description}\n\n⏱️ Lobby kedaluwarsa karena tidak digunakan.`;
+  } else if (statusOverride === 'cancelled') {
+    color = COLORS.ERROR;
+    description = `${description}\n\n❌ Quiz dibatalkan.`;
+  }
+
+  const embed = applyMidwaveBranding(
+    new EmbedBuilder().setColor(color).setTitle('Quiz').setDescription(description),
+    includeThumbnail,
+    'quiz',
+  );
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(buildGameCustomId('quiz', sessionId, 'start_global'))
+      .setLabel('Start Quiz')
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(disabled),
+  );
+
+  return { embeds: [embed], components: [row] };
+}
+
+/**
+ * Quiz Battle Active Question UI (answer is strictly hidden, no participant answer count).
  */
 export function buildQuizQuestionMessage({
   sessionId,
   state,
   includeThumbnail = true,
+  includeImage = true,
 }) {
   const q = state.questions[state.round - 1];
   const endsUnix = Math.floor((state.roundEndsAt ?? Date.now() + 20_000) / 1000);
-  const answeredCount = Object.keys(state.roundAnswers ?? {}).length;
 
   const optionsText = q.options
     .map((opt, idx) => `**${OPTION_LETTERS[idx]}.** ${opt}`)
@@ -349,7 +391,7 @@ export function buildQuizQuestionMessage({
       .setTitle(`🧠 Quiz Battle — Pertanyaan ${state.round}/${state.totalQuestions}`)
       .setDescription(
         `📚 **Kategori:** \`${formatQuizCategory(q.category)}\` | ⚡ **Kesulitan:** \`${formatQuizDifficulty(q.difficulty)}\`\n` +
-          `⏱️ **Berakhir:** <t:${endsUnix}:R> | 👥 **Sudah menjawab:** ${answeredCount}/${state.players.length}\n\n` +
+          `⏱️ **Berakhir:** <t:${endsUnix}:R>\n\n` +
           `**${q.question}**\n\n` +
           `${optionsText}\n\n` +
           '💬 Ketik **a**, **b**, **c**, atau **d** langsung di chat untuk menjawab!',
@@ -357,6 +399,11 @@ export function buildQuizQuestionMessage({
     includeThumbnail,
     'quiz',
   );
+
+  const questionImageUrl = includeImage ? sanitizeQuizImageUrl(q?.imageUrl ?? q?.image) : null;
+  if (questionImageUrl) {
+    embed.setImage(questionImageUrl);
+  }
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()

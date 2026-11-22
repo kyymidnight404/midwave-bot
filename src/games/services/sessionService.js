@@ -213,11 +213,16 @@ export async function findActiveUserSession(guildId, userId, prisma = defaultPri
 }
 
 /**
- * Finds the active Quiz Battle session in a specific channel, automatically expiring stale ones.
+ * Finds the active (or pending) Quiz Battle session in a specific channel, automatically expiring stale ones.
  * @param {string} channelId
  * @param {import('@prisma/client').PrismaClient} [prisma]
+ * @param {{ includePending?: boolean }} [options]
  */
-export async function findActiveChannelQuizSession(channelId, prisma = defaultPrisma) {
+export async function findActiveChannelQuizSession(
+  channelId,
+  prisma = defaultPrisma,
+  { includePending = false } = {},
+) {
   if (!channelId || !prisma?.gameSession) {
     return null;
   }
@@ -233,11 +238,12 @@ export async function findActiveChannelQuizSession(channelId, prisma = defaultPr
     data: { status: 'expired' },
   });
 
+  const targetStatuses = includePending ? ['pending', 'active'] : ['active'];
   const active = await prisma.gameSession.findFirst({
     where: {
       channelId,
       gameType: 'quiz',
-      status: 'active',
+      status: { in: targetStatuses },
     },
     include: { participants: true },
   });

@@ -167,6 +167,52 @@ export class GameManager {
   }
 
   /**
+   * Starts a 2-player multiplayer session directly from a unified game lobby.
+   */
+  startMultiplayerSession({
+    gameType,
+    channelId,
+    hostId,
+    opponentId,
+    config = {},
+    onTimeout = null,
+  }) {
+    const engine = this.getEngine(gameType);
+    if (hostId === opponentId) {
+      throw new Error('Kamu tidak bisa melawan dirimu sendiri.');
+    }
+    if (this.sessionManager.hasActiveSession(hostId)) {
+      throw new Error('Kamu masih memiliki pertandingan aktif.');
+    }
+    if (this.sessionManager.hasActiveSession(opponentId)) {
+      throw new Error(`<@${opponentId}> sedang berada di pertandingan lain.`);
+    }
+    if (this.inviteManager.getOutgoingInvite(hostId) || this.inviteManager.getIncomingInvite(hostId)) {
+      throw new Error('Kamu masih memiliki undangan multiplayer pending.');
+    }
+    if (this.inviteManager.getOutgoingInvite(opponentId) || this.inviteManager.getIncomingInvite(opponentId)) {
+      throw new Error(`<@${opponentId}> sedang memiliki undangan multiplayer lain.`);
+    }
+
+    const players = [hostId, opponentId];
+    const state = engine.create({ ...config, mode: GAME_MODES.MULTIPLAYER }, players, this.rng);
+    const session = this.sessionManager.createSession({
+      gameType,
+      mode: GAME_MODES.MULTIPLAYER,
+      channelId,
+      players,
+      currentTurn: state.currentTurn ?? hostId,
+      state,
+      onTimeout,
+    });
+
+    return {
+      session,
+      publicView: engine.getPublicView(state),
+    };
+  }
+
+  /**
    * Declines a pending invite for `opponentId`.
    */
   declineChallenge(opponentId) {

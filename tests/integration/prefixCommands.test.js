@@ -319,7 +319,11 @@ describe('Prefix Command System', () => {
       subcommand: 'solo',
       options: { choice: 'rock' },
     });
-    assert.ok(parsePrefixInvocation('!rps')?.error);
+    assert.deepEqual(parsePrefixInvocation('!rps'), {
+      commandName: 'rps',
+      subcommand: 'lobby',
+      options: {},
+    });
 
     assert.deepEqual(parsePrefixInvocation('!coinflip tails'), {
       commandName: 'coinflip',
@@ -332,7 +336,11 @@ describe('Prefix Command System', () => {
       options: { opponentId: '123456789012345678' },
     });
 
-    assert.ok(parsePrefixInvocation('!ttt')?.error);
+    assert.deepEqual(parsePrefixInvocation('!ttt'), {
+      commandName: 'tictactoe',
+      subcommand: 'lobby',
+      options: {},
+    });
     assert.ok(parsePrefixInvocation('!ttt easy')?.error);
     assert.ok(parsePrefixInvocation('!ttt b2')?.error);
     assert.deepEqual(parsePrefixInvocation('!ttt <@123456789012345678>'), {
@@ -518,15 +526,17 @@ describe('Prefix Command System', () => {
     const sqrtEmbed = mathSqrtMsg.getReplies()[0].payload.embeds[0].toJSON();
     assert.equal(sqrtEmbed.fields[1].value, '`12`');
 
-    // TicTacToe rejects solo/bot play under custom prefix
-    const tttSoloCustom = createFakeMessage({
+    // ?tictactoe without mention opens Tic Tac Toe Lobby under custom prefix cleanly (no error!)
+    const tttLobbyCustom = createFakeMessage({
       content: '?tictactoe',
       author: u1,
       channel: harness.channel,
       userDirectory: harness.users,
     });
-    await harness.prefixCommandHandler.handle(tttSoloCustom);
-    assert.match(tttSoloCustom.getReplies()[0].payload.embeds[0].data.description, /bersama teman/i);
+    await harness.prefixCommandHandler.handle(tttLobbyCustom);
+    const tttLobbyPayload = tttLobbyCustom.getReplies()[0].payload;
+    assert.equal(tttLobbyPayload.embeds[0].data.title, 'Tic Tac Toe');
+    assert.equal(tttLobbyPayload.components[1].components[0].data.disabled, true);
     assert.equal(harness.sessionManager.activeGames.size, 0);
   });
 

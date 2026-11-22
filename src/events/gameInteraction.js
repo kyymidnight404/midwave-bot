@@ -9,6 +9,7 @@ import {
   QUIZ_ROUND_SECONDS,
   QUIZ_TOTAL_QUESTIONS,
   resolveQuizRound,
+  startGlobalQuizState,
   startQuizBattle,
   submitQuizAnswer,
 } from '../games/engines/quizBattle.js';
@@ -30,6 +31,7 @@ import {
 import { GAME_CENTER_PREFIX, parseGameCustomId } from '../games/utils/customId.js';
 import {
   buildChallengeMessage,
+  buildGlobalQuizLobbyMessage,
   buildQuizCancelledMessage,
   buildQuizFinalMessage,
   buildQuizLobbyMessage,
@@ -44,6 +46,21 @@ export const DEFAULT_QUIZ_ROUND_MS = QUIZ_ROUND_SECONDS * 1000;
 export const DEFAULT_QUIZ_INTERMISSION_MS = 3500;
 
 const QUIZ_LETTER_MAP = Object.freeze({ a: 0, b: 1, c: 2, d: 3 });
+const MAX_PROCESSED_QUIZ_MESSAGES = 500;
+const processedQuizMessageIds = new Set();
+
+function recordProcessedQuizMessage(messageId) {
+  if (!messageId) return true;
+  if (processedQuizMessageIds.has(messageId)) return false;
+  if (processedQuizMessageIds.size >= MAX_PROCESSED_QUIZ_MESSAGES) {
+    const oldest = processedQuizMessageIds.values().next().value;
+    if (oldest !== undefined) {
+      processedQuizMessageIds.delete(oldest);
+    }
+  }
+  processedQuizMessageIds.add(messageId);
+  return true;
+}
 
 /**
  * Parses a standalone chat message (`a`, `b`, `c`, or `d`, case-insensitive) into a quiz option index `0..3`.
@@ -103,22 +120,60 @@ async function replyEphemeral(interaction, message) {
   }
 }
 
-async function safeUpdateMessage(messageOrInteraction, payload, isInteractionUpdate = false) {
+function collectAvailableAttachmentNames(existingMsg, payloadFiles) {
+  const names = new Set();
+  const existingAtts = existingMsg?.attachments;
+  if (existingAtts) {
+    const iterable =
+      typeof existingAtts.values === 'function' ? existingAtts.values() : Array.isArray(existingAtts) ? existingAtts : [];
+    for (const att of iterable) {
+      if (typeof att?.name === 'string' && att.name) {
+        names.add(att.name);
+      }
+    }
+  }
+  if (Array.isArray(payloadFiles)) {
+    for (const file of payloadFiles) {
+      if (typeof file?.name === 'string' && file.name) {
+        names.add(file.name);
+      }
+    }
+  }
+  return names;
+}
+
+function stripBrokenAttachmentUrls(embeds, existingMsg, payloadFiles) {
+  const hasExplicitAttachmentState = existingMsg?.attachments != null || Array.isArray(payloadFiles);
+  if (!hasExplicitAttachmentState || !Array.isArray(embeds)) {
+    return embeds;
+  }
+  const available = collectAvailableAttachmentNames(existingMsg, payloadFiles);
+  return embeds.map((e) => {
+    const thumbUrl = e?.data?.thumbnail?.url;
+    if (typeof e?.setThumbnail === 'function' && typeof thumbUrl === 'string' && thumbUrl.startsWith('attachment://')) {
+      const fileName = thumbUrl.slice('attachment://'.length);
+      if (!available.has(fileName)) {
+        e.setThumbnail(null);
+      }
+    }
+    const imageUrl = e?.data?.image?.url;
+    if (typeof e?.setImage === 'function' && typeof imageUrl === 'string' && imageUrl.startsWith('attachment://')) {
+      const fileName = imageUrl.slice('attachment://'.length);
+      if (!available.has(fileName)) {
+        e.setImage(null);
+      }
+    }
+    return e;
+  });
+}
+
+export async function safeUpdateMessage(messageOrInteraction, payload, isInteractionUpdate = false) {
   const existingMsg = isInteractionUpdate ? messageOrInteraction?.message : messageOrInteraction;
   let finalPayload = payload;
-  if (
-    existingMsg?.attachments != null &&
-    existingMsg.attachments.size === 0 &&
-    Array.isArray(payload?.embeds)
-  ) {
+  if (Array.isArray(payload?.embeds)) {
     finalPayload = {
       ...payload,
-      embeds: payload.embeds.map((e) => {
-        if (typeof e?.setThumbnail === 'function' && e?.data?.thumbnail?.url?.startsWith('attachment://')) {
-          e.setThumbnail(null);
-        }
-        return e;
-      }),
+      embeds: stripBrokenAttachmentUrls(payload.embeds, existingMsg, payload.files),
     };
   }
 
@@ -225,12 +280,18 @@ async function handleMissingOrExpiredSession(interaction, session, prisma) {
     } else if (session.gameType === 'quiz') {
       await safeUpdateMessage(
         interaction,
-        buildQuizLobbyMessage({
-          sessionId: session.id,
-          state: updated.state,
-          disabled: true,
-          cancelledText: '⏱️ Lobby Quiz Battle kedaluwarsa.',
-        }),
+        session.state?.isGlobalChannelLobby
+          ? buildGlobalQuizLobbyMessage({
+              sessionId: session.id,
+              disabled: true,
+              statusOverride: 'expired',
+            })
+          : buildQuizLobbyMessage({
+              sessionId: session.id,
+              state: updated.state,
+              disabled: true,
+              cancelledText: '⏱️ Lobby Quiz Battle kedaluwarsa.',
+            }),
         true,
       );
     } else {
@@ -683,6 +744,39 @@ async function handleQuizInteraction(interaction, parsed, context) {
       return;
     }
 
+    if (parsed.action === 'start_global') {
+      if (session.status !== 'pending') {
+        await replyEphemeral(interaction, 'Quiz ini sudah dimulai.');
+        return;
+      }
+
+      const startRes = startGlobalQuizState(session.state, userId, Date.now(), roundDurationMs);
+      if (!startRes.ok) {
+        await replyEphemeral(interaction, startRes.error);
+        return;
+      }
+
+      clearSessionTimers(sessionId);
+      const updated = await updatePersistedSession(
+        sessionId,
+        { status: 'active', state: startRes.state, ttlMs: GAME_INACTIVITY_TTL_MS },
+        prisma,
+      );
+      roundToSchedule = updated.state.round;
+
+      const msgRes = await safeUpdateMessage(
+        interaction,
+        buildQuizQuestionMessage({ sessionId, state: updated.state }),
+        true,
+      );
+      if (msgRes?.inaccessible) {
+        clearSessionTimers(sessionId);
+        await updatePersistedSession(sessionId, { status: 'cancelled', ttlMs: null }, prisma);
+        roundToSchedule = null;
+      }
+      return;
+    }
+
     if (parsed.action === 'start') {
       if (session.status !== 'pending') {
         await replyEphemeral(interaction, 'Quiz Battle ini sudah dimulai.');
@@ -789,6 +883,14 @@ async function handleQuizInteraction(interaction, parsed, context) {
  * @returns {Promise<boolean>}
  */
 export async function handleQuizChatAnswer(message, context = {}) {
+  if (message?.author?.bot || message?.webhookId || message?.system) {
+    return false;
+  }
+
+  if (message?.id && processedQuizMessageIds.has(message.id)) {
+    return false;
+  }
+
   const optionIndex = parseDirectQuizAnswerOption(message?.content);
   if (optionIndex === null || !message?.guildId || !message?.channelId) {
     return false;
@@ -809,10 +911,19 @@ export async function handleQuizChatAnswer(message, context = {}) {
     return false;
   }
 
+  const roundDurationMs = context.quizRoundDurationMs ?? DEFAULT_QUIZ_ROUND_MS;
+  const intermissionMs = context.quizIntermissionMs ?? DEFAULT_QUIZ_INTERMISSION_MS;
+  const logger = context.logger ?? console;
+  const client = message.client ?? context.client;
+
   let handled = false;
-  let roundToResolveImmediately = null;
+  let intermissionRoundToAdvance = null;
 
   await withSessionLock(active.id, async () => {
+    if (message.id && processedQuizMessageIds.has(message.id)) {
+      return;
+    }
+
     const session = await getPersistedSession(active.id, prisma);
     if (
       !session ||
@@ -824,11 +935,14 @@ export async function handleQuizChatAnswer(message, context = {}) {
       return;
     }
 
-    handled = true;
-    const ansRes = submitQuizAnswer(session.state, userId, optionIndex, { autoJoin: true });
+    const autoJoin = typeof context.autoJoin === 'boolean' ? context.autoJoin : true;
+    const ansRes = submitQuizAnswer(session.state, userId, optionIndex, { autoJoin });
     if (!ansRes.ok) {
       return;
     }
+
+    recordProcessedQuizMessage(message.id);
+    handled = true;
 
     if (ansRes.joined) {
       await addSessionParticipant(
@@ -836,6 +950,64 @@ export async function handleQuizChatAnswer(message, context = {}) {
         { userId, username: message.author?.username ?? null, role: 'player' },
         prisma,
       );
+    }
+
+    if (!ansRes.isCorrect) {
+      if (ansRes.joined) {
+        await updatePersistedSession(
+          session.id,
+          { state: ansRes.state, ttlMs: GAME_INACTIVITY_TTL_MS },
+          prisma,
+        );
+      }
+      if (typeof message.react === 'function') {
+        await message.react('❌').catch(() => {});
+      }
+      return;
+    }
+
+    if (ansRes.allAnswered) {
+      clearSessionTimers(session.id);
+      const resolved = resolveQuizRound(ansRes.state);
+      if (resolved.alreadyResolved) {
+        return;
+      }
+
+      const updated = await updatePersistedSession(
+        session.id,
+        { state: resolved.state, ttlMs: GAME_INACTIVITY_TTL_MS },
+        prisma,
+      );
+
+      if (typeof message.react === 'function') {
+        await message.react('✅').catch(() => {});
+      }
+
+      const targetMsg = await resolveTargetMessage(updated, client);
+      if (!targetMsg && client) {
+        clearSessionTimers(session.id);
+        await updatePersistedSession(session.id, { status: 'cancelled', ttlMs: null }, prisma);
+        return;
+      }
+      if (targetMsg) {
+        const res = await safeUpdateMessage(
+          targetMsg,
+          buildQuizRoundResultMessage({
+            sessionId: session.id,
+            state: updated.state,
+            summary: resolved.summary,
+          }),
+          false,
+        );
+        if (res?.inaccessible) {
+          clearSessionTimers(session.id);
+          await updatePersistedSession(session.id, { status: 'cancelled', ttlMs: null }, prisma);
+          return;
+        }
+      }
+
+      intermissionRoundToAdvance = updated.state.round;
+      return;
     }
 
     const updated = await updatePersistedSession(
@@ -848,26 +1020,31 @@ export async function handleQuizChatAnswer(message, context = {}) {
       await message.react('✅').catch(() => {});
     }
 
-    if (ansRes.allAnswered) {
-      clearSessionTimers(session.id);
-      roundToResolveImmediately = updated.state.round;
-    } else {
-      const targetMsg = await resolveTargetMessage(updated, message.client ?? context.client);
-      if (targetMsg) {
-        await safeUpdateMessage(
-          targetMsg,
-          buildQuizQuestionMessage({ sessionId: session.id, state: updated.state }),
-          false,
-        );
-      }
+    const targetMsg = await resolveTargetMessage(updated, client);
+    if (targetMsg) {
+      await safeUpdateMessage(
+        targetMsg,
+        buildQuizQuestionMessage({ sessionId: session.id, state: updated.state }),
+        false,
+      );
     }
   });
 
-  if (roundToResolveImmediately !== null) {
-    await resolveAndScheduleQuizRound(active.id, roundToResolveImmediately, {
-      ...context,
-      client: message.client ?? context.client,
-    });
+  if (intermissionRoundToAdvance !== null) {
+    const advancingRound = intermissionRoundToAdvance;
+    setSessionTimer(
+      active.id,
+      'intermission',
+      () => {
+        advanceQuizStep(active.id, advancingRound, {
+          ...context,
+          client,
+          quizRoundDurationMs: roundDurationMs,
+          quizIntermissionMs: intermissionMs,
+        }).catch((err) => logger.error('[QuizBattle] Failed advancing round:', sanitizeError(err)));
+      },
+      intermissionMs,
+    );
   }
 
   return handled;
@@ -918,12 +1095,18 @@ export async function recoverGameCenterSessions(context = {}) {
         } else if (session.gameType === 'quiz' && session.status === 'pending') {
           await safeUpdateMessage(
             targetMsg,
-            buildQuizLobbyMessage({
-              sessionId: session.id,
-              state: session.state,
-              disabled: true,
-              cancelledText: '⏱️ Lobby Quiz Battle kedaluwarsa.',
-            }),
+            session.state?.isGlobalChannelLobby
+              ? buildGlobalQuizLobbyMessage({
+                  sessionId: session.id,
+                  disabled: true,
+                  statusOverride: 'expired',
+                })
+              : buildQuizLobbyMessage({
+                  sessionId: session.id,
+                  state: session.state,
+                  disabled: true,
+                  cancelledText: '⏱️ Lobby Quiz Battle kedaluwarsa.',
+                }),
             false,
           );
         } else {
