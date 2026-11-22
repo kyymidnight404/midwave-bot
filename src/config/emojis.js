@@ -1,0 +1,266 @@
+/**
+ * Centralized MIDWAVE custom system emoji registry.
+ * Maps Hugeicons Stroke Rounded Discord Application Emojis (`mw_*`) to their
+ * verified Discord IDs with runtime validation and safe Unicode fallbacks.
+ */
+
+const DISCORD_SNOWFLAKE_REGEX = /^\d{17,22}$/;
+const UNKNOWN_EMOJI_FALLBACK = '🔹';
+
+export const EMOJI_IDS = Object.freeze({
+  success: '1574020532188356648',
+  error: '1574020492006789220',
+  warning: '1574020542313267321',
+  info: '1574020507425308702',
+  loading: '1574020512248762508',
+  refresh: '1574020522180608041',
+  home: '1574020501947416706',
+  search: '1574020527557845022',
+  back: '1574020474910810222',
+  next: '1574020516992385115',
+  add: '1574020467638145114',
+  remove: '1574020524521295963',
+  edit: '1574020489360318639',
+  delete: '1574020484822077460',
+  download: '1574020487049379951',
+  upload: '1574020534880960552',
+  folder: '1574020499581698169',
+  file: '1574020495261569054',
+  users: '1574020537599008890',
+  analytics: '1574020472503402617',
+  calendar: '1574020479881318400',
+  clock: '1574020482506686544',
+  notification: '1574020519550918797',
+  link: '1574020509828386927',
+  ai: '1574020470158655589',
+  calculator: '1574020477507084299',
+  image: '1574020504778702928',
+  video: '1574020539888959520',
+  music: '1574020514542784603',
+  shield: '1574020529818435726',
+});
+
+export const EMOJI_FALLBACKS = Object.freeze({
+  success: '✅',
+  error: '❌',
+  warning: '⚠️',
+  info: 'ℹ️',
+  loading: '⏳',
+  refresh: '🔄',
+  home: '🏠',
+  search: '🔍',
+  back: '◀️',
+  next: '▶️',
+  add: '➕',
+  remove: '➖',
+  edit: '✏️',
+  delete: '🗑️',
+  download: '⬇️',
+  upload: '⬆️',
+  folder: '📁',
+  file: '📄',
+  users: '👥',
+  analytics: '📊',
+  calendar: '📅',
+  clock: '🕒',
+  notification: '🔔',
+  link: '🔗',
+  ai: '✨',
+  calculator: '🧮',
+  image: '🖼️',
+  video: '🎬',
+  music: '🎵',
+  shield: '🛡️',
+});
+
+const emojiNamesEntries = Object.keys(EMOJI_IDS).map((key) => [key, `mw_${key}`]);
+export const EMOJI_NAMES = Object.freeze(Object.fromEntries(emojiNamesEntries));
+
+function formatCustomEmoji(key) {
+  const id = EMOJI_IDS[key];
+  const name = EMOJI_NAMES[key];
+  if (!name || !DISCORD_SNOWFLAKE_REGEX.test(String(id ?? ''))) {
+    return null;
+  }
+  return `<:${name}:${id}>`;
+}
+
+export const EMOJIS = Object.freeze(
+  Object.fromEntries(
+    Object.keys(EMOJI_IDS).map((key) => [key, formatCustomEmoji(key) ?? EMOJI_FALLBACKS[key]]),
+  ),
+);
+
+export const EMOJI_KEY_MAP = Object.freeze(
+  Object.fromEntries(
+    Object.keys(EMOJI_IDS).flatMap((key) => [
+      [key, key],
+      [`mw_${key}`, key],
+    ]),
+  ),
+);
+
+const unavailableEmojiKeys = new Set();
+let validationStatus = {
+  validated: false,
+  availableCount: Object.keys(EMOJI_IDS).length,
+  missingKeys: [],
+};
+
+export function normalizeEmojiKey(key) {
+  if (typeof key !== 'string') return null;
+  const cleaned = key.trim().toLowerCase();
+  return EMOJI_KEY_MAP[cleaned] ?? null;
+}
+
+export function isEmojiAvailable(key) {
+  const normalized = normalizeEmojiKey(key);
+  if (!normalized) return false;
+  if (!DISCORD_SNOWFLAKE_REGEX.test(String(EMOJI_IDS[normalized] ?? ''))) {
+    return false;
+  }
+  return !unavailableEmojiKeys.has(normalized);
+}
+
+export function hasCustomEmojisAvailable() {
+  return Object.keys(EMOJI_IDS).every((key) => isEmojiAvailable(key));
+}
+
+export function getEmoji(key, options = {}) {
+  const normalized = normalizeEmojiKey(key);
+  if (!normalized) {
+    return options.fallback ?? UNKNOWN_EMOJI_FALLBACK;
+  }
+
+  const fallback = options.fallback ?? EMOJI_FALLBACKS[normalized] ?? UNKNOWN_EMOJI_FALLBACK;
+  if (options.useFallback === true || !isEmojiAvailable(normalized)) {
+    return fallback;
+  }
+
+  return EMOJIS[normalized] ?? fallback;
+}
+
+export function getComponentEmoji(key, options = {}) {
+  const normalized = normalizeEmojiKey(key);
+  if (!normalized) {
+    return options.fallback ?? UNKNOWN_EMOJI_FALLBACK;
+  }
+
+  const fallback = options.fallback ?? EMOJI_FALLBACKS[normalized] ?? UNKNOWN_EMOJI_FALLBACK;
+  if (options.useFallback === true || !isEmojiAvailable(normalized)) {
+    return fallback;
+  }
+
+  return {
+    id: EMOJI_IDS[normalized],
+    name: EMOJI_NAMES[normalized],
+  };
+}
+
+export function setEmojiAvailability(keyOrMap, available) {
+  if (typeof keyOrMap === 'string') {
+    const normalized = normalizeEmojiKey(keyOrMap);
+    if (!normalized) return;
+    if (available) {
+      unavailableEmojiKeys.delete(normalized);
+    } else {
+      unavailableEmojiKeys.add(normalized);
+    }
+    return;
+  }
+
+  if (keyOrMap && typeof keyOrMap === 'object') {
+    for (const [key, isAvail] of Object.entries(keyOrMap)) {
+      setEmojiAvailability(key, Boolean(isAvail));
+    }
+  }
+}
+
+export function resetEmojiValidationCache() {
+  unavailableEmojiKeys.clear();
+  validationStatus = {
+    validated: false,
+    availableCount: Object.keys(EMOJI_IDS).length,
+    missingKeys: [],
+  };
+}
+
+export function getEmojiValidationStatus() {
+  return {
+    ...validationStatus,
+    missingKeys: [...validationStatus.missingKeys],
+  };
+}
+
+function extractFetchedEmojiCollections(fetched) {
+  const ids = new Set();
+  const names = new Set();
+
+  if (!fetched) return { ids, names };
+
+  const items =
+    typeof fetched.values === 'function'
+      ? Array.from(fetched.values())
+      : Array.isArray(fetched)
+        ? fetched
+        : [];
+
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue;
+    if (item.id) ids.add(String(item.id));
+    if (item.name) names.add(String(item.name).toLowerCase());
+  }
+
+  return { ids, names };
+}
+
+/**
+ * Validate uploaded Discord application emojis once at startup.
+ * Caches unavailable emoji keys so commands fall back to Unicode automatically.
+ */
+export async function validateApplicationEmojis(client, options = {}) {
+  const logger = options.logger ?? console;
+  const fetcher = client?.application?.emojis?.fetch;
+
+  if (typeof fetcher !== 'function') {
+    return getEmojiValidationStatus();
+  }
+
+  try {
+    const fetched = await fetcher.call(client.application.emojis);
+    const { ids, names } = extractFetchedEmojiCollections(fetched);
+
+    unavailableEmojiKeys.clear();
+    const missingKeys = [];
+
+    for (const key of Object.keys(EMOJI_IDS)) {
+      const id = EMOJI_IDS[key];
+      const name = EMOJI_NAMES[key];
+      const exists = ids.has(id) || names.has(name);
+      if (!exists) {
+        unavailableEmojiKeys.add(key);
+        missingKeys.push(key);
+      }
+    }
+
+    const total = Object.keys(EMOJI_IDS).length;
+    const availableCount = total - missingKeys.length;
+    validationStatus = {
+      validated: true,
+      availableCount,
+      missingKeys,
+    };
+
+    if (missingKeys.length > 0) {
+      logger.warn?.(
+        `[Midwave] Missing ${missingKeys.length}/${total} application emojis (${missingKeys.join(', ')}); Unicode fallback active.`,
+      );
+    } else {
+      logger.info?.(`[Midwave] Verified ${availableCount}/${total} custom application emojis.`);
+    }
+  } catch (err) {
+    logger.warn?.('[Midwave] Failed to validate application emojis; keeping configured IDs:', err?.message ?? err);
+  }
+
+  return getEmojiValidationStatus();
+}

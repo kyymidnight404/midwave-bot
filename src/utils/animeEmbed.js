@@ -6,6 +6,7 @@ import {
   StringSelectMenuOptionBuilder,
 } from 'discord.js';
 import { COLORS } from '../config/colors.js';
+import { getComponentEmoji, getEmoji } from '../config/emojis.js';
 import {
   ANIME_SYNOPSIS_MAX_LENGTH,
   truncateSynopsis,
@@ -90,8 +91,8 @@ export function formatAnimeStartDate(startDate) {
  */
 export function buildAnimeLoadingEmbed(query) {
   return createBaseEmbed({
-    title: '🎬 Mencari Informasi Anime...',
-    description: `⏳ Sedang mencari **${query}** di AniList, mohon tunggu sebentar...`,
+    title: `${getEmoji('search')} Mencari Informasi Anime...`,
+    description: `${getEmoji('loading')} Sedang mencari **${query}** di AniList, mohon tunggu sebentar...`,
     color: COLORS.INFO,
     includeThumbnail: false,
   });
@@ -133,11 +134,11 @@ export function buildAnimeEmbed(anime, options = {}) {
   const descriptionParts = [
     subtitleLines.join('\n'),
     '',
-    `📖 **Sinopsis**\n${synopsisText}`,
+    `${getEmoji('file')} **Sinopsis**\n${synopsisText}`,
   ];
 
   const embed = createBaseEmbed({
-    title: `🎬 ${romajiTitle}`,
+    title: `${getEmoji('video')} ${romajiTitle}`,
     description: descriptionParts.join('\n'),
     color: COLORS.PRIMARY,
     includeThumbnail: false,
@@ -164,17 +165,17 @@ export function buildAnimeEmbed(anime, options = {}) {
 
   embed.addFields(
     { name: '🆔 ID Anime', value: `\`${anime?.id || '-'}\``, inline: true },
-    { name: '📺 Format', value: formatAnimeFormat(anime?.format), inline: true },
+    { name: `${getEmoji('video')} Format`, value: formatAnimeFormat(anime?.format), inline: true },
     { name: '📡 Status', value: formatAnimeStatus(anime?.status), inline: true },
     { name: '⭐ Rating', value: scoreText, inline: true },
-    { name: '🎞️ Jumlah Episode', value: episodesText, inline: true },
-    { name: '📅 Tahun Rilis', value: yearText, inline: true },
+    { name: `${getEmoji('analytics')} Jumlah Episode`, value: episodesText, inline: true },
+    { name: `${getEmoji('calendar')} Tahun Rilis`, value: yearText, inline: true },
     { name: '🏷️ Genre', value: genresText, inline: false },
   );
 
   if (typeof anime?.duration === 'number' && anime.duration > 0) {
     embed.addFields({
-      name: '⏱️ Durasi Episode',
+      name: `${getEmoji('clock')} Durasi Episode`,
       value: `${anime.duration} menit / eps`,
       inline: true,
     });
@@ -191,7 +192,7 @@ export function buildAnimeEmbed(anime, options = {}) {
   const formattedStartDate = formatAnimeStartDate(anime?.startDate);
   if (formattedStartDate) {
     embed.addFields({
-      name: '🗓️ Tanggal Rilis',
+      name: `${getEmoji('calendar')} Tanggal Rilis`,
       value: formattedStartDate,
       inline: true,
     });
@@ -252,6 +253,7 @@ export function buildAnimeComponents({
     linkButtons.push(
       new ButtonBuilder()
         .setLabel('Lihat di AniList')
+        .setEmoji(getComponentEmoji('link'))
         .setStyle(ButtonStyle.Link)
         .setURL(anime.siteUrl),
     );
@@ -260,6 +262,7 @@ export function buildAnimeComponents({
     linkButtons.push(
       new ButtonBuilder()
         .setLabel('Tonton Trailer')
+        .setEmoji(getComponentEmoji('video'))
         .setStyle(ButtonStyle.Link)
         .setURL(anime.trailer.url),
     );

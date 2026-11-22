@@ -1,5 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { COLORS } from '../config/colors.js';
+import { getComponentEmoji } from '../config/emojis.js';
 import { createBaseEmbed } from './embeds.js';
 
 export const PIN_CUSTOM_ID_PREFIX = 'pin';
@@ -121,17 +122,20 @@ export function buildPinterestActionRow({
   const prevButton = new ButtonBuilder()
     .setCustomId(buildPinterestCustomId('prev', sessionId, ownerId))
     .setLabel('Prev')
+    .setEmoji(getComponentEmoji('back'))
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(Boolean(disabled) || safeIndex <= 0);
 
   const linkButton = new ButtonBuilder()
     .setLabel('Link')
+    .setEmoji(getComponentEmoji('link'))
     .setStyle(ButtonStyle.Link)
     .setURL(pinUrl);
 
   const nextButton = new ButtonBuilder()
     .setCustomId(buildPinterestCustomId('next', sessionId, ownerId))
     .setLabel('Next')
+    .setEmoji(getComponentEmoji('next'))
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(Boolean(disabled) || safeIndex >= safeTotal - 1);
 

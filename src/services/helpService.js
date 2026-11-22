@@ -8,6 +8,7 @@ import {
   StringSelectMenuOptionBuilder,
 } from 'discord.js';
 import { COLORS } from '../config/colors.js';
+import { getComponentEmoji, getEmoji } from '../config/emojis.js';
 import defaultCommandStructure from '../config/commandStructure.js';
 import { SOCIAL_INTERACTIONS } from './otakuGifsService.js';
 import {
@@ -116,42 +117,57 @@ export function registerDefaultHandlerRegistry(registry) {
 }
 
 export const HELP_CATEGORIES = Object.freeze([
-  {
+  Object.freeze({
     key: 'ai_knowledge',
     label: 'AI & Knowledge',
-    emoji: '<:bot:1571472389592584344>',
+    emojiKey: 'ai',
+    get emoji() {
+      return getEmoji('ai');
+    },
     description: 'Asisten AI & manajemen pengetahuan',
-  },
-  {
+  }),
+  Object.freeze({
     key: 'mini_games',
     label: 'Mini Games',
     emoji: '<:game:1571472414875844618>',
     description: 'Permainan solo & multiplayer',
-  },
-  {
+  }),
+  Object.freeze({
     key: 'social',
     label: 'Social Interactions',
-    emoji: '<:star:1571472439962107985>',
+    emojiKey: 'users',
+    get emoji() {
+      return getEmoji('users');
+    },
     description: 'Interaksi sosial & ekspresi GIF anime',
-  },
-  {
+  }),
+  Object.freeze({
     key: 'media_utilities',
     label: 'Media & Utilities',
-    emoji: '<:tools:1571472462787641414>',
+    emojiKey: 'folder',
+    get emoji() {
+      return getEmoji('folder');
+    },
     description: 'Pembuat gambar, lirik, downloader & utilitas',
-  },
-  {
+  }),
+  Object.freeze({
     key: 'general',
     label: 'General',
-    emoji: '<:pin:1571472304645345300>',
+    emojiKey: 'home',
+    get emoji() {
+      return getEmoji('home');
+    },
     description: 'Informasi & panduan command Midwave',
-  },
-  {
+  }),
+  Object.freeze({
     key: 'information',
     label: 'Information',
-    emoji: 'ℹ️',
+    emojiKey: 'info',
+    get emoji() {
+      return getEmoji('info');
+    },
     description: 'Informasi mengenai Midwave',
-  },
+  }),
 ]);
 
 const CATEGORY_KEY_SET = new Set(HELP_CATEGORIES.map((cat) => cat.key));
@@ -521,7 +537,7 @@ export function buildHelpCategoryMenu({
         .setLabel(category.label)
         .setValue(category.key)
         .setDescription(category.description)
-        .setEmoji(category.emoji)
+        .setEmoji(category.emojiKey ? getComponentEmoji(category.emojiKey) : category.emoji)
         .setDefault(selectedCategory === category.key)
     ),
   ];

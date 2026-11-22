@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { MessageFlags, PermissionFlagsBits } from 'discord.js';
+import { EMOJIS } from '../../src/config/emojis.js';
 import mediaCommand, { data as mediaData } from '../../src/commands/media.js';
 import lyricsCommand, { execute as executeLyrics } from '../../src/prefixCommands/lyrics.js';
 import { createBotApp } from '../../src/index.js';
@@ -341,7 +342,7 @@ describe('Lyrics Finder service, formatter, and /lyrics command', () => {
       },
     ).toJSON();
 
-    assert.equal(embedJson.title, '🎵 Lyrics Finder');
+    assert.equal(embedJson.title, `${EMOJIS.music} Lyrics Finder`);
     assert.ok(embedJson.description.includes('**Love — wave to earth**'));
     assert.ok(embedJson.description.includes('Album: 0.1 flaws and all.'));
     assert.ok(embedJson.description.includes('Source: [LRCLIB (Info: Apple Music)]'));
@@ -564,7 +565,7 @@ describe('Lyrics Finder service, formatter, and /lyrics command', () => {
     assert.equal(typingCalls, 1);
     assert.equal(sentReplies.length, 1);
     const embedJson = sentReplies[0].embeds[0].toJSON();
-    assert.equal(embedJson.title, '🎵 Lyrics Finder');
+    assert.equal(embedJson.title, `${EMOJIS.music} Lyrics Finder`);
     assert.ok(embedJson.description.includes('**Love — wave to earth**'));
 
     // Within 5s cooldown -> enforced for !lyrics prefix command

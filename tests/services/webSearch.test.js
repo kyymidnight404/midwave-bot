@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { EMOJIS } from '../../src/config/emojis.js';
 import {
   GlobalSearchRateLimiter,
   TavilySearchError,
@@ -233,9 +234,9 @@ describe('Real-Time Web Search (Tavily + Gemini)', () => {
       searchedAt: '2026-11-14T02:15:00.000Z',
     });
     const json = embed.toJSON();
-    assert.equal(json.title, 'Midwave AI • Web Search');
+    assert.equal(json.title, `${EMOJIS.ai} Midwave AI • Web Search`);
     assert.equal(json.timestamp, '2026-11-14T02:15:00.000Z');
-    assert.equal(json.fields[0].name, 'Sumber:');
+    assert.equal(json.fields[0].name, `${EMOJIS.link} Sumber:`);
     assert.match(json.fields[0].value, /https:\/\/news\.example\.com\/1/);
   });
 
@@ -451,9 +452,9 @@ describe('Real-Time Web Search (Tavily + Gemini)', () => {
     assert.equal(edit.payload.embeds.length, 1);
     const embedJson = edit.payload.embeds[0].toJSON();
     assert.match(embedJson.title, /Mode Non-Real-Time/i);
-    assert.ok(embedJson.fields.some((f) => f.name === 'Status Pencarian Web'));
+    assert.equal(embedJson.fields[0].name, `${EMOJIS.search} Status Pencarian Web`);
     assert.equal(
-      embedJson.fields.some((f) => f.name === 'Sumber:'),
+      embedJson.fields.some((f) => f.name.includes('Sumber:')),
       false,
     );
     assert.ok(warnings.every((w) => !w.includes('tvly-secret-down')));

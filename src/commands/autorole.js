@@ -1,5 +1,6 @@
 import { MessageFlags, PermissionFlagsBits } from 'discord.js';
 import { COLORS } from '../config/colors.js';
+import { getEmoji } from '../config/emojis.js';
 import { buildErrorEmbed, buildInfoEmbed, buildSuccessEmbed } from '../utils/embeds.js';
 
 function isAdmin(interaction) {
@@ -17,7 +18,14 @@ export async function execute(interaction, context = {}) {
   if (!interaction.inGuild?.() || !interaction.guild) {
     return reply(buildErrorEmbed('Command ini hanya dapat digunakan di dalam server.'));
   }
-  if (!isAdmin(interaction)) return reply(buildErrorEmbed('Hanya Admin server yang dapat mengelola Auto Role.'));
+  if (!isAdmin(interaction)) {
+    return reply(
+      buildErrorEmbed(
+        'Hanya Admin server yang dapat mengelola Auto Role.',
+        `${getEmoji('shield')} Akses Ditolak`,
+      ),
+    );
+  }
 
   const db = context.prisma;
   if (!db?.autoRole) throw new Error('Prisma Auto Role client tidak tersedia.');
@@ -30,7 +38,7 @@ export async function execute(interaction, context = {}) {
     const description = roles.length
       ? roles.map((role) => `• ${role}`).join('\n')
       : 'Belum ada role Auto Role yang terdaftar.';
-    return reply(buildInfoEmbed('Auto Role MIDWAVE', description, COLORS.PRIMARY));
+    return reply(buildInfoEmbed(`${getEmoji('users')} Auto Role MIDWAVE`, description, COLORS.PRIMARY));
   }
 
   const role = interaction.options.getRole('role', false);
@@ -48,16 +56,38 @@ export async function execute(interaction, context = {}) {
   if (sub === 'add') {
     try {
       await db.autoRole.create({ data: { guildId, roleId: role.id } });
-      return reply(buildSuccessEmbed(`Role ${role} berhasil ditambahkan ke Auto Role.`));
+      return reply(
+        buildSuccessEmbed(
+          `Role ${role} berhasil ditambahkan ke Auto Role.`,
+          `${getEmoji('add')} Auto Role Ditambahkan`,
+        ),
+      );
     } catch (error) {
-      if (error?.code === 'P2002') return reply(buildInfoEmbed('Auto Role MIDWAVE', `${role} sudah terdaftar.`, COLORS.WARNING));
+      if (error?.code === 'P2002') {
+        return reply(
+          buildInfoEmbed(`${getEmoji('info')} Auto Role MIDWAVE`, `${role} sudah terdaftar.`, COLORS.WARNING),
+        );
+      }
       throw error;
     }
   }
 
   if (sub === 'delete') {
     const result = await db.autoRole.deleteMany({ where: { guildId, roleId: role.id } });
-    if (!result.count) return reply(buildInfoEmbed('Auto Role MIDWAVE', `${role} tidak ditemukan di daftar Auto Role.`, COLORS.WARNING));
-    return reply(buildSuccessEmbed(`${role} dihapus dari Auto Role. Role ini tetap dimiliki member yang sudah menerimanya.`));
+    if (!result.count) {
+      return reply(
+        buildInfoEmbed(
+          `${getEmoji('warning')} Auto Role MIDWAVE`,
+          `${role} tidak ditemukan di daftar Auto Role.`,
+          COLORS.WARNING,
+        ),
+      );
+    }
+    return reply(
+      buildSuccessEmbed(
+        `${role} dihapus dari Auto Role. Role ini tetap dimiliki member yang sudah menerimanya.`,
+        `${getEmoji('remove')} Auto Role Dihapus`,
+      ),
+    );
   }
 }

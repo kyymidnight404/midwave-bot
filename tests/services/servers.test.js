@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { ButtonStyle, MessageFlags, PermissionFlagsBits } from 'discord.js';
+import { EMOJIS } from '../../src/config/emojis.js';
 import { createBotApp } from '../../src/index.js';
 import { execute as executeServers, SERVERS_OWNER_ONLY_MESSAGE } from '../../src/prefixCommands/servers.js';
 import {
@@ -255,7 +256,7 @@ describe('!servers / !guilds — Owner Server List & Pagination', () => {
       totalServers: emptySnapshot.totalServers,
       totalMembers: emptySnapshot.totalMembers,
     }).toJSON();
-    assert.equal(emptyEmbed.title, 'Midwave — Server List');
+    assert.equal(emptyEmbed.title, `${EMOJIS.users} Midwave — Server List`);
     assert.match(emptyEmbed.description, /Total Servers: \*\*0\*\*/);
     assert.equal(emptyEmbed.footer.text, 'Page 1/1 • MIDWAVE');
 
@@ -378,7 +379,7 @@ describe('!servers / !guilds — Owner Server List & Pagination', () => {
       assert.equal(sent.length, 1);
 
       const page1Embed = sent[0].payload.embeds[0].toJSON();
-      assert.equal(page1Embed.title, 'Midwave — Server List');
+      assert.equal(page1Embed.title, `${EMOJIS.users} Midwave — Server List`);
       assert.match(page1Embed.description, /Total Servers: \*\*23\*\*/);
       assert.match(page1Embed.description, new RegExp(`Total Members: \\*\\*${expectedTotalMembers.toLocaleString('en-US')}\\*\\*`));
       assert.match(page1Embed.description, /1\. \*\*Server 1\*\*/);
@@ -463,7 +464,7 @@ describe('!servers / !guilds — Owner Server List & Pagination', () => {
       });
       await app.prefixCommandHandler.handle(aliasMsg);
       assert.equal(aliasMsg.getSentMessages().length, 1);
-      assert.equal(aliasMsg.getSentMessages()[0].payload.embeds[0].toJSON().title, 'Midwave — Server List');
+      assert.equal(aliasMsg.getSentMessages()[0].payload.embeds[0].toJSON().title, `${EMOJIS.users} Midwave — Server List`);
     } finally {
       if (prevEnv === undefined) {
         delete process.env.BOT_OWNER_IDS;

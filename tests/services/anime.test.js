@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { MessageFlags, PermissionFlagsBits } from 'discord.js';
+import { EMOJIS } from '../../src/config/emojis.js';
 import animeCommand, { data as animeData, execute as executeAnime } from '../../src/commands/anime.js';
 import animePrefixCommand, { execute as executePrefixAnime } from '../../src/commands/prefix/anime.js';
 import { createBotApp } from '../../src/index.js';
@@ -321,7 +322,7 @@ describe('Anime Search (/anime & !anime) via AniList GraphQL', () => {
       selectedIndex: 0,
     }).toJSON();
 
-    assert.equal(embed.title, '🎬 Sousou no Frieren');
+    assert.equal(embed.title, `${EMOJIS.video} Sousou no Frieren`);
     assert.equal(embed.url, 'https://anilist.co/anime/154587');
     assert.equal(embed.thumbnail.url, SAMPLE_FRIEREN_MEDIA.coverImage.large);
     assert.ok(embed.description.includes("Frieren: Beyond Journey's End"));
@@ -329,15 +330,15 @@ describe('Anime Search (/anime & !anime) via AniList GraphQL', () => {
 
     const fieldMap = Object.fromEntries(embed.fields.map((f) => [f.name, f.value]));
     assert.equal(fieldMap['🆔 ID Anime'], '`154587`');
-    assert.equal(fieldMap['📺 Format'], 'TV Series');
+    assert.equal(fieldMap[`${EMOJIS.video} Format`], 'TV Series');
     assert.match(fieldMap['📡 Status'], /Finished/);
     assert.match(fieldMap['⭐ Rating'], /91%/);
-    assert.equal(fieldMap['🎞️ Jumlah Episode'], '28 Episode');
-    assert.equal(fieldMap['📅 Tahun Rilis'], '2023');
+    assert.equal(fieldMap[`${EMOJIS.analytics} Jumlah Episode`], '28 Episode');
+    assert.equal(fieldMap[`${EMOJIS.calendar} Tahun Rilis`], '2023');
     assert.equal(fieldMap['🏷️ Genre'], 'Adventure, Drama, Fantasy');
-    assert.equal(fieldMap['⏱️ Durasi Episode'], '24 menit / eps');
+    assert.equal(fieldMap[`${EMOJIS.clock} Durasi Episode`], '24 menit / eps');
     assert.equal(fieldMap['🏢 Studio'], 'MADHOUSE');
-    assert.equal(fieldMap['🗓️ Tanggal Rilis'], '29 Sep 2023');
+    assert.equal(fieldMap[`${EMOJIS.calendar} Tanggal Rilis`], '29 Sep 2023');
     assert.equal(fieldMap['🌐 Tautan & Trailer'], undefined);
     assert.equal(
       embed.fields.some((f) => f.name.includes('Hasil Pencarian Terkait')),
@@ -383,7 +384,7 @@ describe('Anime Search (/anime & !anime) via AniList GraphQL', () => {
     assert.match(events[1].payload.embeds[0].toJSON().title, /Mencari Informasi Anime/i);
     // Second editReply is the final anime embed with selector
     assert.equal(events[2].type, 'editReply');
-    assert.equal(events[2].payload.embeds[0].toJSON().title, '🎬 Sousou no Frieren');
+    assert.equal(events[2].payload.embeds[0].toJSON().title, `${EMOJIS.video} Sousou no Frieren`);
 
     const selectCustomId = events[2].payload.components[0].toJSON().components[0].custom_id;
     const collector = interaction.getReplyMessage().getCollector();
@@ -408,7 +409,7 @@ describe('Anime Search (/anime & !anime) via AniList GraphQL', () => {
     collector.emit('collect', ownerSelect);
     await new Promise((r) => setTimeout(r, 10));
     const updatePayload = ownerSelect.getEvents()[0].payload;
-    assert.equal(updatePayload.embeds[0].toJSON().title, '🎬 Sousou no Frieren 2nd Season');
+    assert.equal(updatePayload.embeds[0].toJSON().title, `${EMOJIS.video} Sousou no Frieren 2nd Season`);
 
     // Collector ends -> disables select menu while keeping link button
     collector.emit('end');
@@ -446,7 +447,7 @@ describe('Anime Search (/anime & !anime) via AniList GraphQL', () => {
     const slashInt = createMockAnimeInteraction({ query: 'Frieren', userId: 'u-cd-anime' });
     await app.interactionHandler.handle(slashInt);
     assert.equal(slashInt.getEvents().at(-1).type, 'editReply');
-    assert.equal(slashInt.getEvents().at(-1).payload.embeds[0].toJSON().title, '🎬 Sousou no Frieren');
+    assert.equal(slashInt.getEvents().at(-1).payload.embeds[0].toJSON().title, `${EMOJIS.video} Sousou no Frieren`);
 
     // 2. Immediate !anime by same user hits 5s cooldown
     now += 2_000;
@@ -492,7 +493,7 @@ describe('Anime Search (/anime & !anime) via AniList GraphQL', () => {
     assert.equal(prefixReplies.length, 2);
     const sentMsg = prefixReplies[1];
     assert.match(sentMsg.initialPayload.embeds[0].toJSON().title, /Mencari Informasi Anime/i);
-    assert.equal(sentMsg.edits.at(-1).embeds[0].toJSON().title, '🎬 Sousou no Frieren');
+    assert.equal(sentMsg.edits.at(-1).embeds[0].toJSON().title, `${EMOJIS.video} Sousou no Frieren`);
 
     // Direct raw Message call on prefix/anime.js also works
     const directReplies = [];
@@ -513,7 +514,7 @@ describe('Anime Search (/anime & !anime) via AniList GraphQL', () => {
       { searchAnime: mockSearch },
     );
     assert.equal(directReplies.length, 1);
-    assert.equal(directReplies[0].edits.at(-1).embeds[0].toJSON().title, '🎬 Sousou no Frieren');
+    assert.equal(directReplies[0].edits.at(-1).embeds[0].toJSON().title, `${EMOJIS.video} Sousou no Frieren`);
 
     app.shutdown();
   });

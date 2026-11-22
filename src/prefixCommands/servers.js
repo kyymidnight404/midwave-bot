@@ -1,4 +1,5 @@
 import { MessageFlags } from 'discord.js';
+import { getEmoji } from '../config/emojis.js';
 import { MessageCommandAdapter } from '../handlers/MessageCommandAdapter.js';
 import { isAuthorizedKnowledgeAdmin } from '../services/knowledge/index.js';
 import {
@@ -23,7 +24,7 @@ function isBotOwner(userId, context = {}) {
 
 async function replyOwnerRestricted(interaction) {
   const payload = {
-    embeds: [buildErrorEmbed(SERVERS_OWNER_ONLY_MESSAGE)],
+    embeds: [buildErrorEmbed(SERVERS_OWNER_ONLY_MESSAGE, `${getEmoji('shield')} Akses Terbatas`)],
     flags: MessageFlags.Ephemeral,
   };
   try {

@@ -1,4 +1,5 @@
 import { AttachmentBuilder } from 'discord.js';
+import { getEmoji } from '../config/emojis.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
 import {
   IGF_ATTACHMENT_NAME,
@@ -23,8 +24,8 @@ function toAttachmentArray(attachments) {
  */
 function buildIgfFormatGuide(prefix = '!') {
   return [
-    '**Format Penggunaan:**',
-    `• Upload **1 gambar** bersama \`${prefix}igf\` atau \`${prefix}igf <caption opsional>\``,
+    `${getEmoji('image')} **Format Penggunaan:**`,
+    `• ${getEmoji('upload')} Upload **1 gambar** bersama \`${prefix}igf\` atau \`${prefix}igf <caption opsional>\``,
     `• Atau **reply** pesan yang berisi **1 gambar** lalu ketik \`${prefix}igf\` / \`${prefix}igf <caption opsional>\``,
     '• Format didukung: `PNG`, `JPG/JPEG`, `WebP`, `GIF` (maks. 10 MB)',
   ].join('\n');

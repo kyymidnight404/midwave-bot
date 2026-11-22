@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
 import { COLORS } from '../config/colors.js';
+import { EMOJI_FALLBACKS, getEmoji } from '../config/emojis.js';
 import { buildDynamicHelpEmbed, discoverHelpEntries } from '../services/helpService.js';
 import {
   BOT_PLAYER_ID,
@@ -176,6 +177,24 @@ export function createBaseEmbed({
   return embed;
 }
 
+const KNOWN_FALLBACK_PREFIXES = Object.values(EMOJI_FALLBACKS);
+
+function formatStatusTitle(emojiKey, title) {
+  const safeTitle = String(title ?? '').trim();
+  const emoji = getEmoji(emojiKey);
+  if (!safeTitle) {
+    return emoji;
+  }
+  if (
+    safeTitle.startsWith('<:') ||
+    safeTitle.startsWith(emoji) ||
+    KNOWN_FALLBACK_PREFIXES.some((prefix) => safeTitle.startsWith(prefix))
+  ) {
+    return safeTitle;
+  }
+  return `${emoji} ${safeTitle}`;
+}
+
 /**
  * Builds an ephemeral error embed.
  * @param {string} message
@@ -185,7 +204,7 @@ export function createBaseEmbed({
  */
 export function buildErrorEmbed(message, title = 'Tidak Dapat Diproses', options = {}) {
   return createBaseEmbed({
-    title,
+    title: formatStatusTitle('error', title),
     description: message,
     color: COLORS.ERROR,
     includeThumbnail: false,
@@ -202,7 +221,7 @@ export function buildErrorEmbed(message, title = 'Tidak Dapat Diproses', options
  */
 export function buildSuccessEmbed(message, title = 'Berhasil', options = {}) {
   return createBaseEmbed({
-    title,
+    title: formatStatusTitle('success', title),
     description: message,
     color: COLORS.SUCCESS,
     includeThumbnail: false,
@@ -219,7 +238,7 @@ export function buildSuccessEmbed(message, title = 'Berhasil', options = {}) {
  */
 export function buildWarningEmbed(message, title = 'Peringatan', options = {}) {
   return createBaseEmbed({
-    title,
+    title: formatStatusTitle('warning', title),
     description: message,
     color: COLORS.WARNING,
     includeThumbnail: false,

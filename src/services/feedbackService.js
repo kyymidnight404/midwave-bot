@@ -13,6 +13,7 @@ import {
   TextInputStyle,
 } from 'discord.js';
 import { COLORS } from '../config/colors.js';
+import { getComponentEmoji, getEmoji } from '../config/emojis.js';
 import { buildErrorEmbed, createBaseEmbed, getIconFiles } from '../utils/embeds.js';
 import { sanitizeError } from '../utils/errorSanitizer.js';
 
@@ -48,9 +49,14 @@ export const FEEDBACK_CATEGORIES = Object.freeze({
   }),
   other: Object.freeze({
     id: 'other',
-    emoji: '⚠️',
+    emojiKey: 'warning',
+    get emoji() {
+      return getEmoji('warning');
+    },
     label: 'Other Issues',
-    display: '⚠️ Other Issues',
+    get display() {
+      return `${getEmoji('warning')} Other Issues`;
+    },
     description: 'Masalah lain di luar kategori di atas.',
   }),
 });
@@ -462,7 +468,7 @@ export function buildFeedbackPromptEmbed({ selectedCategory = null, attachmentUr
     lines.push('', `**Kategori dipilih:** ${categoryInfo.display}`);
   }
   if (attachmentUrl) {
-    lines.push('**Screenshot terdeteksi:** Lampiran gambar akan ikut disertakan.');
+    lines.push(`${getEmoji('image')} **Screenshot terdeteksi:** Lampiran gambar akan ikut disertakan.`);
   }
 
   return createBaseEmbed({
@@ -483,7 +489,7 @@ export function buildFeedbackPromptComponents(promptId, ownerId, { selectedCateg
       Object.values(FEEDBACK_CATEGORIES).map((cat) => ({
         label: cat.label,
         value: cat.id,
-        emoji: cat.emoji,
+        emoji: cat.emojiKey ? getComponentEmoji(cat.emojiKey) : cat.emoji,
         description: cat.description,
         default: selectedCategory === cat.id,
       })),
@@ -561,7 +567,7 @@ export function buildFeedbackReportEmbed({
   const createdUnix = Math.floor(new Date(createdAt).getTime() / 1000);
 
   const embed = createBaseEmbed({
-    title: `[${reportId}] ${subject}`,
+    title: `${getEmoji('notification')} [${reportId}] ${subject}`,
     description,
     color: statusInfo.color,
     includeThumbnail: true,

@@ -1,4 +1,5 @@
 import { COLORS } from '../config/colors.js';
+import { getEmoji } from '../config/emojis.js';
 import { createBaseEmbed } from './embeds.js';
 
 export const DISCORD_MAX_MESSAGE_LENGTH = 2000;
@@ -298,7 +299,9 @@ export function buildWebSearchEmbed({
     .slice(0, 4096);
 
   const embed = createBaseEmbed({
-    title: isFallback ? 'Midwave AI • Mode Non-Real-Time' : 'Midwave AI • Web Search',
+    title: isFallback
+      ? `${getEmoji('ai')} Midwave AI • Mode Non-Real-Time`
+      : `${getEmoji('ai')} Midwave AI • Web Search`,
     description: safeDescription || undefined,
     color: isFallback ? COLORS.WARNING : COLORS.PRIMARY,
     includeThumbnail: false,
@@ -306,7 +309,7 @@ export function buildWebSearchEmbed({
 
   if (fallbackNotice) {
     embed.addFields({
-      name: 'Status Pencarian Web',
+      name: `${getEmoji('search')} Status Pencarian Web`,
       value: sanitizeAiMentions(fallbackNotice).slice(0, DISCORD_EMBED_FIELD_LIMIT),
     });
   }
@@ -314,7 +317,7 @@ export function buildWebSearchEmbed({
   const formattedSources = formatSourcesList(sources);
   if (formattedSources) {
     embed.addFields({
-      name: 'Sumber:',
+      name: `${getEmoji('link')} Sumber:`,
       value: formattedSources,
     });
   }

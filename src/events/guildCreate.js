@@ -1,5 +1,6 @@
 import { ChannelType, Events, PermissionFlagsBits } from 'discord.js';
 import { COLORS } from '../config/colors.js';
+import { getEmoji } from '../config/emojis.js';
 import { createBaseEmbed, getIconFiles } from '../utils/embeds.js';
 import { sanitizeError } from '../utils/errorSanitizer.js';
 import { resolvePrefix } from '../utils/prefixParser.js';
@@ -63,7 +64,7 @@ export function buildBotJoinEmbed(guild, { prefix = '!', includeThumbnail = true
     description:
       `Terima kasih sudah mengundang **Midwave** ke **${guildName}**!\n\n` +
       `Ketik \`${prefix}menu\` atau \`/help\` untuk melihat daftar fitur yang tersedia:\n` +
-      `• 🤖 **AI:** \`${prefix}ai\` atau \`/ai\`\n` +
+      `• ${getEmoji('ai')} **AI:** \`${prefix}ai\` atau \`/ai\`\n` +
       `• 🌤️ **Cuaca BMKG:** \`${prefix}weather <lokasi>\` atau \`/weather\`\n` +
       `• 🎮 **Mini Games:** \`${prefix}coinflip\`, \`${prefix}rps\`, \`${prefix}ttt @teman\`, \`${prefix}quiz\`\n` +
       `• 🛠️ **Media & Utilitas:** \`${prefix}qc\`, \`${prefix}brat\`, \`${prefix}lyrics\`, \`${prefix}download\`, \`${prefix}math\`, \`${prefix}igf\``,

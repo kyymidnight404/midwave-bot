@@ -1,4 +1,5 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
+import { getEmoji } from '../config/emojis.js';
 import {
   AI_MAX_QUESTION_LENGTH,
   GeminiServiceError,
@@ -134,7 +135,7 @@ export async function execute(interaction, context = {}) {
       ? 'Riwayat percakapan sementara kamu di channel ini telah dihapus dari RAM. Pertanyaan berikutnya akan memulai sesi baru.'
       : 'Tidak ada riwayat percakapan aktif untukmu di channel ini (riwayat sementara otomatis terhapus setelah 15 menit tidak aktif).';
     await interaction.reply({
-      embeds: [buildSuccessEmbed(message, 'Riwayat Percakapan Dihapus')],
+      embeds: [buildSuccessEmbed(message, `${getEmoji('delete')} Riwayat Percakapan Dihapus`)],
       flags: MessageFlags.Ephemeral,
     });
     return;

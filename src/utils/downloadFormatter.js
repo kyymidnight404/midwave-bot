@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { getEmoji } from '../config/emojis.js';
 import { DOWNLOADER_ERROR_CODES, DownloaderError } from '../services/downloader/errors.js';
 import { formatBytes } from '../services/downloader/media.js';
 import { resolvePlatformLabel } from '../services/downloader/platform.js';
@@ -207,7 +208,8 @@ export function formatDownloadSuccessMessage({
   const creator = formatCreatorHandle(author);
   const resolvedPlatform = resolveDownloaderPlatform({ platformLabel, platform, extractor });
   const headerParts = [creator, resolvedPlatform].filter(Boolean);
-  const firstLine = headerParts.length > 0 ? `✅ ${headerParts.join(' · ')}` : '✅';
+  const successEmoji = getEmoji('success');
+  const firstLine = headerParts.length > 0 ? `${successEmoji} ${headerParts.join(' · ')}` : successEmoji;
 
   const cleanTitle = formatDownloadTitle(title);
   const cleanFormat = resolveMediaFormat({ fileFormat, items, attachments });
@@ -229,13 +231,22 @@ export function formatDownloadSuccessMessage({
  */
 export function formatDownloadProcessingMessage({ platformLabel, progress = null } = {}) {
   const platform = sanitizeTextField(platformLabel);
-  const prefix = platform ? `⏳ ${platform}` : '⏳';
+  let stageEmoji = getEmoji('loading');
+  if (progress?.stage === 'downloading') {
+    stageEmoji = getEmoji('download');
+  } else if (progress?.stage === 'uploading') {
+    stageEmoji = getEmoji('upload');
+  }
+  const prefix = platform ? `${stageEmoji} ${platform}` : stageEmoji;
 
   if (progress?.stage === 'queued') {
     return `${prefix} · Queued (#${progress.position || 1})`;
   }
   if (progress?.stage === 'processing') {
     return `${prefix} · Processing...`;
+  }
+  if (progress?.stage === 'uploading') {
+    return `${prefix} · Uploading...`;
   }
   if (progress?.stage === 'downloading' && typeof progress.percent === 'number' && progress.percent > 0) {
     return `${prefix} · Downloading (${progress.percent.toFixed(0)}%)`;
@@ -269,9 +280,10 @@ const ERROR_CODE_REASONS = Object.freeze({
  * @returns {string}
  */
 export function formatDownloadErrorMessage(errorOrReason) {
+  const errEmoji = getEmoji('error');
   if (typeof errorOrReason === 'string') {
     const direct = sanitizeTextField(errorOrReason);
-    return `❌ Download failed · ${direct || 'Media unavailable'}`;
+    return `${errEmoji} Download failed · ${direct || 'Media unavailable'}`;
   }
 
   const discordCode = errorOrReason?.code ?? errorOrReason?.rawError?.code;
@@ -279,22 +291,22 @@ export function formatDownloadErrorMessage(errorOrReason) {
     discordCode === 40005 ||
     String(errorOrReason?.message || '').includes('Request entity too large')
   ) {
-    return '❌ Download failed · File exceeds Discord upload limit';
+    return `${errEmoji} Download failed · File exceeds Discord upload limit`;
   }
   if (discordCode === 50013) {
-    return '❌ Download failed · Missing Attach Files permission';
+    return `${errEmoji} Download failed · Missing Attach Files permission`;
   }
 
   if (errorOrReason instanceof DownloaderError) {
     const mapped = ERROR_CODE_REASONS[errorOrReason.code];
     if (mapped) {
-      return `❌ Download failed · ${mapped}`;
+      return `${errEmoji} Download failed · ${mapped}`;
     }
   }
 
   if (typeof errorOrReason?.code === 'string' && Object.hasOwn(ERROR_CODE_REASONS, errorOrReason.code)) {
-    return `❌ Download failed · ${ERROR_CODE_REASONS[errorOrReason.code]}`;
+    return `${errEmoji} Download failed · ${ERROR_CODE_REASONS[errorOrReason.code]}`;
   }
 
-  return '❌ Download failed · Media unavailable';
+  return `${errEmoji} Download failed · Media unavailable`;
 }

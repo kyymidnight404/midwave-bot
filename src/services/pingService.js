@@ -8,6 +8,7 @@ import {
   version as discordJsVersion,
 } from 'discord.js';
 import { COLORS } from '../config/colors.js';
+import { getComponentEmoji, getEmoji } from '../config/emojis.js';
 import { createBaseEmbed } from '../utils/embeds.js';
 
 export const PING_COOLDOWN_MS = 3000;
@@ -562,27 +563,31 @@ export async function collectPingDiagnostics(options = {}) {
 
 const OVERALL_META = Object.freeze({
   [HEALTH_STATUS.HEALTHY]: Object.freeze({
-    emoji: '🟢',
+    emojiKey: 'success',
     label: 'Healthy',
     color: COLORS.SUCCESS,
   }),
   [HEALTH_STATUS.DEGRADED]: Object.freeze({
-    emoji: '🟡',
+    emojiKey: 'warning',
     label: 'Degraded',
     color: COLORS.WARNING,
   }),
   [HEALTH_STATUS.UNHEALTHY]: Object.freeze({
-    emoji: '🔴',
+    emojiKey: 'error',
     label: 'Unhealthy',
     color: COLORS.ERROR,
   }),
 });
 
-const STATUS_BADGE = Object.freeze({
-  healthy: '🟢',
-  degraded: '🟡',
-  unavailable: '🔴',
+const STATUS_BADGE_KEYS = Object.freeze({
+  healthy: 'success',
+  degraded: 'warning',
+  unavailable: 'error',
 });
+
+function getStatusBadgeEmoji(status) {
+  return getEmoji(STATUS_BADGE_KEYS[status] ?? 'error');
+}
 
 function formatWsMainLatency(wsCheck) {
   if (wsCheck.latencyMs !== null) {
@@ -601,7 +606,7 @@ function formatWsMainLatency(wsCheck) {
 }
 
 function formatGatewayLine(wsCheck) {
-  const emoji = STATUS_BADGE[wsCheck.status] ?? '🔴';
+  const emoji = getStatusBadgeEmoji(wsCheck.status);
   if (wsCheck.connectionState === WS_CONNECTION_STATUS.CONNECTED) {
     return `${emoji} **Gateway:** \`Connected\``;
   }
@@ -615,7 +620,7 @@ function formatGatewayLine(wsCheck) {
 }
 
 function formatCheckLine(label, check) {
-  const emoji = STATUS_BADGE[check.status] ?? '🔴';
+  const emoji = getStatusBadgeEmoji(check.status);
   if (check.latencyMs === null) {
     if (check.timedOut) return `${emoji} **${label}:** \`Timeout\``;
     if (check.errorType === 'rate_limit') return `${emoji} **${label}:** \`Rate Limited\``;
@@ -664,7 +669,7 @@ export function parsePingRefreshCustomId(customId) {
 export function buildPingCheckingEmbed() {
   return createBaseEmbed({
     title: 'MIDWAVE — PONG!',
-    description: '🔄 **Checking connection diagnostics...**',
+    description: `${getEmoji('loading')} **Checking connection diagnostics...**`,
     color: COLORS.PRIMARY,
     includeThumbnail: false,
     timestamp: true,
@@ -680,10 +685,11 @@ export function buildPingCheckingEmbed() {
  */
 export function buildPingEmbed(report, { requester = null, includeThumbnail = true } = {}) {
   const overallMeta = OVERALL_META[report.overallStatus] ?? OVERALL_META[HEALTH_STATUS.UNHEALTHY];
+  const overallEmoji = getEmoji(overallMeta.emojiKey);
   const wsMainText = formatWsMainLatency(report.checks.ws);
 
   const descriptionLines = [
-    `**Status:** ${overallMeta.emoji} **${overallMeta.label}**`,
+    `**Status:** ${overallEmoji} **${overallMeta.label}**`,
     `**WebSocket:** **${wsMainText}**`,
   ];
 
@@ -708,7 +714,7 @@ export function buildPingEmbed(report, { requester = null, includeThumbnail = tr
 
   embed.addFields(
     {
-      name: '📡 Connection Diagnostics',
+      name: `${getEmoji('analytics')} Connection Diagnostics`,
       value: leftColumn,
       inline: true,
     },
@@ -733,7 +739,7 @@ export function buildPingComponents({ disabled = false, requesterId = null } = {
     new ButtonBuilder()
       .setCustomId(customId)
       .setLabel('Refresh')
-      .setEmoji('🔄')
+      .setEmoji(getComponentEmoji('refresh'))
       .setStyle(ButtonStyle.Primary)
       .setDisabled(disabled),
   );

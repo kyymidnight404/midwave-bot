@@ -10,6 +10,7 @@ import {
 } from '../../src/services/helpService.js';
 import { buildHelpEmbed } from '../../src/utils/embeds.js';
 import { COLORS, EMBED_FOOTER, LOGO_ATTACHMENT_URL } from '../../src/utils/constants.js';
+import { EMOJIS } from '../../src/config/emojis.js';
 import defaultCommandStructure from '../../src/config/commandStructure.js';
 import { DEFAULT_HANDLER_REGISTRY } from '../../src/config/commandRegistry.js';
 
@@ -27,12 +28,12 @@ test('Help Embed: single embed with Midnight Ocean visual identity & all 5 categ
 
   const fieldNames = json.fields.map((f) => f.name);
   assert.equal(new Set(fieldNames).size, 6);
-  assert.ok(fieldNames.some((n) => n.startsWith('<:bot:1571472389592584344> AI & Knowledge')));
+  assert.ok(fieldNames.some((n) => n.startsWith(`${EMOJIS.ai} AI & Knowledge`)));
   assert.ok(fieldNames.some((n) => n.startsWith('<:game:1571472414875844618> Mini Games')));
-  assert.ok(fieldNames.some((n) => n.startsWith('<:star:1571472439962107985> Social Interactions (11)')));
-  assert.ok(fieldNames.some((n) => n.startsWith('<:tools:1571472462787641414> Media & Utilities')));
-  assert.ok(fieldNames.some((n) => n.startsWith('<:pin:1571472304645345300> General')));
-  const infoField = json.fields.find((f) => f.name.includes('Information'));
+  assert.ok(fieldNames.some((n) => n.startsWith(`${EMOJIS.users} Social Interactions (11)`)));
+  assert.ok(fieldNames.some((n) => n.startsWith(`${EMOJIS.folder} Media & Utilities`)));
+  assert.ok(fieldNames.some((n) => n.startsWith(`${EMOJIS.home} General`)));
+  const infoField = json.fields.find((f) => f.name.startsWith(`${EMOJIS.info} Information`));
   assert.ok(infoField);
   assert.equal(infoField.value, '`about`');
 

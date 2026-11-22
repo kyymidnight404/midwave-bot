@@ -1,5 +1,6 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { COLORS } from '../config/colors.js';
+import { getEmoji } from '../config/emojis.js';
 import { buildErrorEmbed, createBaseEmbed } from '../utils/embeds.js';
 import { evaluateMathExpression, MATH_MAX_LENGTH } from '../utils/mathEvaluator.js';
 
@@ -43,7 +44,12 @@ export async function execute(interaction) {
     result = evaluateMathExpression(rawExpression);
   } catch (error) {
     await interaction.reply({
-      embeds: [buildErrorEmbed(error instanceof Error ? error.message : 'Ekspresi matematika tidak valid.')],
+      embeds: [
+        buildErrorEmbed(
+          error instanceof Error ? error.message : 'Ekspresi matematika tidak valid.',
+          `${getEmoji('calculator')} Midwave Math`,
+        ),
+      ],
       flags: MessageFlags.Ephemeral,
     });
     return;

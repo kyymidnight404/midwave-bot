@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
+import { EMOJIS } from '../../src/config/emojis.js';
 import { AutoDownloaderHandler } from '../../src/handlers/AutoDownloaderHandler.js';
 import messageCreateEvent from '../../src/events/messageCreate.js';
 import { createBotApp } from '../../src/index.js';
@@ -206,7 +207,7 @@ describe('AutoDownloader — yt-dlp Integration & Discord Handling', () => {
     assert.equal(events[1].payload.files.length, 2);
     assert.equal(
       events[1].payload.content,
-      '✅ @midwave_user · Instagram\n\nCarousel Test · JPG · 32 B',
+      `${EMOJIS.success} @midwave_user · Instagram\n\nCarousel Test · JPG · 32 B`,
     );
     assert.equal(events[2].type, 'suppressEmbeds');
     assert.equal(events[2].value, true);
@@ -241,7 +242,7 @@ describe('AutoDownloader — yt-dlp Integration & Discord Handling', () => {
     assert.equal(reply.embeds, undefined);
     assert.equal(reply.files.length, 1);
     assert.equal(reply.files[0].name, 'tiktok_video.mp4');
-    assert.equal(reply.content, '✅ TikTok\n\n#trending #foryou · MP4 · 392.2 KB');
+    assert.equal(reply.content, `${EMOJIS.success} TikTok\n\n#trending #foryou · MP4 · 392.2 KB`);
   });
 
   it('informs user cleanly in compact plain text when file exceeds Discord limit instead of posting external links', async () => {
@@ -268,7 +269,7 @@ describe('AutoDownloader — yt-dlp Integration & Discord Handling', () => {
     assert.equal(reply.files, undefined);
     assert.equal(reply.components, undefined);
     assert.equal(reply.embeds, undefined);
-    assert.equal(reply.content, '❌ Download failed · File exceeds Discord upload limit');
+    assert.equal(reply.content, `${EMOJIS.error} Download failed · File exceeds Discord upload limit`);
   });
 
   it('wires AutoDownloaderHandler into createBotApp and messageCreate event cleanly', async () => {

@@ -1,4 +1,5 @@
 import { Events } from 'discord.js';
+import { validateApplicationEmojis } from '../config/emojis.js';
 import { recoverGameCenterSessions } from './gameInteraction.js';
 import { ensureQuizQuestionsSeeded } from '../games/services/questionService.js';
 import { sanitizeError } from '../utils/errorSanitizer.js';
@@ -16,6 +17,10 @@ export default {
     console.log(
       `[Midwave] Logged in as ${client.user?.tag ?? 'unknown'} | Guilds: ${guildCount} | Commands: ${commandCount}`,
     );
+
+    validateApplicationEmojis(client, { logger: context.logger ?? console }).catch((err) => {
+      (context.logger ?? console).warn?.('[Midwave] Emoji validation skipped:', sanitizeError(err));
+    });
 
     ensureQuizQuestionsSeeded(context.prisma).catch((err) => {
       (context.logger ?? console).error?.('[GameCenter] Quiz seed on startup failed:', sanitizeError(err));

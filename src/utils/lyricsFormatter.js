@@ -1,5 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { COLORS } from '../config/colors.js';
+import { getComponentEmoji, getEmoji } from '../config/emojis.js';
 import { createBaseEmbed } from './embeds.js';
 
 export const LYRICS_EMBED_MAX_PAGE_CHARS = 4000;
@@ -135,7 +136,7 @@ export function buildLyricsEmbed(track, view) {
   const description = `${prefix}${safeBody}${suffix}`;
 
   const embed = createBaseEmbed({
-    title: '🎵 Lyrics Finder',
+    title: `${getEmoji('music')} Lyrics Finder`,
     description,
     color: COLORS.PRIMARY,
     includeThumbnail: false,
@@ -170,7 +171,8 @@ export function buildLyricsPaginationRow({
 
   const prevBtn = new ButtonBuilder()
     .setCustomId(`${customIdPrefix}:prev`)
-    .setLabel('◀ Previous')
+    .setLabel('Previous')
+    .setEmoji(getComponentEmoji('back'))
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(disabled || safePage <= 0);
 
@@ -182,7 +184,8 @@ export function buildLyricsPaginationRow({
 
   const nextBtn = new ButtonBuilder()
     .setCustomId(`${customIdPrefix}:next`)
-    .setLabel('Next ▶')
+    .setLabel('Next')
+    .setEmoji(getComponentEmoji('next'))
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(disabled || safePage >= safeTotal - 1);
 

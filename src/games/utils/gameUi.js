@@ -1,5 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import { COLORS } from '../../config/colors.js';
+import { getComponentEmoji, getEmoji } from '../../config/emojis.js';
 import { GAME_CENTER_LABELS } from '../services/scoreService.js';
 import {
   QUIZ_MAX_PLAYERS,
@@ -76,13 +77,13 @@ export function buildChallengeMessage({
     new ButtonBuilder()
       .setCustomId(buildGameCustomId('challenge', sessionId, 'accept'))
       .setLabel('Terima')
-      .setEmoji('✅')
+      .setEmoji(getComponentEmoji('success'))
       .setStyle(ButtonStyle.Success)
       .setDisabled(disabled),
     new ButtonBuilder()
       .setCustomId(buildGameCustomId('challenge', sessionId, 'decline'))
       .setLabel('Tolak')
-      .setEmoji('❌')
+      .setEmoji(getComponentEmoji('error'))
       .setStyle(ButtonStyle.Danger)
       .setDisabled(disabled),
   );
@@ -207,8 +208,8 @@ export function buildRpsMessage({
 
   let statusText =
     `Ronde **${state.round}** (Best of 3 — target 2 menang)\n` +
-    `• <@${p1}>: ${p1Picked ? '✅ Sudah memilih *(tersembunyi)*' : '⏳ Menunggu pilihan...'}\n` +
-    `• <@${p2}>: ${p2Picked ? '✅ Sudah memilih *(tersembunyi)*' : '⏳ Menunggu pilihan...'}`;
+    `• <@${p1}>: ${p1Picked ? `${getEmoji('success')} Sudah memilih *(tersembunyi)*` : `${getEmoji('loading')} Menunggu pilihan...`}\n` +
+    `• <@${p2}>: ${p2Picked ? `${getEmoji('success')} Sudah memilih *(tersembunyi)*` : `${getEmoji('loading')} Menunggu pilihan...`}`;
   let color = COLORS.PRIMARY;
 
   if (forfeitedById) {
@@ -311,19 +312,19 @@ export function buildQuizLobbyMessage({
     new ButtonBuilder()
       .setCustomId(buildGameCustomId('quiz', sessionId, 'leave'))
       .setLabel('Keluar')
-      .setEmoji('🚪')
+      .setEmoji(getComponentEmoji('remove'))
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(disabled),
     new ButtonBuilder()
       .setCustomId(buildGameCustomId('quiz', sessionId, 'start'))
       .setLabel('Mulai')
-      .setEmoji('▶️')
+      .setEmoji(getComponentEmoji('next'))
       .setStyle(ButtonStyle.Primary)
       .setDisabled(disabled),
     new ButtonBuilder()
       .setCustomId(buildGameCustomId('quiz', sessionId, 'cancel'))
       .setLabel('Batal')
-      .setEmoji('❌')
+      .setEmoji(getComponentEmoji('error'))
       .setStyle(ButtonStyle.Danger)
       .setDisabled(disabled),
   );
@@ -391,7 +392,7 @@ export function buildQuizQuestionMessage({
       .setTitle(`🧠 Quiz Battle — Pertanyaan ${state.round}/${state.totalQuestions}`)
       .setDescription(
         `📚 **Kategori:** \`${formatQuizCategory(q.category)}\` | ⚡ **Kesulitan:** \`${formatQuizDifficulty(q.difficulty)}\`\n` +
-          `⏱️ **Berakhir:** <t:${endsUnix}:R>\n\n` +
+          `${getEmoji('clock')} **Berakhir:** <t:${endsUnix}:R>\n\n` +
           `**${q.question}**\n\n` +
           `${optionsText}\n\n` +
           '💬 Ketik **a**, **b**, **c**, atau **d** langsung di chat untuk menjawab!',
@@ -440,10 +441,10 @@ export function buildQuizRoundResultMessage({
   const embed = applyMidwaveBranding(
     new EmbedBuilder()
       .setColor(COLORS.INFO)
-      .setTitle(`📊 Hasil Ronde ${state.round}/${state.totalQuestions}`)
+      .setTitle(`${getEmoji('analytics')} Hasil Ronde ${state.round}/${state.totalQuestions}`)
       .setDescription(
         `**Pertanyaan:** ${q.question}\n` +
-          `✅ **Jawaban Benar:** **${correctLetter}.** ${summary.correctOption}\n` +
+          `${getEmoji('success')} **Jawaban Benar:** **${correctLetter}.** ${summary.correctOption}\n` +
           `🎯 **Menjawab Benar:** ${correctList}\n\n` +
           `**Hasil Sementara:**\n${leaderboardLines}\n\n` +
           (state.round < state.totalQuestions
@@ -504,7 +505,7 @@ export function buildQuizCancelledMessage({
     new EmbedBuilder()
       .setColor(COLORS.DANGER)
       .setTitle('🧠 Quiz Battle — Dihentikan')
-      .setDescription(`❌ Quiz dihentikan oleh Host (<@${cancelledById ?? state?.hostId}>) pada ronde ${state?.round ?? 1}/${state?.totalQuestions ?? QUIZ_TOTAL_QUESTIONS}.`),
+      .setDescription(`${getEmoji('error')} Quiz dihentikan oleh Host (<@${cancelledById ?? state?.hostId}>) pada ronde ${state?.round ?? 1}/${state?.totalQuestions ?? QUIZ_TOTAL_QUESTIONS}.`),
     includeThumbnail,
     'quiz',
   );

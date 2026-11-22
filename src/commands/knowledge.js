@@ -5,6 +5,7 @@ import {
   defaultKnowledgeStore,
 } from '../services/knowledge/index.js';
 import { COLORS } from '../config/colors.js';
+import { getEmoji } from '../config/emojis.js';
 import {
   buildErrorEmbed,
   buildInfoEmbed,
@@ -44,7 +45,7 @@ export async function execute(interaction, context = {}) {
         (cat) => `• **${cat.label}** (\`${cat.id}\`) — **${cat.entryCount}** entri\n  ${cat.description}`,
       );
       const embed = buildInfoEmbed(
-        'Kategori Global Bot Knowledge',
+        `${getEmoji('folder')} Kategori Global Bot Knowledge`,
         lines.join('\n\n'),
         COLORS.SECONDARY,
       );
@@ -71,7 +72,7 @@ export async function execute(interaction, context = {}) {
       }
 
       const embed = createBaseEmbed({
-        title: `Hasil Global Knowledge (${results.length})`,
+        title: `${getEmoji('search')} Hasil Global Knowledge (${results.length})`,
         color: COLORS.SECONDARY,
         includeThumbnail: false,
       });
@@ -96,7 +97,7 @@ export async function execute(interaction, context = {}) {
         embeds: [
           buildSuccessEmbed(
             `Berhasil memuat ulang **${reloaded.entries.length}** entri Global Bot Knowledge dari penyimpanan persisten.`,
-            'Knowledge Reloaded',
+            `${getEmoji('refresh')} Knowledge Reloaded`,
           ),
         ],
         flags: MessageFlags.Ephemeral,
@@ -133,7 +134,7 @@ export async function execute(interaction, context = {}) {
         embeds: [
           buildSuccessEmbed(
             `Entri \`${entry.id}\` (**${entry.title}**) berhasil disimpan secara persisten pada kategori \`${entry.category}\`.`,
-            'Global Knowledge Ditambahkan',
+            `${getEmoji('add')} Global Knowledge Ditambahkan`,
           ),
         ],
         flags: MessageFlags.Ephemeral,
@@ -169,7 +170,7 @@ export async function execute(interaction, context = {}) {
         embeds: [
           buildSuccessEmbed(
             `Entri \`${updated.id}\` (**${updated.title}**) berhasil diperbarui dan disimpan.`,
-            'Global Knowledge Diperbarui',
+            `${getEmoji('edit')} Global Knowledge Diperbarui`,
           ),
         ],
         flags: MessageFlags.Ephemeral,
@@ -202,7 +203,7 @@ export async function execute(interaction, context = {}) {
       await interaction.reply({
         embeds: [
           buildInfoEmbed(
-            `Daftar Global Bot Knowledge (${entries.length})`,
+            `${getEmoji('folder')} Daftar Global Bot Knowledge (${entries.length})`,
             description,
             COLORS.SECONDARY,
           ),
@@ -227,7 +228,7 @@ export async function execute(interaction, context = {}) {
         embeds: [
           buildSuccessEmbed(
             `Entri \`${removed.id}\` (**${removed.title}**) telah dihapus dari penyimpanan persisten.`,
-            'Global Knowledge Dihapus',
+            `${getEmoji('delete')} Global Knowledge Dihapus`,
           ),
         ],
         flags: MessageFlags.Ephemeral,
@@ -244,8 +245,16 @@ export async function execute(interaction, context = {}) {
       error instanceof KnowledgeServiceError
         ? error.message
         : 'Terjadi kesalahan saat memproses Global Bot Knowledge.';
+    const isAuthError =
+      error instanceof KnowledgeServiceError &&
+      /akses|owner|admin|izinkan|ditolak|unauthorized|forbidden/i.test(message);
     await interaction.reply({
-      embeds: [buildErrorEmbed(message)],
+      embeds: [
+        buildErrorEmbed(
+          message,
+          isAuthError ? `${getEmoji('shield')} Akses Ditolak` : undefined,
+        ),
+      ],
       flags: MessageFlags.Ephemeral,
     });
   }

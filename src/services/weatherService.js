@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { COLORS } from '../config/colors.js';
+import { getEmoji } from '../config/emojis.js';
 import { WEATHER_MAX_LOCATION_LENGTH } from '../utils/constants.js';
 import { createBaseEmbed } from '../utils/embeds.js';
 
@@ -502,7 +503,7 @@ export function buildWeatherEmbed(weatherData, { includeThumbnail = true } = {})
       inline: true,
     },
     { name: '☁️ Tutupan Awan', value: `${current.tcc ?? '-'}%`, inline: true },
-    { name: '🕐 Waktu Prakiraan', value: forecastTimeText, inline: true },
+    { name: `${getEmoji('clock')} Waktu Prakiraan`, value: forecastTimeText, inline: true },
   );
 
   if (upcoming.length > 0) {
@@ -512,7 +513,7 @@ export function buildWeatherEmbed(weatherData, { includeThumbnail = true } = {})
       return `• **${timeStr}** — ${slotEmoji} ${slot.weather_desc ?? '-'} · **${slot.t ?? '-'}°C** · 💧 ${slot.hu ?? '-'}%`;
     });
     embed.addFields({
-      name: '📅 Prakiraan Berikutnya (Per 3 Jam)',
+      name: `${getEmoji('calendar')} Prakiraan Berikutnya (Per 3 Jam)`,
       value: lines.join('\n'),
       inline: false,
     });

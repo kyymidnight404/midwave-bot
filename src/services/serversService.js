@@ -1,5 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { COLORS } from '../config/colors.js';
+import { getComponentEmoji, getEmoji } from '../config/emojis.js';
 import { createBaseEmbed } from '../utils/embeds.js';
 
 export const SERVERS_PER_PAGE = 10;
@@ -235,7 +236,7 @@ export function buildServersEmbed({
   }
 
   const embed = createBaseEmbed({
-    title: 'Midwave — Server List',
+    title: `${getEmoji('users')} Midwave — Server List`,
     description,
     color: COLORS.PRIMARY,
     includeThumbnail: false,
@@ -275,12 +276,14 @@ export function buildServersPaginationRow({
   const prevBtn = new ButtonBuilder()
     .setCustomId(buildServersCustomId('prev', Math.max(0, safePage - 1), ownerId))
     .setLabel('Previous')
+    .setEmoji(getComponentEmoji('back'))
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(Boolean(disabled) || safePage <= 0);
 
   const nextBtn = new ButtonBuilder()
     .setCustomId(buildServersCustomId('next', Math.min(safeTotalPages - 1, safePage + 1), ownerId))
     .setLabel('Next')
+    .setEmoji(getComponentEmoji('next'))
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(Boolean(disabled) || safePage >= safeTotalPages - 1);
 

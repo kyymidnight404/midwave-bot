@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { ButtonStyle, MessageFlags } from 'discord.js';
 import { COLORS } from '../../src/config/colors.js';
+import { EMOJIS } from '../../src/config/emojis.js';
 import { commandStructure } from '../../src/config/commandStructure.js';
 import { createBotApp } from '../../src/index.js';
 import { CooldownManager } from '../../src/utils/cooldown.js';
@@ -289,7 +290,7 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     const slashLast = slashInteraction.getReplies().at(-1);
     assert.equal(slashLast.type, 'editReply');
     assert.equal(slashLast.payload.embeds, undefined);
-    assert.equal(slashLast.payload.content, '✅ TikTok\n\nMP4 · 1.2 MB');
+    assert.equal(slashLast.payload.content, `${EMOJIS.success} TikTok\n\nMP4 · 1.2 MB`);
     assert.equal(slashLast.payload.files.length, 1);
 
     const replies = [];
@@ -314,7 +315,7 @@ describe('Integration: Slash Commands & End-to-End Flows', () => {
     await app.prefixCommandHandler.handle(prefixMessage);
     assert.ok(replies.length >= 1);
     assert.equal(replies.at(-1).embeds, undefined);
-    assert.equal(replies.at(-1).content, '✅ TikTok\n\nMP4 · 1.2 MB');
+    assert.equal(replies.at(-1).content, `${EMOJIS.success} TikTok\n\nMP4 · 1.2 MB`);
     assert.equal(replies.at(-1).files.length, 1);
 
     app.shutdown();

@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { MessageFlags } from 'discord.js';
+import { EMOJIS } from '../../src/config/emojis.js';
 import mediaCommand, { data as mediaData } from '../../src/commands/media.js';
 import downloadCommand, { execute as executeDownload } from '../../src/commands/download.js';
 import { createBotApp } from '../../src/index.js';
@@ -701,7 +702,7 @@ describe('Downloader — Discord Commands (/media action:download & !download) &
     assert.equal(missingUrl.replied, true);
     assert.equal(missingUrl.getEvents()[0].payload.flags, MessageFlags.Ephemeral);
     assert.equal(missingUrl.getEvents()[0].payload.embeds, undefined);
-    assert.equal(missingUrl.getEvents()[0].payload.content, '❌ Download failed · Missing URL');
+    assert.equal(missingUrl.getEvents()[0].payload.content, `${EMOJIS.error} Download failed · Missing URL`);
 
     const unsafeHost = createMockDownloadInteraction({ url: 'https://127.0.0.1/video.mp4' });
     await executeDownload(unsafeHost);
@@ -709,7 +710,7 @@ describe('Downloader — Discord Commands (/media action:download & !download) &
     assert.equal(unsafeHost.replied, true);
     assert.equal(unsafeHost.getEvents()[0].payload.flags, MessageFlags.Ephemeral);
     assert.equal(unsafeHost.getEvents()[0].payload.embeds, undefined);
-    assert.equal(unsafeHost.getEvents()[0].payload.content, '❌ Download failed · Blocked URL');
+    assert.equal(unsafeHost.getEvents()[0].payload.content, `${EMOJIS.error} Download failed · Blocked URL`);
   });
 
   it('defers, sends ultra-compact plain-text output with native video attachment (YouTube), and deletes temp dir', async () => {
@@ -754,7 +755,7 @@ describe('Downloader — Discord Commands (/media action:download & !download) &
     assert.equal(edits.length, 2);
 
     assert.equal(edits[0].payload.embeds, undefined);
-    assert.equal(edits[0].payload.content, '⏳ YouTube · Downloading...');
+    assert.equal(edits[0].payload.content, `${EMOJIS.loading} YouTube · Downloading...`);
 
     const finalPayload = edits[1].payload;
     assert.equal(finalPayload.embeds, undefined);
@@ -762,7 +763,7 @@ describe('Downloader — Discord Commands (/media action:download & !download) &
     assert.equal(finalPayload.files.length, 1);
     assert.equal(finalPayload.files[0].name, 'youtube_video.mp4');
     assert.equal(finalPayload.files[0].attachment, mediaPath);
-    assert.equal(finalPayload.content, '✅ @Midwave · YouTube\n\nDemo Video · MP4 · 16 B');
+    assert.equal(finalPayload.content, `${EMOJIS.success} @Midwave · YouTube\n\nDemo Video · MP4 · 16 B`);
 
     await assert.rejects(fs.stat(jobDir));
   });
@@ -809,7 +810,7 @@ describe('Downloader — Discord Commands (/media action:download & !download) &
       assert.equal(tiktokPayload.files[0].name, 'tiktok_video.mp4');
       assert.equal(
         tiktokPayload.content,
-        '✅ @creator · TikTok\n\n#trending #foryou · MP4 · 392.2 KB',
+        `${EMOJIS.success} @creator · TikTok\n\n#trending #foryou · MP4 · 392.2 KB`,
       );
 
       const igInteraction = createMockDownloadInteraction({
@@ -846,7 +847,7 @@ describe('Downloader — Discord Commands (/media action:download & !download) &
       assert.equal(igPayload.files[0].name, 'instagram_video.mp4');
       assert.equal(
         igPayload.content,
-        '✅ @username · Instagram\n\nOriginal video title · MP4 · 2.4 MB',
+        `${EMOJIS.success} @username · Instagram\n\nOriginal video title · MP4 · 2.4 MB`,
       );
     } finally {
       await fs.rm(jobDir, { recursive: true, force: true });
@@ -862,7 +863,7 @@ describe('Downloader — Discord Commands (/media action:download & !download) &
         fileFormat: 'MP4',
         totalBytes: 392.2 * 1024,
       }),
-      '✅ TikTok\n\nCool video · MP4 · 392.2 KB',
+      `${EMOJIS.success} TikTok\n\nCool video · MP4 · 392.2 KB`,
     );
 
     assert.equal(
@@ -873,7 +874,7 @@ describe('Downloader — Discord Commands (/media action:download & !download) &
         fileFormat: 'MP4',
         totalBytes: 2.4 * 1024 * 1024,
       }),
-      '✅ Instagram\n\nMP4 · 2.4 MB',
+      `${EMOJIS.success} Instagram\n\nMP4 · 2.4 MB`,
     );
 
     assert.equal(
@@ -884,7 +885,7 @@ describe('Downloader — Discord Commands (/media action:download & !download) &
         fileFormat: 'MP4',
         formattedSize: '15.75 MB',
       }),
-      '✅ @creator · YouTube\n\nMP4 · 15.75 MB',
+      `${EMOJIS.success} @creator · YouTube\n\nMP4 · 15.75 MB`,
     );
 
     assert.equal(
@@ -895,18 +896,18 @@ describe('Downloader — Discord Commands (/media action:download & !download) &
         fileFormat: null,
         formattedSize: '',
       }),
-      '✅ @creator · Threads',
+      `${EMOJIS.success} @creator · Threads`,
     );
   });
 
   it('formats all downloader errors as compact plain text without embeds', async () => {
     assert.equal(
       formatDownloadErrorMessage({ code: DOWNLOADER_ERROR_CODES.UNSUPPORTED_PLATFORM }),
-      '❌ Download failed · Unsupported URL',
+      `${EMOJIS.error} Download failed · Unsupported URL`,
     );
     assert.equal(
       formatDownloadErrorMessage({ code: DOWNLOADER_ERROR_CODES.NOT_FOUND }),
-      '❌ Download failed · Media unavailable',
+      `${EMOJIS.error} Download failed · Media unavailable`,
     );
 
     const interaction = createMockDownloadInteraction({
@@ -925,7 +926,7 @@ describe('Downloader — Discord Commands (/media action:download & !download) &
     const errorEdit = edits.at(-1).payload;
     assert.equal(errorEdit.embeds, undefined);
     assert.deepEqual(errorEdit.files, []);
-    assert.equal(errorEdit.content, '❌ Download failed · Media unavailable');
+    assert.equal(errorEdit.content, `${EMOJIS.error} Download failed · Media unavailable`);
   });
 
   it('surfaces Discord 40005 entity-too-large failure cleanly in plain text and still cleans temp dir', async () => {
@@ -976,7 +977,7 @@ describe('Downloader — Discord Commands (/media action:download & !download) &
     const edits = interaction.getEvents().filter((e) => e.type === 'editReply');
     const errorEdit = edits[edits.length - 1].payload;
     assert.equal(errorEdit.embeds, undefined);
-    assert.equal(errorEdit.content, '❌ Download failed · File exceeds Discord upload limit');
+    assert.equal(errorEdit.content, `${EMOJIS.error} Download failed · File exceeds Discord upload limit`);
     await assert.rejects(fs.stat(jobDir));
   });
 
