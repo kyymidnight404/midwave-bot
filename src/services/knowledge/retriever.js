@@ -2,24 +2,31 @@ import { KNOWLEDGE_CATEGORIES, defaultKnowledgeStore } from './store.js';
 
 const CATEGORY_INTENT_PATTERNS = {
   bot_identity: [
-    /\b(midwave|siapa\s+kamu|tentang\s+bot|bot\s+apa|identitas|kepribadian|kemampuan\s+bot|apa\s+itu\s+midwave)\b/i,
+    /\b(midwave|siapa\s+kamu|kamu\s+siapa|tentang\s+(kamu|bot|midwave)|bot\s+apa|identitas|kepribadian|kemampuan\s+bot|apa\s+itu\s+midwave|who\s+are\s+you|what\s+are\s+you|what\s+is\s+midwave|tell\s+me\s+about\s+(yourself|midwave)|namamu)\b/i,
   ],
   creator_developer: [
-    /\b(creator|developer|pembuat|pencipta(mu|nya)?|pemilik|owner|siapa\s+yang\s+(buat|bikin|membuat|kembangkan)|hengky|kyymidnight|kyymidnight404)\b/i,
+    /\b(creator|developer|pembuat(mu)?|pencipta(mu|nya)?|pemilik|owner|siapa\s+yang\s+(buat|bikin|membuat|kembangkan|ciptakan)|who\s+(created|made|built|developed)\s+(you|midwave)|dibuat\s+oleh|hengky|kyymidnight|kyymidnight404)\b/i,
   ],
   official_links: [
     /\b(website|situs|tautan\s+resmi|link\s+resmi|github|repo(sitory)?|dokumentasi|midwave\.ai\.id)\b/i,
   ],
   features_commands: [
-    /\b(fitur\s+midwave|daftar\s+command|command\s+midwave|cara\s+pakai\s+(\/)?(ai|download|lyrics|brat|igf|rps|tictactoe|coinflip|help|menu|autorole|quiz|feedback|donate|social)|auto[-\s]?downloader|auto[-\s]?role|game\s*center)\b/i,
-    /\/(ai|download|lyrics|brat|help|autorole|media|math|social|donate)\b/i,
-    /!(ai|donate|download|lyrics|lirik|brat|igf|rps|ttt|tictactoe|coinflip|cf|quiz|menu|knowledge|feedback|say)\b/i,
+    /\b(fitur(\s+(lengkap|apa\s+saja|semua|midwave))?|daftar\s+(fitur|command)|semua\s+(fitur|command)|command\s+(midwave|apa\s+saja|lengkap)|apa\s+(saja\s+)?yang\s+bisa\s+(kamu|midwave)\s+(lakukan|kerjakan|bantu)|what\s+can\s+(you|midwave)\s+do|all\s+(features|commands))\b/i,
+    /\b(apakah|bisakah|apa)\s+(kamu|midwave|bot(\s+ini)?)\s+(bisa|dapat|mampu|punya|ada|menyediakan|mendukung|support)\b.*\b(fitur|command|download|mendownload|unduh|mengunduh|musik|music|lagu|voice\s+channel|pinterest|tiktok|instagram|youtube|connect\s*(4|four)|tic\s*tac\s*toe|tictactoe|profile|leaderboard|quiz|rps|coinflip|autorole|cuaca|weather|anime|lirik|lyrics|gambar|image|qc|brat|igf|moderasi|ban|kick|mute|level|xp|ekonomi)\b/i,
+    /\b(can|do|does)\s+(you|midwave)\b.*\b(feature|command|music|voice\s+channel|pinterest|tiktok|instagram|youtube|downloader|download|tic\s*tac\s*toe|tictactoe|connect\s*(4|four)|profile|leaderboard|weather|anime|lyrics|autorole|quiz|rps|coinflip)\b/i,
+    /\b(apakah|apa)\s+ada\s+fitur\b/i,
+    /\b(pinterest|yt-dlp|auto[-\s]?downloader|auto[-\s]?role|game\s*center|tic\s*tac\s*toe|tictactoe|connect\s*(four|4)|rock\s*paper\s*scissors|coin\s*flip|quiz\s*battle|otakugifs|bmkg|anilist)\b/i,
+    /\b(cara\s+(pakai|main|memainkan|menggunakan|mengaktifkan)\s+(\/)?(ai|download|dl|pin|pinterest|lyrics|lirik|brat|qc|igf|rps|ttt|tictactoe|tic\s*tac\s*toe|coinflip|cf|quiz|help|menu|autorole|math|weather|anime|donate|social|connect\s*4|connect\s*four|profile|musik|music))\b/i,
+    /\/(ai|download|lyrics|brat|help|autorole|media|math|weather|anime|pin|social|donate|ping)\b/i,
+    /!(ai|donate|download|dl|pin|lyrics|lyric|lirik|brat|qc|igf|rps|ttt|tictactoe|coinflip|cf|quiz|menu|knowledge|feedback|say|weather|anime|math|ping|servers|guilds)\b/i,
   ],
   technical_knowledge: [
-    /\b(node\.?js|discord\.?js|wispbyte|arsitektur(\s+midwave)?|tech\s*stack|environment\s*variable|deploy[-\s]?commands|troubleshooting\s+midwave)\b/i,
+    /\b(wispbyte|arsitektur(\s+midwave)|tech\s*stack(\s+midwave)?|deploy[-\s]?commands|troubleshooting\s+midwave|((node\.?js|discord\.?js|prisma|tavily|gemini).*(midwave|bot\s+ini))|((midwave|bot\s+ini).*(node\.?js|discord\.?js|prisma|tavily|gemini|tech\s*stack|stack|environment\s*variable)))\b/i,
   ],
   policies_faq: [
-    /\b(privacy(\s+policy)?|kebijakan\s+privasi|terms(\s+of\s+service)?|tos|syarat\s+ketentuan|user\s+memory|simpan\s+data|riwayat\s+chat|faq\s+midwave|aturan\s+midwave)\b/i,
+    /\b(privacy(\s+policy)?|kebijakan\s+privasi|terms(\s+of\s+service)?|tos|syarat\s+ketentuan|user\s+memory|faq\s+midwave|aturan\s+midwave|fakta\s+global|knowledge\s+global)\b/i,
+    /\b(menyimpan|simpan|record|log|store|save|keep|ingat|mengingat)\s+(semua\s+|seluruh\s+)?(chat|percakapan|pesan|riwayat|obrolan|memori|data(\s+(pribadi|pengguna|saya|aku|user))?)\b/i,
+    /\b(riwayat\s+chat|chat\s+history|permanen(t)?\s+memory|memori\s+permanen)\b/i,
   ],
 };
 
@@ -87,6 +94,9 @@ export function isMidwaveKnowledgeQuery(question) {
  *   maxEntries?: number,
  * }} [options]
  */
+const OVERVIEW_QUERY_RE =
+  /\b(fitur(\s+(lengkap|apa\s+saja|semua|midwave))?|daftar\s+(fitur|command)|semua\s+(fitur|command)|command\s+(apa\s+saja|lengkap)|apa\s+(saja\s+)?yang\s+bisa\s+(kamu|midwave)|what\s+can\s+(you|midwave)\s+do|all\s+(features|commands)|menu)\b/i;
+
 export function retrieveRelevantKnowledge(question, options = {}) {
   const cleanQuestion = String(question || '').trim();
   if (!cleanQuestion) return [];
@@ -102,12 +112,17 @@ export function retrieveRelevantKnowledge(question, options = {}) {
   const tokens = extractQueryTokens(cleanQuestion);
   const maxEntries = Math.min(6, Math.max(1, options.maxEntries ?? 4));
   const categorySet = new Set(matchedCategories);
+  const isOverviewQuery = OVERVIEW_QUERY_RE.test(cleanQuestion);
 
   const scored = [];
   for (const entry of entries) {
     let score = 0;
     if (categorySet.has(entry.category)) {
       score += 5;
+    }
+
+    if (isOverviewQuery && (entry.id === 'feature-menu-and-scope' || entry.id === 'identity-overview')) {
+      score += 6;
     }
 
     const titleLower = String(entry.title || '').toLowerCase();
@@ -150,7 +165,7 @@ export function retrieveRelevantKnowledge(question, options = {}) {
  * @param {number} [maxChars]
  * @returns {string}
  */
-export function formatKnowledgeContext(entries, maxChars = 2500) {
+export function formatKnowledgeContext(entries, maxChars = 3400) {
   if (!Array.isArray(entries) || entries.length === 0) {
     return '';
   }

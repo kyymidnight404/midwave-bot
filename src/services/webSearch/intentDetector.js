@@ -1,3 +1,5 @@
+import { isMidwaveKnowledgeQuery } from '../knowledge/retriever.js';
+
 const EXPLICIT_SEARCH_PATTERNS = [
   /\b(cari(kan)?\s+(di\s+)?(web|internet|google|berita)|cek\s+(di\s+)?(web|internet|berita))\b/i,
   /\b(sumber|referensi)\s+(terbaru|terkini|resmi|valid|berita)\b/i,
@@ -101,6 +103,24 @@ export function detectSearchIntent(rawQuestion) {
   const hasTechUpdate = TECH_GAME_UPDATE_PATTERNS.some((re) => re.test(question));
   const hasCurrentRole = CURRENT_ROLE_PATTERNS.some((re) => re.test(question));
   const hasNonSearchConcept = NON_SEARCH_CONCEPT_PATTERNS.some((re) => re.test(question));
+
+  // Internal bot identity, capabilities, commands, and privacy queries belong to Global Bot Knowledge.
+  if (
+    isMidwaveKnowledgeQuery(question) &&
+    !hasExplicit &&
+    !hasNews &&
+    !hasSports &&
+    !hasFinance
+  ) {
+    return {
+      shouldSearch: false,
+      reason: 'midwave_internal_knowledge',
+      confidence: 'low',
+      topic: 'general',
+      cacheCategory: 'dynamic',
+      normalizedQuery,
+    };
+  }
 
   if (hasExplicit) {
     score += 3;
