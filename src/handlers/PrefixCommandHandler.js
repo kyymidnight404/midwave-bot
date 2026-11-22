@@ -11,6 +11,7 @@ import qcPrefixCommand from '../prefixCommands/qc.js';
 import quizCenterCommand from '../commands/quiz.js';
 import rpsCenterCommand from '../commands/rps.js';
 import sayPrefixCommand, { SAY_COOLDOWN_MS } from '../prefixCommands/say.js';
+import serversPrefixCommand from '../prefixCommands/servers.js';
 import tttCenterCommand from '../commands/ttt.js';
 import { DOWNLOAD_COOLDOWN_MS } from '../services/downloader.js';
 import { ANIME_COOLDOWN_MS } from '../services/animeService.js';
@@ -35,6 +36,7 @@ const PREFIX_EXECUTORS = new Map([
   [pinPrefixCommand.name, pinPrefixCommand],
   [qcPrefixCommand.name, qcPrefixCommand],
   [sayPrefixCommand.name, sayPrefixCommand],
+  [serversPrefixCommand.name, serversPrefixCommand],
   [feedbackPrefixCommand.name, feedbackPrefixCommand],
   [quizCenterCommand.name, quizCenterCommand],
   ['ai', { execute: DEFAULT_HANDLER_REGISTRY.ai }],

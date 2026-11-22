@@ -77,6 +77,13 @@ export const PREFIX_ONLY_METADATA = Object.freeze({
     description: 'Kelola Global Bot Knowledge Midwave (Admin)',
     visibility: 'admin',
   }),
+  servers: Object.freeze({
+    name: 'servers',
+    category: null,
+    usage: 'servers',
+    description: 'Daftar server yang diikuti bot (Bot Owner Only)',
+    visibility: 'internal',
+  }),
 });
 
 const registeredPrefixCommandNames = new Set();

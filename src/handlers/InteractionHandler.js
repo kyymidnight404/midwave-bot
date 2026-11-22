@@ -15,6 +15,10 @@ import {
   handlePinterestInteraction,
 } from '../prefixCommands/pin.js';
 import {
+  SERVERS_CUSTOM_ID_PREFIX,
+  handleServersInteraction,
+} from '../prefixCommands/servers.js';
+import {
   FEEDBACK_CUSTOM_ID_PREFIX,
   handleFeedbackInteraction,
 } from '../services/feedbackService.js';
@@ -167,6 +171,19 @@ export class InteractionHandler {
 
     if (isPinterestComponent) {
       await handlePinterestInteraction(interaction, {
+        ...this.context,
+        logger: this.logger,
+      });
+      return;
+    }
+
+    const isServersComponent =
+      typeof interaction.customId === 'string' &&
+      interaction.customId.startsWith(`${SERVERS_CUSTOM_ID_PREFIX}:`) &&
+      Boolean(interaction.isButton?.());
+
+    if (isServersComponent) {
+      await handleServersInteraction(interaction, {
         ...this.context,
         logger: this.logger,
       });
