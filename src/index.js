@@ -9,6 +9,7 @@ import { SessionManager } from './managers/SessionManager.js';
 import { InviteManager } from './managers/InviteManager.js';
 import { GameManager } from './managers/GameManager.js';
 import { AiConversationManager } from './managers/AiConversationManager.js';
+import { PinterestSessionStore } from './services/pinterest/session.js';
 import { CooldownManager } from './utils/cooldown.js';
 import { redactSensitiveText, sanitizeError } from './utils/errorSanitizer.js';
 import { GAME_TYPES } from './utils/constants.js';
@@ -60,6 +61,7 @@ export async function createBotApp(options = {}) {
   const inviteManager = options.inviteManager ?? new InviteManager({ sessionManager });
   const gameManager = options.gameManager ?? new GameManager({ sessionManager, inviteManager });
   const aiConversationManager = options.aiConversationManager ?? new AiConversationManager();
+  const pinterestSessionStore = options.pinterestSessionStore ?? new PinterestSessionStore();
 
   if (!options.gameManager) {
     registerDefaultGames(gameManager);
@@ -74,6 +76,7 @@ export async function createBotApp(options = {}) {
     inviteManager,
     gameManager,
     aiConversationManager,
+    pinterestSessionStore,
     prisma: options.prisma ?? defaultPrisma,
     logger,
   };
@@ -158,11 +161,13 @@ export async function createBotApp(options = {}) {
     inviteManager,
     gameManager,
     aiConversationManager,
+    pinterestSessionStore,
     context,
     shutdown: () => {
       sessionManager.clearAll();
       inviteManager.clearAll();
       aiConversationManager.clear();
+      pinterestSessionStore.clearAll();
       cooldowns.clear();
       clearAllGameCenterTimers();
       if (!options.prisma) defaultPrisma.$disconnect().catch(() => {});

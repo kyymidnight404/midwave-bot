@@ -11,6 +11,7 @@ import { execute as executeWeather } from '../commands/weather.js';
 import { execute as executeBrat } from '../prefixCommands/brat.js';
 import { execute as executeDownload } from '../prefixCommands/download.js';
 import { execute as executeLyrics } from '../prefixCommands/lyrics.js';
+import { execute as executePin } from '../prefixCommands/pin.js';
 import { execute as executeQc } from '../prefixCommands/qc.js';
 import { execute as executeSay } from '../prefixCommands/say.js';
 import { SOCIAL_INTERACTIONS } from '../services/otakuGifsService.js';
@@ -31,6 +32,7 @@ export function createDefaultHandlerRegistry() {
     help: (interaction, context) => helpCommand.execute(interaction, context),
     knowledge: (interaction, context) => knowledgeCommand.execute(interaction, context),
     math: executeMath,
+    pin: executePin,
     ping: executePing,
     weather: executeWeather,
     'media.qc': executeQc,

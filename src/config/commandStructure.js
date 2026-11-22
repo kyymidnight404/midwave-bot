@@ -1,6 +1,7 @@
 import { PermissionFlagsBits } from 'discord.js';
 import { ANIME_MAX_QUERY_LENGTH } from '../services/animeService.js';
 import { AI_MAX_QUESTION_LENGTH } from '../services/gemini.js';
+import { PIN_MAX_QUERY_LENGTH } from '../services/pinterest/search.js';
 import {
   LYRICS_MAX_ARTIST_LENGTH,
   LYRICS_MAX_QUERY_LENGTH,
@@ -268,6 +269,28 @@ export const commandStructure = {
           type: 'string',
           required: true,
           maxLength: ANIME_MAX_QUERY_LENGTH,
+        },
+      ],
+    },
+    {
+      name: 'pin',
+      description: 'Cari gambar atau video di Pinterest dengan navigasi interaktif',
+      enabled: true,
+      type: 'standalone',
+      handler: 'pin',
+      help: {
+        category: 'media_utilities',
+        usage: 'pin query:<kata kunci>',
+        prefixUsage: '{prefix}pin <keyword>',
+        description: 'Cari gambar atau video di Pinterest dengan navigasi interaktif',
+      },
+      options: [
+        {
+          name: 'query',
+          description: `Kata kunci pencarian Pinterest (maks ${PIN_MAX_QUERY_LENGTH} karakter)`,
+          type: 'string',
+          required: true,
+          maxLength: PIN_MAX_QUERY_LENGTH,
         },
       ],
     },

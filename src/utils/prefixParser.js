@@ -17,6 +17,7 @@ const COMMAND_ALIASES = Object.freeze({
   brat: 'brat',
   download: 'download',
   dl: 'download',
+  pin: 'pin',
   igf: 'igf',
   qc: 'qc',
   say: 'say',
@@ -399,6 +400,23 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
       commandName,
       subcommand: null,
       options: { url: rawRest },
+    };
+  }
+
+  if (commandName === 'pin') {
+    if (!rawRest) {
+      return {
+        commandName: 'pin',
+        subcommand: null,
+        options: {},
+        error: `Kata kunci pencarian Pinterest wajib diisi. Contoh: \`${prefix}pin aesthetic wallpaper\`.`,
+      };
+    }
+
+    return {
+      commandName: 'pin',
+      subcommand: null,
+      options: { query: rawRest },
     };
   }
 

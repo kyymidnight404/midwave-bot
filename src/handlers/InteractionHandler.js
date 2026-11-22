@@ -10,6 +10,11 @@ import {
   handlePingInteraction,
 } from '../commands/ping.js';
 import {
+  PIN_COOLDOWN_MS,
+  PIN_CUSTOM_ID_PREFIX,
+  handlePinterestInteraction,
+} from '../prefixCommands/pin.js';
+import {
   FEEDBACK_CUSTOM_ID_PREFIX,
   handleFeedbackInteraction,
 } from '../services/feedbackService.js';
@@ -30,6 +35,7 @@ const COMMAND_COOLDOWNS = Object.freeze({
   anime: ANIME_COOLDOWN_MS,
   download: DOWNLOAD_COOLDOWN_MS,
   lyrics: LYRICS_COOLDOWN_MS,
+  pin: PIN_COOLDOWN_MS,
   ping: PING_COOLDOWN_MS,
   social: SOCIAL_COOLDOWN_MS,
 });
@@ -150,6 +156,19 @@ export class InteractionHandler {
         cooldowns: this.cooldowns,
         logger: this.logger,
         handlerStartTime,
+      });
+      return;
+    }
+
+    const isPinterestComponent =
+      typeof interaction.customId === 'string' &&
+      interaction.customId.startsWith(`${PIN_CUSTOM_ID_PREFIX}:`) &&
+      Boolean(interaction.isButton?.());
+
+    if (isPinterestComponent) {
+      await handlePinterestInteraction(interaction, {
+        ...this.context,
+        logger: this.logger,
       });
       return;
     }

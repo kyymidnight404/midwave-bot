@@ -16,6 +16,7 @@ export const PLATFORMS = Object.freeze({
   VIMEO: 'vimeo',
   DAILYMOTION: 'dailymotion',
   BILIBILI: 'bilibili',
+  PINTEREST: 'pinterest',
   WEB: 'web',
 });
 
@@ -31,6 +32,7 @@ export const PLATFORM_LABELS = Object.freeze({
   [PLATFORMS.VIMEO]: 'Vimeo',
   [PLATFORMS.DAILYMOTION]: 'Dailymotion',
   [PLATFORMS.BILIBILI]: 'Bilibili',
+  [PLATFORMS.PINTEREST]: 'Pinterest',
   [PLATFORMS.WEB]: 'Web Media',
 });
 
@@ -49,6 +51,23 @@ const PLATFORM_DOMAINS = Object.freeze([
   { platform: PLATFORMS.VIMEO, domains: ['vimeo.com'] },
   { platform: PLATFORMS.DAILYMOTION, domains: ['dailymotion.com', 'dai.ly'] },
   { platform: PLATFORMS.BILIBILI, domains: ['bilibili.com', 'b23.tv', 'bilibili.tv'] },
+  {
+    platform: PLATFORMS.PINTEREST,
+    domains: [
+      'pinterest.com',
+      'pinterest.co.uk',
+      'pinterest.de',
+      'pinterest.fr',
+      'pinterest.jp',
+      'pinterest.ca',
+      'pinterest.es',
+      'pinterest.it',
+      'pinterest.com.au',
+      'pinterest.ph',
+      'pinterest.id',
+      'pin.it',
+    ],
+  },
 ]);
 
 const SHORT_LINK_HOSTS = new Set([
@@ -64,6 +83,7 @@ const SHORT_LINK_HOSTS = new Set([
   'on.soundcloud.com',
   'dai.ly',
   'b23.tv',
+  'pin.it',
 ]);
 
 const INTERNAL_SUFFIXES = ['.localhost', '.local', '.internal', '.arpa', '.lan', '.home'];
@@ -133,6 +153,7 @@ export function resolvePlatformLabel(extractorKey, fallbackPlatform = PLATFORMS.
   if (ext.includes('vimeo')) return PLATFORM_LABELS[PLATFORMS.VIMEO];
   if (ext.includes('dailymotion')) return PLATFORM_LABELS[PLATFORMS.DAILYMOTION];
   if (ext.includes('bilibili')) return PLATFORM_LABELS[PLATFORMS.BILIBILI];
+  if (ext.includes('pinterest')) return PLATFORM_LABELS[PLATFORMS.PINTEREST];
 
   if (fallbackPlatform && fallbackPlatform !== PLATFORMS.WEB && PLATFORM_LABELS[fallbackPlatform]) {
     return PLATFORM_LABELS[fallbackPlatform];
@@ -354,6 +375,9 @@ function isLoginWallUrl(platform, pathname) {
   }
   if (platform === PLATFORMS.TIKTOK) {
     return lowerPath === '/login' || lowerPath.startsWith('/login/');
+  }
+  if (platform === PLATFORMS.PINTEREST) {
+    return lowerPath === '/login' || lowerPath.startsWith('/login/') || lowerPath.startsWith('/password/reset');
   }
   return false;
 }

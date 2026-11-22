@@ -6,6 +6,7 @@ import downloadPrefixCommand from '../prefixCommands/download.js';
 import feedbackPrefixCommand from '../prefixCommands/feedback.js';
 import igfCommand from '../prefixCommands/igf.js';
 import lyricsPrefixCommand from '../prefixCommands/lyrics.js';
+import pinPrefixCommand, { PIN_COOLDOWN_MS } from '../prefixCommands/pin.js';
 import qcPrefixCommand from '../prefixCommands/qc.js';
 import quizCenterCommand from '../commands/quiz.js';
 import rpsCenterCommand from '../commands/rps.js';
@@ -31,6 +32,7 @@ const PREFIX_EXECUTORS = new Map([
   [igfCommand.name, igfCommand],
   [bratPrefixCommand.name, bratPrefixCommand],
   [downloadPrefixCommand.name, downloadPrefixCommand],
+  [pinPrefixCommand.name, pinPrefixCommand],
   [qcPrefixCommand.name, qcPrefixCommand],
   [sayPrefixCommand.name, sayPrefixCommand],
   [feedbackPrefixCommand.name, feedbackPrefixCommand],
@@ -82,6 +84,7 @@ const COMMAND_COOLDOWNS = Object.freeze({
   anime: ANIME_COOLDOWN_MS,
   download: DOWNLOAD_COOLDOWN_MS,
   lyrics: LYRICS_COOLDOWN_MS,
+  pin: PIN_COOLDOWN_MS,
   ping: PING_COOLDOWN_MS,
   say: SAY_COOLDOWN_MS,
   weather: WEATHER_COOLDOWN_MS,
