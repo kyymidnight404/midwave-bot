@@ -16,6 +16,23 @@ const PIN_IMAGE_PREFERRED_KEYS = Object.freeze(['orig', '736x', '564x', '474x', 
 const PIN_PATH_RE = /^\/pin\/([^/?#]+)/i;
 const PLACEHOLDER_VALUES = new Set(['undefined', 'null', 'none', 'n/a', 'na', '-']);
 const CONTROL_CHARS_RE = /[\u0000-\u001F\u007F]/g;
+const QUERY_STOPWORDS = new Set([
+  'to',
+  'of',
+  'the',
+  'a',
+  'an',
+  'in',
+  'on',
+  'for',
+  'and',
+  'or',
+  'by',
+  'with',
+  'dan',
+  'yang',
+  'di',
+]);
 
 /**
  * Collapses whitespace, strips control chars, and filters placeholder sentinel values.
@@ -289,6 +306,141 @@ export function extractCreatorFromPinData(rawPin) {
   return 'Pinterest Creator';
 }
 
+function hasMeaningfulNonTagText(text) {
+  const withoutTags = String(text || '')
+    .replace(/#[\p{L}\p{N}_]+/gu, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+  return withoutTags.length >= 2;
+}
+
+/**
+ * Normalizes text for keyword relevance comparison.
+ *
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function normalizeRelevanceText(value) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function collapseRepeatedChars(word) {
+  return word.replace(/(.)\1+/g, '$1');
+}
+
+/**
+ * Tokenizes a Pinterest search query into meaningful normalized tokens and concatenated form.
+ *
+ * @param {string} query
+ * @returns {{ tokens: string[], joinedRaw: string }}
+ */
+export function tokenizePinterestQuery(query) {
+  const rawWords = normalizeRelevanceText(query).split(' ').filter(Boolean);
+  if (rawWords.length === 0) {
+    return { tokens: [], joinedRaw: '' };
+  }
+  const meaningful = rawWords.filter((word) => !QUERY_STOPWORDS.has(word));
+  return {
+    tokens: meaningful.length > 0 ? meaningful : rawWords,
+    joinedRaw: rawWords.join(''),
+  };
+}
+
+function matchesQueryToken(token, normalizedText, collapsedText) {
+  if (!normalizedText) {
+    return false;
+  }
+  if (normalizedText.includes(token)) {
+    return true;
+  }
+  const collapsedToken = collapseRepeatedChars(token);
+  return collapsedToken.length >= 3 && collapsedText.includes(collapsedToken);
+}
+
+/**
+ * Verifies whether a raw Pinterest Pin item is genuinely relevant to the user's search keyword
+ * by checking Pin title, description, board name, alt text, and visual annotations.
+ *
+ * @param {Record<string, any>} rawPin
+ * @param {string} query
+ * @returns {boolean}
+ */
+export function isPinRelevantToQuery(rawPin, query) {
+  if (!rawPin || typeof rawPin !== 'object') {
+    return false;
+  }
+  if (rawPin.is_promoted === true) {
+    return false;
+  }
+  if (rawPin.type && rawPin.type !== 'pin') {
+    return false;
+  }
+
+  const { tokens, joinedRaw } = tokenizePinterestQuery(query);
+  if (tokens.length === 0) {
+    return false;
+  }
+
+  const titleDescParts = [
+    rawPin.title,
+    rawPin.grid_title,
+    rawPin.rich_summary?.display_name,
+    rawPin.description,
+  ].filter((val) => typeof val === 'string');
+
+  const primaryParts = [
+    ...titleDescParts,
+    typeof rawPin.board?.name === 'string' ? rawPin.board.name : '',
+  ].filter(Boolean);
+
+  const secondaryParts = [
+    rawPin.seo_alt_text,
+    rawPin.auto_alt_text,
+    ...(Array.isArray(rawPin.pin_join?.visual_annotation) ? rawPin.pin_join.visual_annotation : []),
+  ].filter((val) => typeof val === 'string');
+
+  const titleDescNorm = normalizeRelevanceText(titleDescParts.join(' '));
+  const titleDescCollapsed = collapseRepeatedChars(titleDescNorm);
+  const primaryNorm = normalizeRelevanceText(primaryParts.join(' '));
+  const primaryCollapsed = collapseRepeatedChars(primaryNorm);
+  const combinedNorm = normalizeRelevanceText([...primaryParts, ...secondaryParts].join(' '));
+  const combinedCollapsed = collapseRepeatedChars(combinedNorm);
+
+  const titleDescMatches = tokens.filter((t) =>
+    matchesQueryToken(t, titleDescNorm, titleDescCollapsed),
+  ).length;
+  const primaryMatches = tokens.filter((t) =>
+    matchesQueryToken(t, primaryNorm, primaryCollapsed),
+  ).length;
+  const combinedMatches = tokens.filter((t) =>
+    matchesQueryToken(t, combinedNorm, combinedCollapsed),
+  ).length;
+
+  const primaryJoined =
+    joinedRaw.length >= 4 && primaryNorm.replace(/\s+/g, '').includes(joinedRaw);
+  const combinedJoined =
+    joinedRaw.length >= 4 && combinedNorm.replace(/\s+/g, '').includes(joinedRaw);
+
+  const minRequired = tokens.length === 1 ? 1 : Math.ceil(tokens.length * 0.6);
+
+  return (
+    primaryMatches >= tokens.length ||
+    primaryJoined ||
+    combinedMatches >= tokens.length ||
+    combinedJoined ||
+    (primaryMatches >= minRequired && titleDescMatches >= 1)
+  );
+}
+
 /**
  * Extracts a clean title from Pinterest Pin metadata.
  *
@@ -296,20 +448,33 @@ export function extractCreatorFromPinData(rawPin) {
  * @returns {string}
  */
 export function extractTitleFromPinData(rawPin) {
-  const candidates = [
+  const directCandidates = [
     rawPin?.title,
     rawPin?.grid_title,
     rawPin?.rich_summary?.display_name,
-    rawPin?.seo_alt_text,
-    rawPin?.auto_alt_text,
-    rawPin?.description,
   ];
 
-  for (const candidate of candidates) {
+  for (const candidate of directCandidates) {
     const cleaned = cleanPinterestText(candidate);
     if (cleaned) {
       return truncateOnWordBoundary(cleaned, PIN_TITLE_MAX_LENGTH);
     }
+  }
+
+  const cleanedDescription = cleanPinterestText(rawPin?.description);
+  if (cleanedDescription && hasMeaningfulNonTagText(cleanedDescription)) {
+    return truncateOnWordBoundary(cleanedDescription, PIN_TITLE_MAX_LENGTH);
+  }
+
+  for (const altCandidate of [rawPin?.seo_alt_text, rawPin?.auto_alt_text]) {
+    const cleaned = cleanPinterestText(altCandidate);
+    if (cleaned) {
+      return truncateOnWordBoundary(cleaned, PIN_TITLE_MAX_LENGTH);
+    }
+  }
+
+  if (cleanedDescription) {
+    return truncateOnWordBoundary(cleanedDescription, PIN_TITLE_MAX_LENGTH);
   }
 
   return 'Untitled Pin';
@@ -334,6 +499,12 @@ export function extractPinMetadata(rawPin) {
     throw new DownloaderError(
       DOWNLOADER_ERROR_CODES.EXTRACTION_FAILED,
       'Data Pin Pinterest tidak valid.',
+    );
+  }
+  if (rawPin.type && rawPin.type !== 'pin') {
+    throw new DownloaderError(
+      DOWNLOADER_ERROR_CODES.EXTRACTION_FAILED,
+      'Item hasil pencarian bukan Pin Pinterest yang valid.',
     );
   }
 
@@ -386,10 +557,11 @@ export function extractPinMetadata(rawPin) {
 }
 
 /**
- * Extracts and validates up to `maxResults` organic Pin objects from raw search entries.
+ * Extracts and validates up to `maxResults` organic, relevant Pin objects from raw search entries
+ * while strictly preserving the search provider's original order.
  *
  * @param {unknown[]} rawItems
- * @param {{ maxResults?: number }} [options]
+ * @param {{ maxResults?: number, query?: string }} [options]
  * @returns {ReturnType<typeof extractPinMetadata>[]}
  */
 export function extractPinterestResults(rawItems, options = {}) {
@@ -398,8 +570,23 @@ export function extractPinterestResults(rawItems, options = {}) {
   }
 
   const maxResults = Math.min(25, Math.max(1, Number(options.maxResults) || 10));
-  const organicItems = rawItems.filter((item) => item && typeof item === 'object' && item.is_promoted !== true);
-  const candidates = organicItems.length > 0 ? organicItems : rawItems.filter((item) => item && typeof item === 'object');
+  const query = typeof options.query === 'string' ? options.query.trim() : '';
+
+  const organicPins = rawItems.filter(
+    (item) =>
+      item &&
+      typeof item === 'object' &&
+      item.is_promoted !== true &&
+      (!item.type || item.type === 'pin'),
+  );
+
+  if (organicPins.length === 0) {
+    return [];
+  }
+
+  const candidates = query
+    ? organicPins.filter((item) => isPinRelevantToQuery(item, query))
+    : organicPins;
 
   if (candidates.length === 0) {
     return [];

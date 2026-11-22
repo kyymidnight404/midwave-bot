@@ -156,7 +156,7 @@ export async function execute(interactionOrMessage, contextOrArgs = {}, maybeCon
   if (results.length === 0) {
     await sendSafeDeferredError(
       interaction,
-      `Tidak ada hasil Pinterest ditemukan untuk kata kunci **${query}**.`,
+      `Tidak ada hasil Pinterest yang relevan ditemukan untuk kata kunci **${query}**.`,
     );
     return;
   }

@@ -8,7 +8,7 @@ import {
 
 export const PIN_MAX_QUERY_LENGTH = 150;
 export const PIN_DEFAULT_MAX_RESULTS = 10;
-export const PIN_SEARCH_PAGE_SIZE = 20;
+export const PIN_SEARCH_PAGE_SIZE = 25;
 export const PIN_SEARCH_TIMEOUT_MS = 10_000;
 export const PIN_COOLDOWN_MS = 5_000;
 
@@ -55,11 +55,12 @@ export function validatePinterestQuery(rawQuery) {
  * @returns {string}
  */
 export function buildPinterestSearchUrl(query, pageSize = PIN_SEARCH_PAGE_SIZE) {
-  const sourceUrl = `/search/pins/?q=${encodeURIComponent(query)}`;
+  const sourceUrl = `/search/pins/?q=${encodeURIComponent(query)}&rs=typed`;
   const dataPayload = JSON.stringify({
     options: {
       query,
       scope: 'pins',
+      rs: 'typed',
       page_size: pageSize,
     },
     context: {},
@@ -197,15 +198,15 @@ export async function searchPinterest(input, options = {}) {
   if (rawResults.length === 0) {
     throw new DownloaderError(
       DOWNLOADER_ERROR_CODES.NOT_FOUND,
-      `Tidak ada hasil Pinterest ditemukan untuk kata kunci **${query}**.`,
+      `Tidak ada hasil Pinterest yang relevan ditemukan untuk kata kunci **${query}**.`,
     );
   }
 
-  const results = extractPinterestResults(rawResults, { maxResults });
+  const results = extractPinterestResults(rawResults, { maxResults, query });
   if (results.length === 0) {
     throw new DownloaderError(
       DOWNLOADER_ERROR_CODES.NOT_FOUND,
-      `Tidak ada hasil Pinterest ditemukan untuk kata kunci **${query}**.`,
+      `Tidak ada hasil Pinterest yang relevan ditemukan untuk kata kunci **${query}**.`,
     );
   }
 

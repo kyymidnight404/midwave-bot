@@ -40,14 +40,18 @@ export function parsePinterestCustomId(customId) {
 }
 
 /**
- * Builds the single-result Pinterest Search Discord Embed.
+ * Builds the minimalist single-result Pinterest Search Discord Embed.
+ *
+ * Structure:
+ * - Author: Pinterest
+ * - Title: Pin title
+ * - Image: Active Pin image or thumbnail
+ * - Footer: `{currentIndex}/{totalResults} • {keyword}`
  *
  * @param {{
  *   title: string,
- *   creator: string,
  *   thumbnailUrl: string,
  *   pinUrl: string,
- *   mediaType?: 'image' | 'video',
  * }} pin
  * @param {{
  *   currentIndex: number,
@@ -66,16 +70,15 @@ export function buildPinterestEmbed(pin, { currentIndex = 0, total = 1, query = 
     rawTitle.length > EMBED_TITLE_MAX_LENGTH
       ? `${rawTitle.slice(0, EMBED_TITLE_MAX_LENGTH - 3).trimEnd()}...`
       : rawTitle;
-  const creator = String(pin?.creator || 'Pinterest Creator').trim() || 'Pinterest Creator';
+  const cleanQuery = String(query || '').replace(/\s+/g, ' ').trim();
+  const footerText = cleanQuery ? `${pageIndicator} • ${cleanQuery}` : pageIndicator;
 
   const embed = createBaseEmbed({
     title,
     color: COLORS.PRIMARY,
     includeThumbnail: false,
-    footer: query
-      ? `Pinterest • ${pageIndicator} • ${query.slice(0, 60)}`
-      : `Pinterest • ${pageIndicator}`,
-  });
+    footer: footerText.slice(0, 2048),
+  }).setAuthor({ name: 'Pinterest' });
 
   if (pin?.pinUrl) {
     embed.setURL(pin.pinUrl);
@@ -83,15 +86,6 @@ export function buildPinterestEmbed(pin, { currentIndex = 0, total = 1, query = 
 
   if (pin?.thumbnailUrl) {
     embed.setImage(pin.thumbnailUrl);
-  }
-
-  embed.addFields(
-    { name: 'Creator', value: creator, inline: true },
-    { name: 'Halaman', value: pageIndicator, inline: true },
-  );
-
-  if (pin?.mediaType === 'video') {
-    embed.addFields({ name: 'Tipe', value: 'Video Thumbnail', inline: true });
   }
 
   return embed;

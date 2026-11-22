@@ -12,6 +12,9 @@ export {
   extractPinterestResults,
   extractThumbnailFromPinData,
   extractTitleFromPinData,
+  isPinRelevantToQuery,
+  normalizeRelevanceText,
+  tokenizePinterestQuery,
   validatePinterestPinUrl,
 } from './extractor.js';
 

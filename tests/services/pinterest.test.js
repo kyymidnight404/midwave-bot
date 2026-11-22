@@ -16,6 +16,7 @@ import {
   extractPinFromUrl,
   extractPinMetadata,
   extractPinterestResults,
+  isPinRelevantToQuery,
   searchPinterest,
   validatePinterestPinUrl,
   validatePinterestQuery,
@@ -34,7 +35,8 @@ function createSampleRawPin(index, overrides = {}) {
   const num = index + 1;
   return {
     id: `pin_id_${num}`,
-    title: `Wallpaper Aesthetic ${num}`,
+    type: 'pin',
+    title: `Anime Aesthetic Wallpaper ${num}`,
     pinner: {
       username: `creator_${num}`,
       full_name: `Creator Name ${num}`,
@@ -175,11 +177,22 @@ describe('Pinterest Search — Extractor, Search, Session, UI & Command Integrat
 
   it('extracts image & video thumbnail Pin metadata and handles extraction failures cleanly', async () => {
     const imagePin = extractPinMetadata(createSampleRawPin(0));
-    assert.equal(imagePin.title, 'Wallpaper Aesthetic 1');
+    assert.equal(imagePin.title, 'Anime Aesthetic Wallpaper 1');
     assert.equal(imagePin.creator, 'Creator Name 1 (@creator_1)');
     assert.equal(imagePin.thumbnailUrl, 'https://i.pinimg.com/originals/aa/bb/1.jpg');
     assert.equal(imagePin.pinUrl, 'https://www.pinterest.com/pin/pin_id_1/');
     assert.equal(imagePin.mediaType, 'image');
+
+    const descPreferredPin = extractPinMetadata({
+      id: 'desc_pin_1',
+      type: 'pin',
+      title: '',
+      grid_title: '',
+      description: 'Kawai Mako Hibimeshi Icon',
+      seo_alt_text: 'an anime character eating a donut',
+      images: { orig: { url: 'https://i.pinimg.com/originals/aa/bb/99.jpg' } },
+    });
+    assert.equal(descPreferredPin.title, 'Kawai Mako Hibimeshi Icon');
 
     const videoPin = extractPinMetadata({
       id: 'vid_pin_99',
@@ -211,16 +224,17 @@ describe('Pinterest Search — Extractor, Search, Session, UI & Command Integrat
     assert.equal(videoPin.mediaType, 'video');
     assert.equal(videoPin.videoUrl, 'https://v1.pinimg.com/videos/iht/hls/video.m3u8');
 
-    // Filters promoted pins and throws EXTRACTION_FAILED if all organic pins lack valid media
+    // Filters promoted pins, non-pin widgets, and throws EXTRACTION_FAILED if all relevant pins lack valid media
     const filtered = extractPinterestResults([
       createSampleRawPin(0, { is_promoted: true }),
+      { id: 'board_widget_1', type: 'story', story_type: 'featured_boards' },
       createSampleRawPin(1),
     ]);
     assert.equal(filtered.length, 1);
     assert.equal(filtered[0].id, 'pin_id_2');
 
     assert.throws(
-      () => extractPinterestResults([{ id: 'bad_1', images: { orig: { url: 'http://localhost/evil.jpg' } } }]),
+      () => extractPinterestResults([{ id: 'bad_1', type: 'pin', images: { orig: { url: 'http://localhost/evil.jpg' } } }]),
       (err) => err instanceof DownloaderError && err.code === DOWNLOADER_ERROR_CODES.EXTRACTION_FAILED,
     );
 
@@ -273,6 +287,10 @@ describe('Pinterest Search — Extractor, Search, Session, UI & Command Integrat
       maxResults: 10,
       fetchImpl: async (url) => {
         assert.match(url, /BaseSearchResource\/get/);
+        const parsed = new URL(url);
+        const data = JSON.parse(parsed.searchParams.get('data'));
+        assert.equal(data.options.query, 'anime aesthetic');
+        assert.equal(data.options.rs, 'typed');
         return createMockJsonResponse(200, {
           resource_response: { data: { results: raw12 } },
         });
@@ -280,6 +298,58 @@ describe('Pinterest Search — Extractor, Search, Session, UI & Command Integrat
     });
     assert.equal(searchRes.query, 'anime aesthetic');
     assert.equal(searchRes.results.length, 10);
+
+    // Relevance filtering: drops unrelated horse-head spam / noise for `kawaii mako` & preserves order
+    const mixedKawaiiMako = [
+      createSampleRawPin(0, {
+        id: 'noise_toy',
+        title: '',
+        description: '',
+        seo_alt_text: 'a close up of a toy with a person kissing its face',
+        board: { name: 'Quick Saves' },
+      }),
+      createSampleRawPin(1, {
+        id: 'real_mako_1',
+        title: 'Makocchi - Kawai Mako',
+        description: 'Food for the Soul',
+      }),
+      createSampleRawPin(2, {
+        id: 'horse_head_spam',
+        title: '',
+        description: 'Mako Mankanshoku Sticker',
+        seo_alt_text: "a brown and white horse's head with pink cheeks sticker on a white background",
+        domain: 'redbubble.com',
+      }),
+      createSampleRawPin(3, {
+        id: 'real_mako_2',
+        title: 'Kawai Mako - Hibi wa Sugiredo Meshi Umashi',
+      }),
+    ];
+    assert.equal(isPinRelevantToQuery(mixedKawaiiMako[0], 'kawaii mako'), false);
+    assert.equal(isPinRelevantToQuery(mixedKawaiiMako[1], 'kawaii mako'), true);
+    assert.equal(isPinRelevantToQuery(mixedKawaiiMako[2], 'kawaii mako'), false);
+    assert.equal(isPinRelevantToQuery(mixedKawaiiMako[3], 'kawaii mako'), true);
+
+    const relevantRes = await searchPinterest('kawaii mako', {
+      fetchImpl: async () =>
+        createMockJsonResponse(200, { resource_response: { data: { results: mixedKawaiiMako } } }),
+    });
+    assert.deepEqual(
+      relevantRes.results.map((r) => r.id),
+      ['real_mako_1', 'real_mako_2'],
+    );
+
+    // Unrelated-only fallback pins -> NOT_FOUND empty state (never return random pins)
+    await assert.rejects(
+      () =>
+        searchPinterest('kawaii mako', {
+          fetchImpl: async () =>
+            createMockJsonResponse(200, {
+              resource_response: { data: { results: [mixedKawaiiMako[0], mixedKawaiiMako[2]] } },
+            }),
+        }),
+      (err) => err instanceof DownloaderError && err.code === DOWNLOADER_ERROR_CODES.NOT_FOUND,
+    );
 
     // Empty results -> NOT_FOUND
     await assert.rejects(
@@ -329,17 +399,22 @@ describe('Pinterest Search — Extractor, Search, Session, UI & Command Integrat
     );
   });
 
-  it('builds single-result embed and exact 3-button ActionRow with accurate button states', () => {
+  it('builds minimalist single-result embed and exact 3-button ActionRow with accurate button states', () => {
     const pins = createSamplePins(10);
 
     // First result (1/10): Prev disabled, Next enabled, Link points to Pin 1
-    const firstEmbed = buildPinterestEmbed(pins[0], { currentIndex: 0, total: pins.length, query: 'wallpaper' }).toJSON();
-    assert.equal(firstEmbed.title, 'Wallpaper Aesthetic 1');
+    const firstEmbed = buildPinterestEmbed(pins[0], {
+      currentIndex: 0,
+      total: pins.length,
+      query: 'kawaii mako',
+    }).toJSON();
+    assert.equal(firstEmbed.author.name, 'Pinterest');
+    assert.equal(firstEmbed.title, 'Anime Aesthetic Wallpaper 1');
     assert.equal(firstEmbed.url, pins[0].pinUrl);
     assert.equal(firstEmbed.image.url, pins[0].thumbnailUrl);
-    assert.ok(firstEmbed.fields.some((f) => f.name === 'Creator' && f.value === pins[0].creator));
-    assert.ok(firstEmbed.fields.some((f) => f.name === 'Halaman' && f.value === '1/10'));
-    assert.match(firstEmbed.footer.text, /1\/10/);
+    assert.equal(firstEmbed.footer.text, '1/10 • kawaii mako');
+    assert.equal(firstEmbed.description, undefined);
+    assert.equal(firstEmbed.fields, undefined);
 
     const firstRow = buildPinterestActionRow({
       currentIndex: 0,
@@ -516,10 +591,12 @@ describe('Pinterest Search — Extractor, Search, Session, UI & Command Integrat
     assert.equal(initialPayload.components.length, 1);
 
     const initialEmbed = initialPayload.embeds[0].toJSON();
+    assert.equal(initialEmbed.author.name, 'Pinterest');
     assert.equal(initialEmbed.title, samplePins[0].title);
     assert.equal(initialEmbed.image.url, samplePins[0].thumbnailUrl);
-    assert.ok(initialEmbed.fields.some((f) => f.name === 'Creator' && f.value === samplePins[0].creator));
-    assert.ok(initialEmbed.fields.some((f) => f.name === 'Halaman' && f.value === '1/10'));
+    assert.equal(initialEmbed.footer.text, '1/10 • cyberpunk city');
+    assert.equal(initialEmbed.fields, undefined);
+    assert.equal(initialEmbed.description, undefined);
 
     const initialRow = initialPayload.components[0].toJSON();
     assert.equal(initialRow.components.length, 3);
@@ -552,9 +629,11 @@ describe('Pinterest Search — Extractor, Search, Session, UI & Command Integrat
 
     const page2Embed = nextEvents[0].payload.embeds[0].toJSON();
     const page2Row = nextEvents[0].payload.components[0].toJSON();
+    assert.equal(page2Embed.author.name, 'Pinterest');
     assert.equal(page2Embed.title, samplePins[1].title);
     assert.equal(page2Embed.image.url, samplePins[1].thumbnailUrl);
-    assert.ok(page2Embed.fields.some((f) => f.name === 'Halaman' && f.value === '2/10'));
+    assert.equal(page2Embed.footer.text, '2/10 • cyberpunk city');
+    assert.equal(page2Embed.fields, undefined);
     assert.equal(page2Row.components[0].disabled, false);
     assert.equal(page2Row.components[1].url, samplePins[1].pinUrl);
     assert.equal(page2Row.components[2].disabled, false);
@@ -579,7 +658,7 @@ describe('Pinterest Search — Extractor, Search, Session, UI & Command Integrat
       if (step === 8) {
         const lastRow = btn.getEvents()[0].payload.components[0].toJSON();
         const lastEmbed = btn.getEvents()[0].payload.embeds[0].toJSON();
-        assert.ok(lastEmbed.fields.some((f) => f.name === 'Halaman' && f.value === '10/10'));
+        assert.equal(lastEmbed.footer.text, '10/10 • cyberpunk city');
         assert.equal(lastRow.components[0].disabled, false);
         assert.equal(lastRow.components[1].url, samplePins[9].pinUrl);
         assert.equal(lastRow.components[2].disabled, true);
@@ -702,8 +781,11 @@ describe('Pinterest Search — Extractor, Search, Session, UI & Command Integrat
     assert.equal(events[1].type, 'editReply');
 
     const initialPayload = events[1].payload;
-    assert.equal(initialPayload.embeds[0].toJSON().title, samplePins[0].title);
-    assert.ok(initialPayload.embeds[0].toJSON().fields.some((f) => f.name === 'Halaman' && f.value === '1/4'));
+    const initialJson = initialPayload.embeds[0].toJSON();
+    assert.equal(initialJson.author.name, 'Pinterest');
+    assert.equal(initialJson.title, samplePins[0].title);
+    assert.equal(initialJson.footer.text, '1/4 • minimalist desk');
+    assert.equal(initialJson.fields, undefined);
 
     const row = initialPayload.components[0].toJSON();
     assert.equal(row.components.length, 3);
