@@ -3,10 +3,14 @@ import {
   AFK_COOLDOWN_MS,
   AFK_MAX_REASON_LENGTH,
   SAFE_AFK_MENTION_OPTIONS,
+  buildAfkEnabledEmbed,
   buildAfkEnabledMessage,
+  buildAfkReplyPayload,
+  canSendEmbeds,
   setAfkStatus,
 } from '../services/afkService.js';
 import { prisma as defaultPrisma } from '../services/prisma.js';
+import { buildErrorEmbed } from '../utils/embeds.js';
 import { sanitizeError } from '../utils/errorSanitizer.js';
 
 export const data = new SlashCommandBuilder()
@@ -48,18 +52,20 @@ export async function execute(interaction, context = {}) {
       now: context?.now,
     });
 
-    await interaction.reply({
-      content: buildAfkEnabledMessage(record),
-      allowedMentions: {
-        parse: [...SAFE_AFK_MENTION_OPTIONS.parse],
-        repliedUser: SAFE_AFK_MENTION_OPTIONS.repliedUser,
-      },
-    });
+    await interaction.reply(
+      buildAfkReplyPayload({
+        content: buildAfkEnabledMessage(record),
+        embed: buildAfkEnabledEmbed(record),
+        target: interaction,
+      }),
+    );
   } catch (error) {
     logger?.error?.('[AFK] Failed saving AFK status:', sanitizeError(error));
     try {
+      const errorMessage = 'Gagal menyimpan status AFK saat ini. Silakan coba lagi.';
+      const useEmbed = canSendEmbeds(interaction);
       await interaction.reply({
-        content: 'Gagal menyimpan status AFK saat ini. Silakan coba lagi.',
+        ...(useEmbed ? { embeds: [buildErrorEmbed(errorMessage)] } : { content: errorMessage }),
         flags: MessageFlags.Ephemeral,
         allowedMentions: {
           parse: [...SAFE_AFK_MENTION_OPTIONS.parse],

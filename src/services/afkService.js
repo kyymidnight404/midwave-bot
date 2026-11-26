@@ -1,7 +1,9 @@
 import { PermissionFlagsBits } from 'discord.js';
+import { COLORS } from '../config/colors.js';
 import { prisma as defaultPrisma } from './prisma.js';
 import { DISCORD_MAX_MESSAGE_LENGTH, sanitizeAiMentions } from '../utils/aiFormatter.js';
 import { AFK_MAX_REASON_LENGTH } from '../utils/constants.js';
+import { createBaseEmbed } from '../utils/embeds.js';
 import { sanitizeError } from '../utils/errorSanitizer.js';
 import { parsePrefixInvocation, resolvePrefix } from '../utils/prefixParser.js';
 
@@ -109,6 +111,22 @@ export function buildAfkEnabledMessage(record) {
 }
 
 /**
+ * Builds the embed confirmation when a user activates/updates AFK.
+ *
+ * @param {{ userId: string, reason: string }} record
+ * @returns {import('discord.js').EmbedBuilder}
+ */
+export function buildAfkEnabledEmbed(record) {
+  const reason = normalizeAfkReason(record?.reason);
+  return createBaseEmbed({
+    title: '🌙 Status AFK Aktif',
+    description: `<@${record.userId}> sekarang sedang AFK.\n\n**Alasan:** ${reason}`,
+    color: COLORS.PRIMARY,
+    includeThumbnail: false,
+  });
+}
+
+/**
  * Builds a single AFK notice block for an AFK user who was mentioned.
  *
  * @param {{ userId: string, reason: string, since: Date | string | number }} record
@@ -151,6 +169,45 @@ export function buildAfkMentionMessage(records, nowMs = Date.now()) {
 }
 
 /**
+ * Builds an embed containing up to `AFK_MAX_NOTICES_PER_MESSAGE` deduplicated AFK notices.
+ *
+ * @param {Array<{ userId: string, reason: string, since: Date | string | number }>} records
+ * @param {number} [nowMs]
+ * @returns {import('discord.js').EmbedBuilder | null}
+ */
+export function buildAfkMentionEmbed(records, nowMs = Date.now()) {
+  if (!Array.isArray(records) || records.length === 0) {
+    return null;
+  }
+
+  const blocks = [];
+  let currentLength = 0;
+
+  for (const record of records.slice(0, AFK_MAX_NOTICES_PER_MESSAGE)) {
+    const reason = normalizeAfkReason(record?.reason);
+    const sinceText = formatAfkSince(record?.since, nowMs);
+    const block = `<@${record.userId}> sedang AFK\n**Alasan:** ${reason}\n**Sejak:** ${sinceText}`;
+    const sepLen = blocks.length > 0 ? 2 : 0;
+    if (blocks.length > 0 && currentLength + sepLen + block.length > DISCORD_MAX_MESSAGE_LENGTH) {
+      break;
+    }
+    blocks.push(block);
+    currentLength += sepLen + block.length;
+  }
+
+  if (blocks.length === 0) {
+    return null;
+  }
+
+  return createBaseEmbed({
+    title: '🌙 Pengguna Sedang AFK',
+    description: blocks.join('\n\n').slice(0, DISCORD_MAX_MESSAGE_LENGTH),
+    color: COLORS.PRIMARY,
+    includeThumbnail: false,
+  });
+}
+
+/**
  * Builds the plain-text welcome-back notification when an AFK user sends a message.
  *
  * @param {{ userId: string, since: Date | string | number }} record
@@ -162,6 +219,25 @@ export function buildAfkReturnMessage(record, nowMs = Date.now()) {
   const elapsedMs = Number.isFinite(sinceMs) ? Math.max(0, nowMs - sinceMs) : 0;
   const durationText = formatAfkDuration(elapsedMs);
   return `☀️ Selamat datang kembali, <@${record.userId}>!\n\nKamu telah AFK selama ${durationText}.`;
+}
+
+/**
+ * Builds the embed welcome-back notification when an AFK user sends a message.
+ *
+ * @param {{ userId: string, since: Date | string | number }} record
+ * @param {number} [nowMs]
+ * @returns {import('discord.js').EmbedBuilder}
+ */
+export function buildAfkReturnEmbed(record, nowMs = Date.now()) {
+  const sinceMs = record?.since instanceof Date ? record.since.getTime() : new Date(record?.since).getTime();
+  const elapsedMs = Number.isFinite(sinceMs) ? Math.max(0, nowMs - sinceMs) : 0;
+  const durationText = formatAfkDuration(elapsedMs);
+  return createBaseEmbed({
+    title: '☀️ Selamat Datang Kembali',
+    description: `<@${record.userId}> telah kembali!\n\nKamu telah AFK selama **${durationText}**.`,
+    color: COLORS.SUCCESS,
+    includeThumbnail: false,
+  });
 }
 
 /**
@@ -344,40 +420,61 @@ export function extractMentionedAfkCandidateIds(message) {
   return candidateIds;
 }
 
-function canSendPlainTextReply(message) {
-  if (!message?.guild || typeof message.channel?.permissionsFor !== 'function') {
-    return true;
+function resolveChannelPermissions(target) {
+  if (!target?.guild || typeof target.channel?.permissionsFor !== 'function') {
+    return null;
   }
 
   const botMember =
-    message.guild.members?.me ??
-    (message.client?.user?.id ? message.guild.members?.cache?.get?.(message.client.user.id) : null);
+    target.guild.members?.me ??
+    (target.client?.user?.id ? target.guild.members?.cache?.get?.(target.client.user.id) : null);
   if (!botMember) {
-    return true;
+    return null;
   }
 
-  const perms = message.channel.permissionsFor(botMember);
+  return target.channel.permissionsFor(botMember) ?? null;
+}
+
+function canSendMessages(target) {
+  const perms = resolveChannelPermissions(target);
   if (!perms) {
     return true;
   }
-
   return Boolean(
     perms.has(PermissionFlagsBits.ViewChannel) && perms.has(PermissionFlagsBits.SendMessages),
   );
 }
 
-async function sendSafePlainReply(message, content, logger = console) {
-  if (!content || !canSendPlainTextReply(message)) {
+export function canSendEmbeds(target) {
+  if (typeof target?.canEmbedLinks === 'boolean') {
+    return target.canEmbedLinks;
+  }
+  const perms = resolveChannelPermissions(target?.message ?? target);
+  if (!perms) {
+    return true;
+  }
+  return Boolean(perms.has(PermissionFlagsBits.EmbedLinks));
+}
+
+export function buildAfkReplyPayload({ content, embed, target }) {
+  const allowedMentions = {
+    parse: [...SAFE_AFK_MENTION_OPTIONS.parse],
+    repliedUser: SAFE_AFK_MENTION_OPTIONS.repliedUser,
+  };
+
+  if (embed && canSendEmbeds(target)) {
+    return { embeds: [embed], allowedMentions };
+  }
+
+  return { content, allowedMentions };
+}
+
+async function sendSafeAfkReply(message, { content, embed }, logger = console) {
+  if ((!content && !embed) || !canSendMessages(message)) {
     return null;
   }
 
-  const payload = {
-    content,
-    allowedMentions: {
-      parse: [...SAFE_AFK_MENTION_OPTIONS.parse],
-      repliedUser: SAFE_AFK_MENTION_OPTIONS.repliedUser,
-    },
-  };
+  const payload = buildAfkReplyPayload({ content, embed, target: message });
 
   try {
     if (typeof message.reply === 'function') {
@@ -423,9 +520,11 @@ export async function processAfkMentions(message, context = {}) {
     return [];
   }
 
-  const content = buildAfkMentionMessage(afkRecords, context.nowMs ?? Date.now());
-  if (content) {
-    await sendSafePlainReply(message, content, context.logger ?? console);
+  const nowMs = context.nowMs ?? Date.now();
+  const content = buildAfkMentionMessage(afkRecords, nowMs);
+  const embed = buildAfkMentionEmbed(afkRecords, nowMs);
+  if (content || embed) {
+    await sendSafeAfkReply(message, { content, embed }, context.logger ?? console);
   }
   return afkRecords;
 }
@@ -468,7 +567,14 @@ export async function handleAfkMessage(message, context = {}) {
   try {
     cleared = await removeAfkStatus(message.author.id, { prisma });
     if (cleared) {
-      await sendSafePlainReply(message, buildAfkReturnMessage(cleared, nowMs), logger);
+      await sendSafeAfkReply(
+        message,
+        {
+          content: buildAfkReturnMessage(cleared, nowMs),
+          embed: buildAfkReturnEmbed(cleared, nowMs),
+        },
+        logger,
+      );
     }
   } catch (error) {
     logger?.error?.('[AFK] Failed auto-removing AFK status:', sanitizeError(error));

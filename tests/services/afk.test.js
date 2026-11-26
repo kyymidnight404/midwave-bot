@@ -199,7 +199,7 @@ describe('AFK Feature — Prefix, Slash, Persistence & Auto-Clear Integration', 
       assert.equal(row1.reason, 'sedang tidur');
       assert.ok(row1.since instanceof Date);
 
-      // Without reason -> default 'Tidak ada alasan'
+      // Without reason -> default 'Tidak ada alasan' (sent as embed when EmbedLinks allowed)
       const msg2 = createFakeMessage({
         content: '!afk',
         author: { id: uid2, username: 'bob', bot: false },
@@ -208,8 +208,9 @@ describe('AFK Feature — Prefix, Slash, Persistence & Auto-Clear Integration', 
 
       const out2 = msg2.getAllOutputs();
       assert.equal(out2.length, 1);
-      assert.equal(out2[0].payload.embeds, undefined);
-      assert.match(out2[0].payload.content, new RegExp(`Alasan: ${AFK_DEFAULT_REASON}`));
+      assert.equal(out2[0].payload.embeds?.length, 1);
+      assert.equal(out2[0].payload.embeds[0].data.title, '🌙 Status AFK Aktif');
+      assert.match(out2[0].payload.embeds[0].data.description, new RegExp(`\\*\\*Alasan:\\*\\* ${AFK_DEFAULT_REASON}`));
 
       const row2 = await getAfkStatus(uid2, { prisma });
       assert.ok(row2);
@@ -235,8 +236,8 @@ describe('AFK Feature — Prefix, Slash, Persistence & Auto-Clear Integration', 
 
       const r1 = slashNoReason.getReplies();
       assert.equal(r1.length, 1);
-      assert.equal(r1[0].payload.embeds, undefined);
-      assert.match(r1[0].payload.content, new RegExp(`Alasan: ${AFK_DEFAULT_REASON}`));
+      assert.equal(r1[0].payload.embeds?.length, 1);
+      assert.match(r1[0].payload.embeds[0].data.description, new RegExp(`\\*\\*Alasan:\\*\\* ${AFK_DEFAULT_REASON}`));
 
       let rows = await prisma.afkStatus.findMany({ where: { userId: uidSlash } });
       assert.equal(rows.length, 1);
@@ -248,7 +249,8 @@ describe('AFK Feature — Prefix, Slash, Persistence & Auto-Clear Integration', 
 
       const r2 = slashWithReason.getReplies();
       assert.equal(r2.length, 1);
-      assert.match(r2[0].payload.content, /Alasan: sedang belajar/);
+      assert.equal(r2[0].payload.embeds?.length, 1);
+      assert.match(r2[0].payload.embeds[0].data.description, /\*\*Alasan:\*\* sedang belajar/);
 
       rows = await prisma.afkStatus.findMany({ where: { userId: uidSlash } });
       assert.equal(rows.length, 1);
@@ -263,8 +265,8 @@ describe('AFK Feature — Prefix, Slash, Persistence & Auto-Clear Integration', 
 
       const outputs = msgUpdate.getAllOutputs();
       assert.equal(outputs.length, 1);
-      assert.equal(outputs[0].payload.content.includes('Selamat datang kembali'), false);
-      assert.match(outputs[0].payload.content, /Alasan: makan malam/);
+      assert.equal(outputs[0].payload.embeds[0].data.description.includes('Selamat datang kembali'), false);
+      assert.match(outputs[0].payload.embeds[0].data.description, /\*\*Alasan:\*\* makan malam/);
 
       rows = await prisma.afkStatus.findMany({ where: { userId: uidSlash } });
       assert.equal(rows.length, 1);
@@ -312,11 +314,12 @@ describe('AFK Feature — Prefix, Slash, Persistence & Auto-Clear Integration', 
 
       const singleOut = singleMentionMsg.getAllOutputs();
       assert.equal(singleOut.length, 1);
-      assert.equal(singleOut[0].payload.embeds, undefined);
+      assert.equal(singleOut[0].payload.embeds?.length, 1);
       assert.deepEqual(singleOut[0].payload.allowedMentions, { parse: [], repliedUser: false });
-      assert.match(singleOut[0].payload.content, new RegExp(`🌙 <@${uidA}> sedang AFK`));
-      assert.match(singleOut[0].payload.content, /Alasan: Sedang belajar/);
-      assert.match(singleOut[0].payload.content, /Sejak: 15 menit yang lalu/);
+      assert.equal(singleOut[0].payload.embeds[0].data.title, '🌙 Pengguna Sedang AFK');
+      assert.match(singleOut[0].payload.embeds[0].data.description, new RegExp(`<@${uidA}> sedang AFK`));
+      assert.match(singleOut[0].payload.embeds[0].data.description, /\*\*Alasan:\*\* Sedang belajar/);
+      assert.match(singleOut[0].payload.embeds[0].data.description, /\*\*Sejak:\*\* 15 menit yang lalu/);
       assert.ok(await getAfkStatus(uidA, { prisma }), 'Mentioning an AFK user must NOT clear their AFK status');
 
       // 2. Multiple & repeated mentions of uidA + uidB + non-AFK uidC + self-mention uidSender -> ONE single consolidated notice without duplicates
@@ -334,9 +337,9 @@ describe('AFK Feature — Prefix, Slash, Persistence & Auto-Clear Integration', 
 
       const multiOut = multiMentionMsg.getAllOutputs();
       assert.equal(multiOut.length, 1);
-      const noticeText = multiOut[0].payload.content;
-      assert.equal(noticeText.split(`🌙 <@${uidA}> sedang AFK`).length - 1, 1);
-      assert.equal(noticeText.split(`🌙 <@${uidB}> sedang AFK`).length - 1, 1);
+      const noticeText = multiOut[0].payload.embeds[0].data.description;
+      assert.equal(noticeText.split(`<@${uidA}> sedang AFK`).length - 1, 1);
+      assert.equal(noticeText.split(`<@${uidB}> sedang AFK`).length - 1, 1);
       assert.equal(noticeText.includes(uidC), false);
       assert.equal(noticeText.includes(uidSender), false);
 
@@ -366,7 +369,7 @@ describe('AFK Feature — Prefix, Slash, Persistence & Auto-Clear Integration', 
       await assert.doesNotReject(() => messageCreateEvent.execute(formerMemberMsg, app.context));
       const formerOut = formerMemberMsg.getAllOutputs();
       assert.equal(formerOut.length, 1);
-      assert.match(formerOut[0].payload.content, new RegExp(`🌙 <@${uidB}> sedang AFK`));
+      assert.match(formerOut[0].payload.embeds[0].data.description, new RegExp(`<@${uidB}> sedang AFK`));
     } finally {
       app.shutdown();
     }
@@ -400,9 +403,10 @@ describe('AFK Feature — Prefix, Slash, Persistence & Auto-Clear Integration', 
 
       const retOut1 = normalReturnMsg.getAllOutputs();
       assert.equal(retOut1.length, 1);
-      assert.equal(retOut1[0].payload.embeds, undefined);
-      assert.match(retOut1[0].payload.content, new RegExp(`☀️ Selamat datang kembali, <@${uid1}>!`));
-      assert.match(retOut1[0].payload.content, /Kamu telah AFK selama 2 jam 15 menit\./);
+      assert.equal(retOut1[0].payload.embeds?.length, 1);
+      assert.equal(retOut1[0].payload.embeds[0].data.title, '☀️ Selamat Datang Kembali');
+      assert.match(retOut1[0].payload.embeds[0].data.description, new RegExp(`<@${uid1}> telah kembali!`));
+      assert.match(retOut1[0].payload.embeds[0].data.description, /Kamu telah AFK selama \*\*2 jam 15 menit\*\*\./);
       assert.equal(await getAfkStatus(uid1, { prisma }), null);
 
       // Subsequent normal message should NOT send welcome-back again
@@ -429,7 +433,7 @@ describe('AFK Feature — Prefix, Slash, Persistence & Auto-Clear Integration', 
 
       const outputs2 = prefixCmdMsg.getAllOutputs();
       assert.equal(outputs2.length, 2);
-      assert.ok(outputs2.some((o) => o.payload.content?.includes('Selamat datang kembali')));
+      assert.ok(outputs2.some((o) => o.payload.embeds?.[0]?.data?.title?.includes('Selamat Datang Kembali')));
       assert.ok(outputs2.some((o) => o.payload.content === 'tetap jalan'));
       assert.equal(await getAfkStatus(uid2, { prisma }), null);
 
@@ -520,7 +524,7 @@ describe('AFK Feature — Prefix, Slash, Persistence & Auto-Clear Integration', 
 
       const mentionOut = humanMentionMsg.getAllOutputs();
       assert.equal(mentionOut.length, 1);
-      assert.match(mentionOut[0].payload.content, /Alasan: restart persistence test/);
+      assert.match(mentionOut[0].payload.embeds[0].data.description, /\*\*Alasan:\*\* restart persistence test/);
 
       // Cleanup still works after restart
       const returnMsg = createFakeMessage({
@@ -529,7 +533,7 @@ describe('AFK Feature — Prefix, Slash, Persistence & Auto-Clear Integration', 
       });
       await messageCreateEvent.execute(returnMsg, app2.context);
       assert.equal(returnMsg.getAllOutputs().length, 1);
-      assert.match(returnMsg.getAllOutputs()[0].payload.content, /Selamat datang kembali/);
+      assert.match(returnMsg.getAllOutputs()[0].payload.embeds[0].data.title, /Selamat Datang Kembali/);
       assert.equal(await getAfkStatus(uidPersist, { prisma }), null);
     } finally {
       app2.shutdown();
