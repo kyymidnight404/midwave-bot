@@ -1,10 +1,11 @@
 const SENSITIVE_QUERY_RE =
-  /([?&](?:token|access_token|refresh_token|auth|api_key|apikey|key|secret|password|pass|signature|sig|x-rapidapi-key)=)([^&\s]+)/gi;
+  /([?&](?:token|access_token|refresh_token|auth|api_key|apikey|key|secret|password|pass|signature|sig|x-rapidapi-key|x-goog-api-key)=)([^&\s]+)/gi;
 const URL_CREDENTIALS_RE = /(https?:\/\/)([^:@\s]+:[^@\s]+@)/gi;
 const BEARER_RE = /\b(Bearer|Basic|Bot)\s+[A-Za-z0-9._~+/-]+=*/gi;
-const DISCORD_TOKEN_RE = /\b[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{20,}\b/g;
+const DISCORD_TOKEN_RE = /\b[A-Za-z0-9_-]{20,30}\.[A-Za-z0-9_-]{6,8}\.[A-Za-z0-9_-]{20,}\b/g;
+const PROVIDER_KEY_RE = /\b(?:AIza[0-9A-Za-z_-]{20,}|tvly-[A-Za-z0-9_-]{12,})\b/gi;
 const HEADER_KV_RE =
-  /\b(authorization|x-rapidapi-key|x-api-key|cookie|set-cookie)\s*[:=]\s*([^\s,;]+)/gi;
+  /\b(authorization|x-rapidapi-key|x-goog-api-key|x-api-key|api[_-]?key|cookie|set-cookie)\s*[:=]\s*['"]?([^\s,;'"`]+)['"]?/gi;
 
 /**
  * Redacts sensitive tokens, credentials, authorization headers, and secret query params from a string.
@@ -20,6 +21,7 @@ export function redactSensitiveText(input) {
     text = text.replace(SENSITIVE_QUERY_RE, '$1[REDACTED]');
     text = text.replace(BEARER_RE, '$1 [REDACTED]');
     text = text.replace(DISCORD_TOKEN_RE, '[REDACTED_TOKEN]');
+    text = text.replace(PROVIDER_KEY_RE, '[REDACTED_API_KEY]');
     text = text.replace(HEADER_KV_RE, '$1=[REDACTED]');
     return text;
   } catch {

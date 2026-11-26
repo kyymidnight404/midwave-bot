@@ -65,12 +65,8 @@ async function extractReplyContext(interaction) {
     if (!textPart) {
       return '';
     }
-    const snippet = textPart.slice(0, 1000).trim();
-    const isFromBot = Boolean(referenced.author?.bot);
-    const label = isFromBot
-      ? 'Pesan respons Midwave yang direply pengguna'
-      : `Pesan yang direply pengguna (${referenced.author?.globalName || referenced.author?.username || 'pengguna'})`;
-    return `${label}:\n${snippet}`;
+    // Privacy-by-design: omit third-party Discord display names/usernames when sending reply snippets to external AI
+    return textPart.slice(0, 1000).trim();
   } catch {
     return '';
   }
@@ -149,16 +145,21 @@ export async function execute(interaction, context = {}) {
     (conversationManager ? conversationManager.getHistory(scope) : undefined);
 
   const replyContext = await extractReplyContext(interaction);
-  const combinedContextText = [context.geminiOptions?.contextText, replyContext]
-    .filter((item) => typeof item === 'string' && item.trim())
-    .join('\n\n') || undefined;
+  const contextText =
+    typeof context.geminiOptions?.contextText === 'string' && context.geminiOptions.contextText.trim()
+      ? context.geminiOptions.contextText.trim()
+      : undefined;
 
   const geminiOptions =
-    context.geminiOptions || (Array.isArray(history) && history.length > 0) || combinedContextText
+    context.geminiOptions ||
+    (Array.isArray(history) && history.length > 0) ||
+    contextText ||
+    replyContext
       ? {
           ...(context.geminiOptions || {}),
           ...(Array.isArray(history) && history.length > 0 ? { history } : {}),
-          ...(combinedContextText ? { contextText: combinedContextText } : {}),
+          ...(contextText ? { contextText } : {}),
+          ...(replyContext ? { replyContext } : {}),
         }
       : undefined;
 

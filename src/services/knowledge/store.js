@@ -25,6 +25,7 @@ export const VALID_VERIFICATION_STATUSES = new Set([
 const SECRET_PATTERNS = [
   /AIza[0-9A-Za-z_-]{10,}/,
   /tvly-[A-Za-z0-9_-]{8,}/i,
+  /\b[A-Za-z0-9_-]{20,30}\.[A-Za-z0-9_-]{6,8}\.[A-Za-z0-9_-]{20,}\b/,
   /Bearer\s+[A-Za-z0-9._-]{12,}/i,
   /\b(DISCORD_TOKEN|GEMINI_API_KEY|TAVILY_API_KEY|RAPIDAPI_KEY|GENIUS_API_KEY)\s*=\s*[^\s]+/i,
   /\bsk-[A-Za-z0-9]{16,}\b/,

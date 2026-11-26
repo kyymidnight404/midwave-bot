@@ -55,7 +55,10 @@ export function sanitizeWebText(rawText, maxLength = MAX_SNIPPET_CHARS) {
   if (typeof rawText !== 'string') return '';
   const cleaned = rawText
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ')
-    .replace(/<\/?\s*(web_search_results|system|instruction|prompt)[^>]*>/gi, '[filtered-tag]')
+    .replace(
+      /<\/?\s*(web_search_results|global_bot_knowledge|user_message|replied_message_untrusted|system|assistant|user|developer|instruction|instructions|prompt|context|tool|function)\b[^>]*>/gi,
+      '[filtered-tag]',
+    )
     .replace(/\s+/g, ' ')
     .trim();
 

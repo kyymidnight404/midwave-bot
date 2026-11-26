@@ -2,6 +2,8 @@ const TWEMOJI_SVG_BASE_URL = 'https://cdn.jsdelivr.net/gh/jdecked/twemoji@latest
 const DISCORD_EMOJI_CDN_BASE_URL = 'https://cdn.discordapp.com/emojis';
 const MAX_EMOJI_ASSET_BYTES = 512 * 1024;
 const MAX_CACHE_ENTRIES = 256;
+const MAX_UNIQUE_EMOJI_ASSETS = 10;
+const MAX_EMOJI_FETCH_CONCURRENCY = 3;
 const DEFAULT_FETCH_TIMEOUT_MS = 4000;
 
 const CUSTOM_EMOJI_REGEX = /<a?:([a-zA-Z0-9_~-]+):(\d{17,22})>/g;
@@ -240,27 +242,31 @@ export async function resolveBratEmojiAssets(text, options = {}) {
     return assets;
   }
 
-  await Promise.all(
-    Array.from(uniqueTokens.entries()).map(async ([key, token]) => {
-      if (cache.has(key)) {
-        assets.set(key, cache.get(key));
-        return;
-      }
-      if (typeof fetchFn !== 'function') {
-        return;
-      }
-
-      try {
-        const dataUri = await fetchTokenAsset(token, fetchFn, timeoutMs);
-        if (dataUri) {
-          setBoundedCache(cache, key, dataUri);
-          assets.set(key, dataUri);
+  const entries = Array.from(uniqueTokens.entries()).slice(0, MAX_UNIQUE_EMOJI_ASSETS);
+  for (let i = 0; i < entries.length; i += MAX_EMOJI_FETCH_CONCURRENCY) {
+    const batch = entries.slice(i, i + MAX_EMOJI_FETCH_CONCURRENCY);
+    await Promise.all(
+      batch.map(async ([key, token]) => {
+        if (cache.has(key)) {
+          assets.set(key, cache.get(key));
+          return;
         }
-      } catch {
-        // Fallback cleanly to plain text/name if emoji asset cannot be fetched
-      }
-    }),
-  );
+        if (typeof fetchFn !== 'function') {
+          return;
+        }
+
+        try {
+          const dataUri = await fetchTokenAsset(token, fetchFn, timeoutMs);
+          if (dataUri) {
+            setBoundedCache(cache, key, dataUri);
+            assets.set(key, dataUri);
+          }
+        } catch {
+          // Fallback cleanly to plain text/name if emoji asset cannot be fetched
+        }
+      }),
+    );
+  }
 
   return assets;
 }

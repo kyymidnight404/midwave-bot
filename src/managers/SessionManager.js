@@ -57,12 +57,27 @@ export class SessionManager {
   }
 
   /**
+   * Ends an active session if `userId` was added without consent and hasn't interacted yet.
+   * @param {string} userId
+   * @returns {object | null}
+   */
+  releaseUnconsentedSession(userId) {
+    const session = this.getPlayerSession(userId);
+    if (!session) return null;
+    if (session.consentedPlayers && !session.consentedPlayers.has(userId)) {
+      return this.endSession(session.sessionId, MATCH_STATUS.CANCELLED);
+    }
+    return null;
+  }
+
+  /**
    * Creates and indexes a new active game session.
    * @param {{
    *   gameType: string,
    *   mode: string,
    *   channelId: string,
    *   players: string[],
+   *   consentedPlayers?: string[],
    *   currentTurn?: string | null,
    *   state: object,
    *   idleTimeoutMs?: number,
@@ -75,6 +90,7 @@ export class SessionManager {
     mode,
     channelId,
     players,
+    consentedPlayers = null,
     currentTurn = null,
     state,
     idleTimeoutMs = this.defaultIdleTimeoutMs,
@@ -100,6 +116,7 @@ export class SessionManager {
       channelId,
       players: [...players],
       humanPlayers,
+      consentedPlayers: new Set(consentedPlayers ?? humanPlayers),
       currentTurn,
       state,
       status: MATCH_STATUS.ACTIVE,

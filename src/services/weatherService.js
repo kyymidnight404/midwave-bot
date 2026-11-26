@@ -92,6 +92,28 @@ const PROVINCE_CAPITALS = Object.freeze({
 let cachedRegions = null;
 const adm4Cache = new Map();
 const wilayahJsonCache = new Map();
+const MAX_ADM4_CACHE_ENTRIES = 200;
+const MAX_WILAYAH_CACHE_ENTRIES = 250;
+
+function setBoundedWeatherCache(cache, key, value, maxEntries) {
+  const now = Date.now();
+  if (cache.has(key)) {
+    cache.delete(key);
+  }
+  if (cache.size >= maxEntries) {
+    for (const [k, entry] of cache.entries()) {
+      if (!entry || entry.expiresAt <= now) {
+        cache.delete(k);
+      }
+    }
+  }
+  while (cache.size >= maxEntries) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey === undefined) break;
+    cache.delete(oldestKey);
+  }
+  cache.set(key, value);
+}
 
 export class WeatherError extends Error {
   constructor(message, code = 'WEATHER_ERROR') {
@@ -267,7 +289,12 @@ async function fetchWilayahList(endpointPath, fetchFn) {
   }
   const payload = await fetchJson(`${WILAYAH_API_BASE}/${endpointPath}`, { fetchFn });
   const list = Array.isArray(payload?.data) ? payload.data : [];
-  wilayahJsonCache.set(endpointPath, { data: list, expiresAt: Date.now() + CACHE_TTL_MS });
+  setBoundedWeatherCache(
+    wilayahJsonCache,
+    endpointPath,
+    { data: list, expiresAt: Date.now() + CACHE_TTL_MS },
+    MAX_WILAYAH_CACHE_ENTRIES,
+  );
   return list;
 }
 
@@ -384,7 +411,12 @@ export async function resolveBmkgAdm4(locationInput, { fetchFn = fetch } = {}) {
   }
 
   const adm4 = await resolveAdm4FromRegency(match.regency.code, match.subHint, fetchFn);
-  adm4Cache.set(cacheKey, { adm4, expiresAt: Date.now() + CACHE_TTL_MS });
+  setBoundedWeatherCache(
+    adm4Cache,
+    cacheKey,
+    { adm4, expiresAt: Date.now() + CACHE_TTL_MS },
+    MAX_ADM4_CACHE_ENTRIES,
+  );
   return adm4;
 }
 

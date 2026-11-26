@@ -5,6 +5,7 @@ import {
   CHALLENGE_TTL_MS,
   createPersistedSession,
   findActiveUserSession,
+  releaseUnconsentedSessionsForUser,
   updatePersistedSession,
   withSessionLock,
 } from '../services/sessionService.js';
@@ -85,6 +86,8 @@ export async function launchTwoPlayerChallenge({
       });
       return null;
     }
+
+    await releaseUnconsentedSessionsForUser(guildId, hostUser.id, prisma);
 
     const initialState = createInitialState({
       hostId: hostUser.id,

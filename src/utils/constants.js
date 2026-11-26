@@ -15,6 +15,7 @@ export { COLORS };
 export const EMBED_FOOTER = 'Midwave • Discord Game Bot';
 
 export const WEATHER_MAX_LOCATION_LENGTH = 100;
+export const AFK_MAX_REASON_LENGTH = 200;
 
 export const BOT_PLAYER_ID = 'BOT';
 

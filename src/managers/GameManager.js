@@ -82,6 +82,7 @@ export class GameManager {
    */
   startSoloSession({ gameType, channelId, playerId, config = {}, onTimeout = null }) {
     const engine = this.getEngine(gameType);
+    this.sessionManager.releaseUnconsentedSession?.(playerId);
     if (this.sessionManager.hasActiveSession(playerId)) {
       throw new Error('Kamu masih memiliki pertandingan aktif. Selesaikan atau batalkan dengan `/game action:cancel`.');
     }
@@ -181,6 +182,8 @@ export class GameManager {
     if (hostId === opponentId) {
       throw new Error('Kamu tidak bisa melawan dirimu sendiri.');
     }
+    this.sessionManager.releaseUnconsentedSession?.(hostId);
+    this.sessionManager.releaseUnconsentedSession?.(opponentId);
     if (this.sessionManager.hasActiveSession(hostId)) {
       throw new Error('Kamu masih memiliki pertandingan aktif.');
     }
@@ -201,6 +204,7 @@ export class GameManager {
       mode: GAME_MODES.MULTIPLAYER,
       channelId,
       players,
+      consentedPlayers: [hostId],
       currentTurn: state.currentTurn ?? hostId,
       state,
       onTimeout,
@@ -240,6 +244,7 @@ export class GameManager {
       if (!liveSession.players.includes(playerId)) {
         return { error: 'Kamu bukan peserta dalam pertandingan ini.' };
       }
+      liveSession.consentedPlayers?.add?.(playerId);
 
       const outcome = engine.applyAction(liveSession.state, playerId, action, this.rng);
       if (outcome.error) {

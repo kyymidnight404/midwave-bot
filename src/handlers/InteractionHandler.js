@@ -1,9 +1,12 @@
 import { MessageFlags } from 'discord.js';
+import { AFK_COOLDOWN_MS } from '../services/afkService.js';
 import { ANIME_COOLDOWN_MS } from '../services/animeService.js';
 import { DOWNLOAD_COOLDOWN_MS } from '../services/downloader.js';
 import { AI_COOLDOWN_MS } from '../services/gemini.js';
 import { LYRICS_COOLDOWN_MS } from '../services/lyricsService.js';
 import { SOCIAL_COOLDOWN_MS } from '../services/otakuGifsService.js';
+import { WEATHER_COOLDOWN_MS } from '../services/weatherService.js';
+import { resolveCanonicalCooldownKey } from '../utils/cooldown.js';
 import {
   PING_COOLDOWN_MS,
   PING_CUSTOM_ID_PREFIX,
@@ -39,6 +42,7 @@ import { sanitizeError } from '../utils/errorSanitizer.js';
 
 const IGNORED_DISCORD_ERROR_CODES = new Set([10062, 40060]);
 const COMMAND_COOLDOWNS = Object.freeze({
+  afk: AFK_COOLDOWN_MS,
   ai: AI_COOLDOWN_MS,
   anime: ANIME_COOLDOWN_MS,
   download: DOWNLOAD_COOLDOWN_MS,
@@ -46,6 +50,7 @@ const COMMAND_COOLDOWNS = Object.freeze({
   pin: PIN_COOLDOWN_MS,
   ping: PING_COOLDOWN_MS,
   social: SOCIAL_COOLDOWN_MS,
+  weather: WEATHER_COOLDOWN_MS,
 });
 
 const ACTION_COOLDOWN_COMMANDS = new Set(['game', 'media', 'social']);
@@ -229,9 +234,8 @@ export class InteractionHandler {
         ? (interaction.options?.getString?.(command.config?.actionOptionName || 'action', false)?.trim().toLowerCase() ?? '')
         : '';
     const actionPart = [subcommandGroup, subcommand || actionOption].filter(Boolean).join(':');
-    const cooldownKey = actionPart
-      ? `${interaction.user.id}:${interaction.commandName}:${actionPart}`
-      : `${interaction.user.id}:${interaction.commandName}`;
+    const canonicalKey = resolveCanonicalCooldownKey(interaction.commandName, actionPart);
+    const cooldownKey = `${interaction.user.id}:${canonicalKey}`;
 
     const matchedSubcommand = subcommand
       ? (subcommandGroup

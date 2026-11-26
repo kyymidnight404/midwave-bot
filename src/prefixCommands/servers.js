@@ -1,7 +1,6 @@
 import { MessageFlags } from 'discord.js';
 import { getEmoji } from '../config/emojis.js';
 import { MessageCommandAdapter } from '../handlers/MessageCommandAdapter.js';
-import { isAuthorizedKnowledgeAdmin } from '../services/knowledge/index.js';
 import {
   SERVERS_CUSTOM_ID_PREFIX,
   buildServersView,
@@ -14,12 +13,30 @@ import { sanitizeError } from '../utils/errorSanitizer.js';
 export const SERVERS_OWNER_ONLY_MESSAGE = 'This command is restricted to the bot owner.';
 
 const IGNORED_DISCORD_ERROR_CODES = new Set([10003, 10008, 10062, 40060]);
+const SNOWFLAKE_ID_RE = /^\d{15,25}$/;
+
+function parseBotOwnerIds(env = process.env) {
+  const raw = typeof env?.BOT_OWNER_IDS === 'string' ? env.BOT_OWNER_IDS : '';
+  const ids = new Set();
+  for (const part of raw.split(',')) {
+    const trimmed = part.trim();
+    if (SNOWFLAKE_ID_RE.test(trimmed)) {
+      ids.add(trimmed);
+    }
+  }
+  return ids;
+}
 
 function isBotOwner(userId, context = {}) {
-  return isAuthorizedKnowledgeAdmin(userId, {
-    authorizedUserIds: context.authorizedUserIds ?? context.botOwnerIds,
-    env: context.env ?? process.env,
-  });
+  if (typeof userId !== 'string' || !SNOWFLAKE_ID_RE.test(userId.trim())) {
+    return false;
+  }
+  const normalizedId = userId.trim();
+  const explicit = context.authorizedUserIds ?? context.botOwnerIds;
+  const allowed = explicit
+    ? new Set(Array.from(explicit).map((id) => String(id).trim()).filter((id) => SNOWFLAKE_ID_RE.test(id)))
+    : parseBotOwnerIds(context.env ?? process.env);
+  return allowed.has(normalizedId);
 }
 
 async function replyOwnerRestricted(interaction) {
@@ -92,7 +109,10 @@ export async function execute(interactionOrMessage, contextOrArgs = {}, maybeCon
     ownerId: interaction.user.id,
   });
 
-  await interaction.reply(payload);
+  await interaction.reply({
+    ...payload,
+    flags: MessageFlags.Ephemeral,
+  });
 }
 
 /**

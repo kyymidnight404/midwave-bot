@@ -1,4 +1,5 @@
 import { Events, PermissionFlagsBits } from 'discord.js';
+import { sanitizeError } from '../utils/errorSanitizer.js';
 
 export default {
   name: Events.GuildMemberAdd,
@@ -20,7 +21,10 @@ export default {
         .filter((role) => role && !role.managed && role.id !== member.guild.id && role.comparePositionTo(botMember.roles.highest) < 0);
       if (roles.length) await member.roles.add(roles, 'MIDWAVE Auto Role');
     } catch (error) {
-      context.logger?.error?.(`[AutoRole] Failed assigning roles for member ${member.id} in guild ${member.guild.id}:`, error);
+      context.logger?.error?.(
+        `[AutoRole] Failed assigning roles for member ${member.id} in guild ${member.guild.id}:`,
+        sanitizeError(error),
+      );
     }
   },
 };

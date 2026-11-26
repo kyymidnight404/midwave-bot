@@ -23,7 +23,11 @@ import interactionCreateEvent from './events/interactionCreate.js';
 import messageCreateEvent from './events/messageCreate.js';
 import guildMemberAddEvent from './events/guildMemberAdd.js';
 import guildCreateEvent from './events/guildCreate.js';
-import { clearAllGameCenterTimers } from './games/services/sessionService.js';
+import guildDeleteEvent from './events/guildDelete.js';
+import {
+  clearAllGameCenterTimers,
+  purgeExpiredGameSessions,
+} from './games/services/sessionService.js';
 import { cleanupStaleTempDirs, getDownloaderConfig } from './services/downloader.js';
 import { prisma as defaultPrisma } from './services/prisma.js';
 
@@ -109,11 +113,25 @@ export async function createBotApp(options = {}) {
     });
   context.autoDownloaderHandler = autoDownloaderHandler;
 
+  let maintenanceInterval = null;
   if (!options.skipTempCleanup) {
-    cleanupStaleTempDirs(getDownloaderConfig().tempBaseDir).catch(() => {});
+    const runMaintenance = () => {
+      cleanupStaleTempDirs(getDownloaderConfig().tempBaseDir).catch(() => {});
+      purgeExpiredGameSessions({ prisma: context.prisma }).catch(() => {});
+    };
+    runMaintenance();
+    maintenanceInterval = setInterval(runMaintenance, 30 * 60 * 1000);
+    maintenanceInterval.unref?.();
   }
 
-  const events = [readyEvent, interactionCreateEvent, messageCreateEvent, guildMemberAddEvent, guildCreateEvent];
+  const events = [
+    readyEvent,
+    interactionCreateEvent,
+    messageCreateEvent,
+    guildMemberAddEvent,
+    guildCreateEvent,
+    guildDeleteEvent,
+  ];
   for (const event of events) {
     if (event.once) {
       client.once(event.name, (...args) => event.execute(...args, context));
@@ -168,6 +186,10 @@ export async function createBotApp(options = {}) {
     pinterestSessionStore,
     context,
     shutdown: () => {
+      if (maintenanceInterval) {
+        clearInterval(maintenanceInterval);
+        maintenanceInterval = null;
+      }
       sessionManager.clearAll();
       inviteManager.clearAll();
       gameLobbyManager.clearAll();
@@ -211,6 +233,12 @@ export async function startBot() {
 
   process.on('uncaughtException', (err) => {
     console.error('[Midwave] Uncaught exception:', sanitizeError(err));
+    try {
+      app.shutdown();
+    } catch {
+      // Ignore shutdown error during crash recovery
+    }
+    process.exit(1);
   });
 
   console.log(

@@ -1,6 +1,8 @@
 import { spawn, spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
+import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DOWNLOADER_ERROR_CODES, DownloaderError } from './errors.js';
@@ -13,6 +15,84 @@ export const YTDLP_OFFICIAL_ZIPAPP_URL =
 const YTDLP_ZIPAPP_MIN_BYTES = 500_000;
 
 const MAX_STDIO_BYTES = 1024 * 1024;
+const SAFE_SUBPROCESS_ENV_KEYS = new Set([
+  'PATH',
+  'Path',
+  'HOME',
+  'LANG',
+  'LC_ALL',
+  'LC_CTYPE',
+  'TZ',
+  'SSL_CERT_FILE',
+  'SSL_CERT_DIR',
+  'REQUESTS_CA_BUNDLE',
+  'CURL_CA_BUNDLE',
+  'NODE_EXTRA_CA_CERTS',
+  'SYSTEMROOT',
+  'SystemRoot',
+  'WINDIR',
+  'windir',
+  'COMSPEC',
+  'ComSpec',
+  'PATHEXT',
+  'TEMP',
+  'TMP',
+  'TMPDIR',
+  'USERPROFILE',
+  'APPDATA',
+  'LOCALAPPDATA',
+  'ProgramFiles',
+  'ProgramFiles(x86)',
+  'CommonProgramFiles',
+  'CommonProgramFiles(x86)',
+  'HOMEDRIVE',
+  'HOMEPATH',
+  'NUMBER_OF_PROCESSORS',
+  'PROCESSOR_ARCHITECTURE',
+  'OS',
+  'PYTHON_BIN',
+  'YTDLP_JS_RUNTIME',
+  'FFMPEG_PATH',
+  'DENO_DIR',
+  'DENO_INSTALL',
+]);
+const SENSITIVE_ENV_NAME_RE =
+  /TOKEN|KEY|SECRET|PASSWORD|PASS|DATABASE_URL|WEBHOOK|AUTH|COOKIE|CREDENTIAL|PRIVATE/i;
+
+/**
+ * Builds an isolated allowlist environment for Python/yt-dlp/FFmpeg subprocesses so
+ * application secrets (DISCORD_TOKEN, API keys, DB URLs) are never inherited.
+ *
+ * @param {NodeJS.ProcessEnv | Record<string, string | undefined>} [sourceEnv]
+ * @param {Record<string, string | undefined>} [extraEnv]
+ * @returns {Record<string, string>}
+ */
+export function buildSafeSubprocessEnv(sourceEnv = process.env, extraEnv = {}) {
+  const safeEnv = {};
+  const entries = Object.entries(sourceEnv || {});
+
+  for (const [key, value] of entries) {
+    if (typeof value !== 'string') continue;
+    if (SENSITIVE_ENV_NAME_RE.test(key)) continue;
+    const isAllowed =
+      SAFE_SUBPROCESS_ENV_KEYS.has(key) || SAFE_SUBPROCESS_ENV_KEYS.has(key.toUpperCase());
+    if (!isAllowed) continue;
+    safeEnv[key] = value;
+  }
+
+  for (const [key, value] of Object.entries(extraEnv || {})) {
+    if (typeof value === 'string' && !SENSITIVE_ENV_NAME_RE.test(key)) {
+      safeEnv[key] = value;
+    }
+  }
+
+  safeEnv.PYTHONUNBUFFERED = '1';
+  safeEnv.PYTHONIOENCODING = 'utf-8';
+  safeEnv.PYTHONUTF8 = '1';
+  safeEnv.PYTHONDONTWRITEBYTECODE = '1';
+  safeEnv.NO_COLOR = '1';
+  return safeEnv;
+}
 
 let cachedPythonBin = null;
 let cachedDenoBin = null;
@@ -226,6 +306,20 @@ function isValidYtDlpZipappHeader(buf) {
   return isShebang || isZip;
 }
 
+function normalizeSha256(raw) {
+  const clean = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+  return /^[a-f0-9]{64}$/.test(clean) ? clean : '';
+}
+
+function assertZipappSha256(buf, expectedSha256) {
+  const expected = normalizeSha256(expectedSha256);
+  if (!expected) return;
+  const actual = crypto.createHash('sha256').update(buf).digest('hex');
+  if (actual !== expected) {
+    throw new Error('yt-dlp zipapp SHA-256 verification failed');
+  }
+}
+
 /**
  * Ensures a standalone `yt-dlp` zipapp is available when Python lacks `pip install yt-dlp`.
  * Downloads the official zipapp once (~3 MB, includes `yt-dlp-ejs`) and caches it locally.
@@ -237,9 +331,27 @@ function isValidYtDlpZipappHeader(buf) {
 export async function ensureYtDlpZipapp(config = {}, options = {}) {
   const pythonBin = resolvePythonBinary(config.pythonPath);
   const checkModule = options.hasModuleFn || hasPythonYtDlpModule;
+  const expectedSha256 = normalizeSha256(
+    config.ytdlpZipappSha256 ?? process.env.YTDLP_ZIPAPP_SHA256 ?? '',
+  );
+
+  const isSafeZipappFile = (filePath) => {
+    try {
+      const lstat = fsSync.lstatSync(filePath);
+      if (lstat.isSymbolicLink() || !lstat.isFile()) return false;
+      if (lstat.size < YTDLP_ZIPAPP_MIN_BYTES) return false;
+      if (expectedSha256) {
+        const content = fsSync.readFileSync(filePath);
+        assertZipappSha256(content, expectedSha256);
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   const explicit = typeof config.ytdlpPath === 'string' ? config.ytdlpPath.trim() : '';
-  if (explicit && fsSync.existsSync(explicit) && fsSync.statSync(explicit).isFile()) {
+  if (explicit && isSafeZipappFile(explicit)) {
     return path.resolve(explicit);
   }
 
@@ -249,7 +361,7 @@ export async function ensureYtDlpZipapp(config = {}, options = {}) {
   ];
 
   for (const candidate of localCandidates) {
-    if (fsSync.existsSync(candidate) && fsSync.statSync(candidate).size >= YTDLP_ZIPAPP_MIN_BYTES) {
+    if (isSafeZipappFile(candidate)) {
       return candidate;
     }
   }
@@ -292,6 +404,9 @@ export async function ensureYtDlpZipapp(config = {}, options = {}) {
       if (!isValidYtDlpZipappHeader(data)) {
         throw new Error('Downloaded yt-dlp zipapp failed integrity header/size check');
       }
+      if (expectedSha256) {
+        assertZipappSha256(data, expectedSha256);
+      }
 
       await fs.writeFile(partPath, data);
       if (process.platform !== 'win32') {
@@ -318,34 +433,56 @@ export async function ensureYtDlpZipapp(config = {}, options = {}) {
  * Terminates a child process and its descendant tree safely across Windows and POSIX.
  *
  * @param {import('node:child_process').ChildProcess} child
+ * @param {{ detached?: boolean, forceDelayMs?: number }} [options]
+ * @returns {() => void} Cancel function for any pending force-kill timer
  */
-export function terminateChildProcess(child) {
-  if (!child || child.killed) return;
+export function terminateChildProcess(child, options = {}) {
+  if (!child || child.killed) return () => {};
   const pid = child.pid;
+  const detached = Boolean(options.detached);
+  const forceDelayMs = Number.isFinite(options.forceDelayMs) ? options.forceDelayMs : 1500;
+  const isRealChild = typeof child.unref === 'function';
 
   try {
-    child.kill('SIGTERM');
+    if (detached && process.platform !== 'win32' && pid) {
+      try {
+        process.kill(-pid, 'SIGTERM');
+      } catch {
+        child.kill('SIGTERM');
+      }
+    } else {
+      child.kill('SIGTERM');
+    }
   } catch {
     // Ignore kill error if already exited
   }
 
   const forceTimer = setTimeout(() => {
     try {
-      if (process.platform === 'win32' && pid) {
+      if (process.platform === 'win32' && pid && isRealChild) {
         spawn('taskkill', ['/pid', String(pid), '/T', '/F'], {
           stdio: 'ignore',
           windowsHide: true,
         });
+      } else if (detached && process.platform !== 'win32' && pid) {
+        try {
+          process.kill(-pid, 'SIGKILL');
+        } catch {
+          child.kill('SIGKILL');
+        }
       } else {
         child.kill('SIGKILL');
       }
     } catch {
       // Ignore force kill error
     }
-  }, 1500);
+  }, forceDelayMs);
 
   forceTimer.unref?.();
+  return () => clearTimeout(forceTimer);
 }
+
+export const terminateProcessTree = terminateChildProcess;
 
 /**
  * Maps a non-zero worker failure result or stderr message to a typed `DownloaderError`.
@@ -421,6 +558,7 @@ export async function runYtDlpDownload(params) {
     maxDurationSeconds = 900,
     timeoutMs = 60_000,
     config = {},
+    pinnedHosts = null,
     onProgress = null,
     spawnFn = spawn,
     scriptPath = YTDLP_SCRIPT_PATH,
@@ -459,6 +597,17 @@ export async function runYtDlpDownload(params) {
   if (ytdlpZipapp) {
     args.push('--ytdlp-path', ytdlpZipapp);
   }
+  if (pinnedHosts && typeof pinnedHosts === 'object') {
+    for (const [host, ip] of Object.entries(pinnedHosts)) {
+      const cleanHost = String(host || '').trim().toLowerCase();
+      const cleanIp = String(ip || '').trim();
+      if (cleanHost && net.isIP(cleanIp) !== 0 && !/[\s=]/.test(cleanHost)) {
+        args.push('--pinned-host', `${cleanHost}=${cleanIp}`);
+      }
+    }
+  }
+
+  const useDetachedGroup = process.platform !== 'win32' && !isMockedSpawn;
 
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -466,17 +615,15 @@ export async function runYtDlpDownload(params) {
     let stdoutBuffer = '';
     let stderrText = '';
     let lastResultPayload = null;
+    let cancelForceKill = null;
 
     let child;
     try {
       child = spawnFn(pythonBin, args, {
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
-        env: {
-          ...process.env,
-          PYTHONUNBUFFERED: '1',
-          PYTHONIOENCODING: 'utf-8',
-        },
+        ...(useDetachedGroup ? { detached: true } : {}),
+        env: buildSafeSubprocessEnv(process.env),
       });
     } catch (spawnErr) {
       reject(
@@ -489,29 +636,42 @@ export async function runYtDlpDownload(params) {
       return;
     }
 
-    const finishError = (err) => {
+    const cleanupTimers = () => {
+      clearTimeout(timer);
+      if (typeof cancelForceKill === 'function') {
+        cancelForceKill();
+        cancelForceKill = null;
+      }
+    };
+
+    const finishError = (err, keepForceKill = false) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      if (keepForceKill) {
+        clearTimeout(timer);
+      } else {
+        cleanupTimers();
+      }
       reject(err);
     };
 
     const finishSuccess = (val) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      cleanupTimers();
       resolve(val);
     };
 
     const timer = setTimeout(() => {
       timedOut = true;
-      terminateChildProcess(child);
+      cancelForceKill = terminateChildProcess(child, { detached: useDetachedGroup });
       finishError(
         new DownloaderError(
           DOWNLOADER_ERROR_CODES.TIMEOUT,
           'Proses unduhan melewati batas waktu (timeout). Silakan coba lagi atau pilih media lebih pendek.',
           { retryable: true },
         ),
+        true,
       );
     }, timeoutMs);
     timer.unref?.();
@@ -577,6 +737,7 @@ export async function runYtDlpDownload(params) {
     });
 
     child.on('close', (exitCode) => {
+      cleanupTimers();
       if (stdoutBuffer.trim()) {
         processLine(stdoutBuffer);
         stdoutBuffer = '';

@@ -13,6 +13,7 @@ import {
   sanitizeLogText,
   validateMediaUrl,
 } from '../services/downloader.js';
+import { resolveCanonicalCooldownKey } from '../utils/cooldown.js';
 import {
   DOWNLOAD_SAFE_MENTION_OPTIONS,
   formatDownloadErrorMessage,
@@ -144,7 +145,8 @@ export class AutoDownloaderHandler {
     }
 
     if (this.cooldowns) {
-      const cd = this.cooldowns.tryAcquire(`${message.author.id}:autodownload`, AUTO_DOWNLOAD_COOLDOWN_MS);
+      const cooldownKey = `${message.author.id}:${resolveCanonicalCooldownKey('autodownload')}`;
+      const cd = this.cooldowns.tryAcquire(cooldownKey, AUTO_DOWNLOAD_COOLDOWN_MS);
       if (!cd.allowed) {
         return false;
       }

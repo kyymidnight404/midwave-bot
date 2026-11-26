@@ -76,6 +76,8 @@ export default {
       userId,
       selectedCategory: null,
       attachmentUrl,
+      guildId: interaction.guildId ?? interaction.message?.guild?.id ?? null,
+      channelId: interaction.channelId ?? interaction.message?.channel?.id ?? null,
     });
 
     const canAttach = interaction.canAttachFiles !== false;

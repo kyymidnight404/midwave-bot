@@ -1,5 +1,57 @@
 import { TIMEOUTS } from './constants.js';
 
+const CANONICAL_MEDIA_ACTIONS = new Set(['download', 'qc', 'brat', 'lyrics']);
+const CANONICAL_UTILITY_ACTIONS = new Set([
+  'ping',
+  'help',
+  'menu',
+  'feedback',
+  'avatar',
+  'banner',
+  'say',
+  'clear',
+  'emojis',
+  'donate',
+  'about',
+  'igf',
+]);
+
+/**
+ * Maps equivalent Slash, Prefix, and AutoDownloader command entry points onto a single
+ * shared cooldown key per user so limits cannot be bypassed across interfaces (`MW-SEC-013`).
+ *
+ * @param {string} commandName
+ * @param {string} [actionPart]
+ * @returns {string}
+ */
+export function resolveCanonicalCooldownKey(commandName, actionPart = '') {
+  const cmd = String(commandName || '').trim().toLowerCase();
+  const action = String(actionPart || '').trim().toLowerCase();
+
+  if (cmd === 'autodownload' || cmd === 'download' || cmd === 'dl') {
+    return 'media:download';
+  }
+  if (cmd === 'media' && action) {
+    const baseAction = action.split(':').pop();
+    if (baseAction === 'download' || baseAction === 'dl') return 'media:download';
+    if (CANONICAL_MEDIA_ACTIONS.has(baseAction)) return `media:${baseAction}`;
+    return `media:${action}`;
+  }
+  if (CANONICAL_MEDIA_ACTIONS.has(cmd)) {
+    return `media:${cmd}`;
+  }
+
+  if (cmd === 'utility' && action) {
+    const baseAction = action.split(':').pop();
+    return baseAction === 'menu' || baseAction === 'help' ? 'utility:help' : `utility:${action}`;
+  }
+  if (CANONICAL_UTILITY_ACTIONS.has(cmd)) {
+    return cmd === 'menu' || cmd === 'help' ? 'utility:help' : `utility:${cmd}`;
+  }
+
+  return action ? `${cmd}:${action}` : cmd;
+}
+
 /**
  * In-memory per-user command cooldown tracker.
  * Prevents command spam without any persistent storage.

@@ -57,6 +57,33 @@ export function formatDiscordMaskedLinks(text) {
           `[${label}](${url})`,
         );
       }
+
+      // Neutralize non-HTTP(S) links and deceptive URL-lookalike masked links ([https://trusted.com](https://evil.com))
+      out = out.replace(/\[([^\]]+)\]\(((?:[^()\s]+|\([^()\s]*\))+)\)/g, (full, label, targetUrl) => {
+        let targetParsed;
+        try {
+          targetParsed = new URL(targetUrl);
+        } catch {
+          return label;
+        }
+        if (targetParsed.protocol !== 'http:' && targetParsed.protocol !== 'https:') {
+          return label;
+        }
+        const trimmedLabel = label.trim();
+        if (/^(?:https?:\/\/|[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:\/|\b))/i.test(trimmedLabel)) {
+          try {
+            const labelUrl = new URL(
+              /^https?:\/\//i.test(trimmedLabel) ? trimmedLabel : `https://${trimmedLabel}`,
+            );
+            if (labelUrl.hostname.toLowerCase() !== targetParsed.hostname.toLowerCase()) {
+              return `[${targetParsed.hostname}](${targetParsed.toString()})`;
+            }
+          } catch {
+            // Keep label if not parseable as domain
+          }
+        }
+        return full;
+      });
       return out;
     })
     .join('');

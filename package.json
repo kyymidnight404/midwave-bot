@@ -1,7 +1,7 @@
 {
   "name": "midwave",
   "version": "1.0.0",
-  "description": "Midwave Discord Game Bot — lightweight in-memory MVP with 7 Solo & Multiplayer mini-games",
+  "description": "Midwave Discord Bot — AI Assistant, yt-dlp Media Downloader, Mini-Games, BMKG Weather & Utilities",
   "type": "module",
   "main": "src/index.js",
   "engines": {
@@ -14,7 +14,7 @@
     "deploy:global": "node --env-file=.env deploy-commands.js --global",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
-    "postinstall": "prisma generate && node -e \"const fs = require('fs'); const { execSync } = require('child_process'); if (fs.existsSync('.env')) execSync('npx prisma migrate deploy', { stdio: 'inherit' });\"",
+    "postinstall": "prisma generate",
     "test": "node --test \"tests/**/*.test.js\""
   },
   "keywords": [
@@ -30,7 +30,6 @@
     "@napi-rs/canvas": "^1.1.1",
     "@prisma/client": "^6.19.3",
     "@resvg/resvg-js": "^2.6.2",
-    "axios": "^1.21.1",
     "dejavu-fonts-ttf": "^2.37.3",
     "discord.js": "^14.28.1"
   },

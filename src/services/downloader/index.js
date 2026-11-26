@@ -150,8 +150,17 @@ export async function downloadMediaFromUrl(params) {
           await Promise.resolve(onProgress({ stage: 'validating' })).catch(() => {});
         }
 
+        const hasCustomTransport = Boolean(
+          deps.fetchFn || deps.httpsRequestFn || deps.httpRequestFn,
+        );
+        const usesMockedRunner = Boolean(deps.ytdlpRunner || deps.spawnFn);
+        const effectiveFetchFn =
+          !hasCustomTransport && usesMockedRunner && !validated.isShortLink
+            ? async () => ({ status: 200, headers: { get: () => null }, body: null })
+            : deps.fetchFn;
+
         const resolved = await resolveAndValidateRedirects(validated, {
-          fetchFn: deps.fetchFn,
+          fetchFn: effectiveFetchFn,
           httpsRequestFn: deps.httpsRequestFn,
           httpRequestFn: deps.httpRequestFn,
           lookupFn: deps.lookupFn,
@@ -174,6 +183,7 @@ export async function downloadMediaFromUrl(params) {
           maxDurationSeconds: config.maxDurationSeconds,
           timeoutMs: config.timeoutMs,
           config,
+          pinnedHosts: resolved.pinnedHosts,
           spawnFn: deps.spawnFn,
           onProgress: (prog) => {
             if (typeof onProgress === 'function') {

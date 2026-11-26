@@ -260,7 +260,7 @@
       "key": "features.downloader",
       "category": "features_commands",
       "title": "Media Downloader (/media action:download, !download & AutoDownloader)",
-      "content": "Command `/media action:download url:<tautan>` dan prefix `!download <tautan>` (`!dl <tautan>`) menggunakan engine yt-dlp + FFmpeg. Platform yang didukung: YouTube, TikTok, Instagram, Facebook, X/Twitter, Reddit, Twitch, SoundCloud, Vimeo, Dailymotion, Bilibili, Pinterest (untuk URL Pin publik via yt-dlp), serta tautan publik lain yang didukung yt-dlp. AutoDownloader otomatis di pesan chat aktif khusus untuk link TikTok dan Instagram publik. Dilengkapi proteksi SSRF, batas ukuran unggahan Discord (25/50/100 MB, dengan tautan CDN/direct jika melebihi batas), timeout otomatis, dan pembersihan file sementara.",
+      "content": "Command `/media action:download url:<tautan>` dan prefix `!download <tautan>` (`!dl <tautan>`) menggunakan engine yt-dlp + FFmpeg terisolasi. Platform yang didukung: YouTube, TikTok, Instagram, Facebook, X/Twitter, Reddit, Twitch, SoundCloud, Vimeo, Dailymotion, Bilibili, Pinterest (untuk URL Pin publik via yt-dlp), serta tautan publik lain yang didukung yt-dlp. AutoDownloader otomatis di pesan chat aktif khusus untuk link TikTok dan Instagram publik. Dilengkapi proteksi SSRF berlapis + DNS pinning, batas ukuran kumulatif Discord (25/50/100 MB; file yang melebihi batas ditolak dengan pesan error aman tanpa mengirim tautan eksternal/CDN langsung), timeout process-tree termination, dan pembersihan file sementara.",
       "tags": [
         "download",
         "downloader",
@@ -335,7 +335,7 @@
       "key": "features.utilities_server",
       "category": "features_commands",
       "title": "Utilities & Informasi (/math, /weather, /anime, /autorole, !menu, !donate, !ping, !feedback, !say)",
-      "content": "Utilitas lain di Midwave: `/math expression:<ekspresi>` & `!math <ekspresi>` (kalkulator aman), `/weather location:<lokasi>` & `!weather <lokasi>` (prakiraan cuaca wilayah Indonesia resmi dari BMKG), `/anime query:<judul>` & `!anime <judul>` (info anime lengkap dari AniList), `/autorole <add|delete|list>` (admin server, mengatur role otomatis member baru yang memerlukan PostgreSQL & izin Manage Roles), `/help` & `!menu` (panduan lengkap command), `/donate` & `!donate`, `/ping` & `!ping`, `!feedback` (prefix-only, kirim saran/bug dengan kategori), serta `!say <teks>` (prefix-only, mengulang teks secara aman dengan mention dinonaktifkan).",
+      "content": "Utilitas lain di Midwave: `/math expression:<ekspresi>` & `!math <ekspresi>` (kalkulator aman), `/weather location:<lokasi>` & `!weather <lokasi>` (prakiraan cuaca wilayah Indonesia resmi dari BMKG), `/anime query:<judul>` & `!anime <judul>` (info anime lengkap dari AniList), `/autorole <add|delete|list>` (admin server, mengatur role otomatis member baru yang disimpan di SQLite via Prisma & izin Manage Roles), `/help` & `!menu` (panduan lengkap command), `/donate` & `!donate`, `/ping` & `!ping`, `!feedback` (prefix-only, kirim saran/bug dengan kategori), serta `!say <teks>` (prefix-only, mengulang teks secara aman dengan mention dinonaktifkan).",
       "tags": [
         "math",
         "!math",
@@ -412,7 +412,7 @@
       "key": "technical.stack_architecture",
       "category": "technical_knowledge",
       "title": "Stack Teknologi & Arsitektur Midwave",
-      "content": "Midwave menggunakan Node.js (>=20.6.0, ES Modules), discord.js v14 (^14.28.1), @google/genai (^2.32.0), Tavily Search REST API, Prisma + PostgreSQL (khusus fitur yang butuh database seperti AutoRole), Python 3.11+ + yt-dlp + yt-dlp-ejs + FFmpeg/FFprobe + Deno (untuk media downloader), @napi-rs/canvas, dan @resvg/resvg-js. Arsitektur dibagi menjadi src/commands, src/prefixCommands, src/events, src/handlers, src/managers (SessionManager, InviteManager, GameManager, AiConversationManager in-memory Map), src/services (gemini, webSearch, knowledge, downloader, pinterest, lyricsService, animeService, weatherService, serversService, helpService), src/games, src/data, dan src/utils. Hosting produksi dijalankan di Wispbyte (atau VPS dengan PM2 ecosystem.config.cjs).",
+      "content": "Midwave menggunakan Node.js (>=20.6.0, ES Modules), discord.js v14 (^14.28.1), @google/genai (^2.32.0), Tavily Search REST API, Prisma + SQLite (digunakan untuk AutoRole, QuizQuestion, dan GameSession/GameParticipant tanpa menyimpan username), Python 3.11+ + yt-dlp + yt-dlp-ejs + FFmpeg/FFprobe + Deno (untuk media downloader dengan validasi SSRF & isolasi environment), @napi-rs/canvas, dan @resvg/resvg-js. Arsitektur dibagi menjadi src/commands, src/prefixCommands, src/events, src/handlers, src/managers (SessionManager, InviteManager, GameManager, AiConversationManager in-memory Map), src/services (gemini, webSearch, knowledge, downloader, pinterest, lyricsService, animeService, weatherService, serversService, helpService), src/games, src/data, dan src/utils. Hosting produksi dijalankan di Wispbyte (atau VPS dengan PM2 ecosystem.config.cjs).",
       "tags": [
         "node.js",
         "nodejs",
@@ -455,7 +455,7 @@
       "key": "policies.privacy_technical_behavior",
       "category": "policies_faq",
       "title": "Perilaku Privasi Teknis, Keamanan & Non-Persistence Chat Midwave",
-      "content": "Berdasarkan implementasi kode aktual: Midwave TIDAK memiliki user memory permanen antarpengguna, TIDAK menyimpan profil pribadi pengguna, dan TIDAK menyimpan riwayat chat atau pesan Discord pengguna ke database maupun disk. Percakapan `/ai` dan `!ai` hanya disimpan sementara di RAM per scope (guild/DM, channel, dan user ID; maksimal 10 pesan; otomatis kadaluarsa dan terhapus setelah 15 menit tidak aktif, atau dapat dihapus manual kapan saja lewat `!ai reset chat`). Chat pengguna tidak pernah ditulis atau ditambahkan ke Global Bot Knowledge.",
+      "content": "Berdasarkan implementasi kode aktual: Midwave TIDAK memiliki user memory permanen antarpengguna, TIDAK menyimpan profil pribadi pengguna, dan TIDAK menyimpan riwayat chat atau pesan Discord pengguna ke database maupun disk. Percakapan `/ai` dan `!ai` hanya disimpan sementara di RAM per scope (guild/DM, channel, dan user ID; maksimal 10 pesan; otomatis kadaluarsa dan terhapus setelah 15 menit tidak aktif, atau dapat dihapus manual kapan saja lewat `!ai reset chat`). Data Game Center yang disimpan di SQLite (`GameSession`, `GameParticipant` tanpa username) dibersihkan otomatis setelah masa retensi 1 jam selesai, dan data guild (`AutoRole`, `GameSession`) dihapus saat bot keluar dari server (`guildDelete`). Chat pengguna tidak pernah ditulis atau ditambahkan ke Global Bot Knowledge.",
       "tags": [
         "privacy",
         "privasi",
@@ -496,7 +496,7 @@
       "key": "policies.faq_limits",
       "category": "policies_faq",
       "title": "FAQ & Batasan Layanan Midwave",
-      "content": "FAQ: (1) Batas pertanyaan `/ai` dan `!ai` adalah 1.500 karakter input pengguna; konteks pencarian web dan knowledge bot tidak dihitung dalam batas tersebut. (2) AutoDownloader otomatis di chat hanya aktif untuk link publik TikTok dan Instagram, sedangkan `/media action:download` dan `!download` (`!dl`) mendukung berbagai platform publik via yt-dlp (YouTube, TikTok, Instagram, Facebook, X/Twitter, Reddit, Twitch, SoundCloud, Vimeo, Dailymotion, Bilibili, Pinterest, dll.); konten privat/berusia terbatas tidak dapat diunduh. (3) Jika file melebihi batas upload Discord, Downloader menyediakan tombol tautan langsung bila tersedia. (4) Jika Tavily/Gemini mencapai rate limit atau kuota habis, bot memberi tahu pengguna secara aman tanpa crash.",
+      "content": "FAQ: (1) Batas pertanyaan `/ai` dan `!ai` adalah 1.500 karakter input pengguna; konteks pencarian web dan knowledge bot tidak dihitung dalam batas tersebut. (2) AutoDownloader otomatis di chat hanya aktif untuk link publik TikTok dan Instagram, sedangkan `/media action:download` dan `!download` (`!dl`) mendukung berbagai platform publik via yt-dlp (YouTube, TikTok, Instagram, Facebook, X/Twitter, Reddit, Twitch, SoundCloud, Vimeo, Dailymotion, Bilibili, Pinterest, dll.); konten privat/berusia terbatas tidak dapat diunduh. (3) Jika ukuran file melebihi batas unggahan Discord server (25/50/100 MB), Downloader menolaknya dengan pesan informasi ukuran secara aman tanpa membocorkan tautan CDN langsung. (4) Jika Tavily/Gemini mencapai rate limit atau kuota habis, bot memberi tahu pengguna secara aman tanpa crash.",
       "tags": [
         "faq",
         "batasan",

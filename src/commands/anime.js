@@ -13,7 +13,7 @@ import {
   buildAnimeLoadingEmbed,
 } from '../utils/animeEmbed.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
-import { sanitizeError } from '../utils/errorSanitizer.js';
+import { redactSensitiveText, sanitizeError } from '../utils/errorSanitizer.js';
 
 const IGNORED_DISCORD_ERROR_CODES = new Set([10003, 10008, 10062, 40060]);
 
@@ -37,7 +37,9 @@ export function normalizeAnimeError(error) {
   if (error instanceof AnimeServiceError) {
     return error;
   }
-  const message = error instanceof Error ? error.message : String(error ?? 'Unknown error');
+  const message = redactSensitiveText(
+    error instanceof Error ? error.message : String(error ?? 'Unknown error'),
+  );
   return new AnimeServiceError(
     'INTERNAL_ERROR',
     'Terjadi kesalahan internal saat memproses pencarian anime. Silakan coba lagi.',

@@ -1,21 +1,24 @@
 import crypto from 'node:crypto';
+import dns from 'node:dns/promises';
 import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
+import https from 'node:https';
+import net from 'node:net';
 import path from 'node:path';
-import dns from 'node:dns/promises';
 import { Readable } from 'node:stream';
 import { DOWNLOADER_ERROR_CODES, DownloaderError } from './errors.js';
-import { assertInsideDir, cleanupTempDir, createJobTempDir } from './cleanup.js';
+import { assertInsideDir, assertRealPathInsideRoot, cleanupTempDir, createJobTempDir } from './cleanup.js';
 import {
   detectMediaSignature,
   formatBytes,
   inspectMediaFile,
   sanitizeFileBaseName,
 } from './media.js';
-import { assertSafeRemoteHost, createPinnedHttpsAgent } from './platform.js';
+import { assertSafeRemoteHost, createPinnedHttpsAgent, isInternalHostname } from './platform.js';
 
 export {
   assertInsideDir,
+  assertRealPathInsideRoot,
   cleanupTempDir,
   createJobTempDir,
   createPinnedHttpsAgent,
@@ -52,8 +55,75 @@ async function validateMediaStreamTarget(rawUrl, options = {}) {
     );
   }
 
-  const resolved = await assertSafeRemoteHost(parsed.hostname, { lookupFn, allowPrivate: false });
+  if (parsed.port && parsed.port !== '443') {
+    throw new DownloaderError(
+      DOWNLOADER_ERROR_CODES.UNSAFE_TARGET,
+      'Port kustom pada URL media tidak diizinkan.',
+    );
+  }
+
+  const cleanHost = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
+  if (!cleanHost || net.isIP(cleanHost) !== 0 || isInternalHostname(cleanHost)) {
+    throw new DownloaderError(
+      DOWNLOADER_ERROR_CODES.UNSAFE_TARGET,
+      'Alamat IP langsung atau host jaringan internal pada URL media tidak diizinkan.',
+    );
+  }
+
+  const resolved = await assertSafeRemoteHost(cleanHost, { lookupFn, allowPrivate: false });
   return { parsed, resolved };
+}
+
+function pinnedHttpsStreamRequest(targetUrl, resolved, { headers, signal, httpsRequestFn = https.request }) {
+  const parsed = new URL(targetUrl);
+  const agent = createPinnedHttpsAgent(parsed.hostname, resolved);
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (err, value) => {
+      if (settled) return;
+      settled = true;
+      if (err) {
+        agent.destroy();
+        reject(err);
+      } else {
+        resolve(value);
+      }
+    };
+
+    const req = httpsRequestFn(
+      parsed,
+      {
+        method: 'GET',
+        agent,
+        headers,
+        servername: parsed.hostname,
+        rejectUnauthorized: true,
+      },
+      (res) => {
+        res.once('close', () => agent.destroy());
+        res.once('error', () => agent.destroy());
+        finish(null, {
+          status: res.statusCode ?? 0,
+          headers: res.headers ?? {},
+          body: res,
+        });
+      },
+    );
+
+    if (signal) {
+      if (signal.aborted) {
+        req.destroy(signal.reason || new Error('Aborted'));
+        return;
+      }
+      const onAbort = () => req.destroy(signal.reason || new Error('Aborted'));
+      signal.addEventListener('abort', onAbort, { once: true });
+      req.once('close', () => signal.removeEventListener('abort', onAbort));
+    }
+
+    req.on('error', (err) => finish(err));
+    req.end();
+  });
 }
 
 function readHeaderValue(headers, name) {
@@ -88,7 +158,8 @@ export async function downloadMediaToTempFile(params) {
     fileBaseName = 'media',
     maxBytes,
     timeoutMs,
-    fetchFn = fetch,
+    fetchFn = null,
+    httpsRequestFn = https.request,
     lookupFn = dns.lookup,
     headers = {},
   } = params;
@@ -121,14 +192,20 @@ export async function downloadMediaToTempFile(params) {
     };
 
     for (let hop = 0; hop < 6; hop += 1) {
-      await validateMediaStreamTarget(currentUrl, { lookupFn });
+      const { resolved } = await validateMediaStreamTarget(currentUrl, { lookupFn });
 
-      const fRes = await fetchFn(currentUrl, {
-        method: 'GET',
-        redirect: 'manual',
-        headers: requestHeaders,
-        signal: controller.signal,
-      });
+      const fRes = fetchFn
+        ? await fetchFn(currentUrl, {
+            method: 'GET',
+            redirect: 'manual',
+            headers: requestHeaders,
+            signal: controller.signal,
+          })
+        : await pinnedHttpsStreamRequest(currentUrl, resolved, {
+            headers: requestHeaders,
+            signal: controller.signal,
+            httpsRequestFn,
+          });
       statusCode = fRes.status;
       resHeaders = fRes.headers;
       bodyStream = fRes.body;
@@ -274,6 +351,7 @@ export async function downloadMediaToTempFile(params) {
       );
     }
 
+    await assertRealPathInsideRoot(jobDir, partPath);
     const signature = await inspectMediaFile(partPath);
     const finalFileName = `${safeBase}.${signature.ext}`;
     let finalPath = path.join(jobDir, finalFileName);

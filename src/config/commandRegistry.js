@@ -1,4 +1,5 @@
 import { MessageFlags } from 'discord.js';
+import { execute as executeAfk } from '../commands/afk.js';
 import { execute as executeAi } from '../commands/ai.js';
 import { execute as executeAnime } from '../commands/anime.js';
 import { execute as executeDonate } from '../commands/donate.js';
@@ -25,6 +26,7 @@ import { executeSocialAction } from '../utils/socialCommand.js';
  */
 export function createDefaultHandlerRegistry() {
   const registry = {
+    afk: executeAfk,
     ai: executeAi,
     anime: executeAnime,
     autorole: executeAutorole,

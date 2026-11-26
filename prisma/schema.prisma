@@ -87,3 +87,9 @@ model QuizQuestion {
 
   @@index([category, difficulty, isActive])
 }
+
+model AfkStatus {
+  userId String   @id
+  reason String   @default("Tidak ada alasan")
+  since  DateTime @default(now())
+}

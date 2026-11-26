@@ -108,6 +108,7 @@ const IGNORED_DISCORD_CODES = new Set([10062, 40060]);
 // In-memory ephemeral state for prompt selections, active submissions, and report metadata
 const FEEDBACK_REPORT_TTL_MS = 24 * 60 * 60 * 1000;
 const FEEDBACK_REPORT_MAX_ENTRIES = 500;
+const FEEDBACK_PROMPT_MAX_ENTRIES = 500;
 const pendingPrompts = new Map();
 const activeSubmissions = new Set();
 const activeStatusUpdates = new Set();
@@ -317,8 +318,7 @@ export async function resolveFeedbackChannel(client, { env = process.env, logger
 
   const isSupportedGuildText =
     typeof channel.type !== 'number' ||
-    channel.type === ChannelType.GuildText ||
-    channel.type === ChannelType.GuildAnnouncement;
+    channel.type === ChannelType.GuildText;
 
   if (isThread || !isSupportedGuildText) {
     logger.error?.('[Feedback] Rejected feedback channel: threads and non-text channel types are not allowed.');
@@ -456,12 +456,30 @@ export async function resolveFeedbackChannel(client, { env = process.env, logger
   return { ok: true, channel };
 }
 
-export function registerFeedbackPrompt(promptId, { userId, selectedCategory = null, attachmentUrl = null }) {
+export function registerFeedbackPrompt(
+  promptId,
+  {
+    userId,
+    selectedCategory = null,
+    attachmentUrl = null,
+    guildId = null,
+    channelId = null,
+    messageId = null,
+  },
+) {
   pruneExpiredPrompts();
+  while (pendingPrompts.size >= FEEDBACK_PROMPT_MAX_ENTRIES) {
+    const oldestKey = pendingPrompts.keys().next().value;
+    if (oldestKey === undefined) break;
+    pendingPrompts.delete(oldestKey);
+  }
   pendingPrompts.set(promptId, {
     userId,
     selectedCategory,
     attachmentUrl,
+    guildId,
+    channelId,
+    messageId,
     createdAt: Date.now(),
   });
 }
@@ -659,12 +677,19 @@ function extractReportFromMessageEmbed(existingEmbed, reportId) {
   const fields = existingEmbed.fields ?? existingEmbed.data?.fields ?? [];
   const getField = (name) => fields.find((f) => f.name === name)?.value ?? '';
 
+  const titleRaw = String(existingEmbed.title ?? existingEmbed.data?.title ?? '');
+  if (reportId && !titleRaw.includes(`[${reportId}]`)) {
+    return null;
+  }
+
   const categoryText = getField('Kategori');
   const matchedCat =
     Object.values(FEEDBACK_CATEGORIES).find((c) => categoryText.includes(c.label))?.id ?? 'other';
 
-  const titleRaw = existingEmbed.title ?? existingEmbed.data?.title ?? '';
-  const subject = titleRaw.replace(/^\[FB-[A-Z0-9]+\]\s*/i, '') || 'Feedback Report';
+  const subject =
+    titleRaw
+      .replace(/^(?:<a?:\w+:\d+>\s*|[^\w[]+\s*)?(?:\[FB-[A-Z0-9-]+\]\s*)+/i, '')
+      .trim() || 'Feedback Report';
   const description = existingEmbed.description ?? existingEmbed.data?.description ?? '';
   const pelaporField = getField('Pelapor');
   const reporterIdMatch = pelaporField.match(/<@(\d+)>/);
@@ -689,6 +714,24 @@ function extractReportFromMessageEmbed(existingEmbed, reportId) {
   };
 }
 
+function validatePromptContext(promptState, interaction) {
+  if (!promptState) {
+    return 'Sesi formulir feedback tidak ditemukan atau sudah kedaluwarsa. Jalankan `!feedback` lagi.';
+  }
+  if (!interaction?.user?.id || promptState.userId !== interaction.user.id) {
+    return 'Formulir feedback ini hanya dapat digunakan oleh pembuat perintah.';
+  }
+  const actualGuildId = interaction.guildId ?? interaction.guild?.id ?? null;
+  if (promptState.guildId && actualGuildId && promptState.guildId !== actualGuildId) {
+    return 'Konteks server formulir feedback tidak cocok.';
+  }
+  const actualChannelId = interaction.channelId ?? interaction.channel?.id ?? null;
+  if (promptState.channelId && actualChannelId && promptState.channelId !== actualChannelId) {
+    return 'Konteks channel formulir feedback tidak cocok.';
+  }
+  return null;
+}
+
 /**
  * Handles all `feedback:*` component and modal interactions.
  * @param {import('discord.js').Interaction} interaction
@@ -705,8 +748,13 @@ export async function handleFeedbackInteraction(interaction, context = {}) {
   // 1. Category select menu
   if (action === 'category' && interaction.isStringSelectMenu?.()) {
     const [, , promptId, ownerId] = parts;
-    if (interaction.user.id !== ownerId) {
-      await safeEphemeralError(interaction, 'Panel feedback ini hanya dapat digunakan oleh pembuat perintah.');
+    const existingPrompt = getFeedbackPrompt(promptId);
+    const contextErr = validatePromptContext(existingPrompt, interaction);
+    if (contextErr || interaction.user.id !== ownerId) {
+      await safeEphemeralError(
+        interaction,
+        contextErr ?? 'Panel feedback ini hanya dapat digunakan oleh pembuat perintah.',
+      );
       return true;
     }
 
@@ -716,11 +764,13 @@ export async function handleFeedbackInteraction(interaction, context = {}) {
       return true;
     }
 
-    const existingPrompt = getFeedbackPrompt(promptId);
     registerFeedbackPrompt(promptId, {
-      userId: ownerId,
+      userId: existingPrompt.userId,
       selectedCategory,
-      attachmentUrl: existingPrompt?.attachmentUrl ?? null,
+      attachmentUrl: existingPrompt.attachmentUrl ?? null,
+      guildId: existingPrompt.guildId ?? null,
+      channelId: existingPrompt.channelId ?? null,
+      messageId: existingPrompt.messageId ?? null,
     });
 
     try {
@@ -728,10 +778,10 @@ export async function handleFeedbackInteraction(interaction, context = {}) {
         embeds: [
           buildFeedbackPromptEmbed({
             selectedCategory,
-            attachmentUrl: existingPrompt?.attachmentUrl ?? null,
+            attachmentUrl: existingPrompt.attachmentUrl ?? null,
           }),
         ],
-        components: buildFeedbackPromptComponents(promptId, ownerId, { selectedCategory }),
+        components: buildFeedbackPromptComponents(promptId, existingPrompt.userId, { selectedCategory }),
       });
     } catch (err) {
       if (!IGNORED_DISCORD_CODES.has(err?.code)) {
@@ -744,14 +794,13 @@ export async function handleFeedbackInteraction(interaction, context = {}) {
   // 2. Open modal button
   if (action === 'open' && interaction.isButton?.()) {
     const [, , promptId, ownerId] = parts;
-    if (interaction.user.id !== ownerId) {
-      await safeEphemeralError(interaction, 'Tombol ini hanya dapat digunakan oleh pembuat perintah.');
-      return true;
-    }
-
     const promptState = getFeedbackPrompt(promptId);
-    if (!promptState) {
-      await safeEphemeralError(interaction, 'Sesi formulir feedback sudah kedaluwarsa. Jalankan `!feedback` lagi.');
+    const contextErr = validatePromptContext(promptState, interaction);
+    if (contextErr || interaction.user.id !== ownerId) {
+      await safeEphemeralError(
+        interaction,
+        contextErr ?? 'Tombol ini hanya dapat digunakan oleh pembuat perintah.',
+      );
       return true;
     }
     if (!promptState.selectedCategory) {
@@ -789,7 +838,18 @@ export async function handleFeedbackInteraction(interaction, context = {}) {
   // 3. Modal submission
   if (action === 'submit' && interaction.isModalSubmit?.()) {
     const [, , promptId, categoryId] = parts;
-    const userId = interaction.user.id;
+    const userId = interaction.user?.id;
+    const promptState = getFeedbackPrompt(promptId);
+    const contextErr = validatePromptContext(promptState, interaction);
+    if (contextErr) {
+      await safeEphemeralError(interaction, contextErr);
+      return true;
+    }
+
+    if (promptState.selectedCategory && promptState.selectedCategory !== categoryId) {
+      await safeEphemeralError(interaction, 'Kategori pada formulir feedback tidak sesuai dengan sesi.');
+      return true;
+    }
 
     if (activeSubmissions.has(userId)) {
       await safeEphemeralError(interaction, 'Laporan Anda sedang diproses. Mohon tunggu sebentar.');
@@ -798,7 +858,6 @@ export async function handleFeedbackInteraction(interaction, context = {}) {
 
     activeSubmissions.add(userId);
     try {
-      const promptState = getFeedbackPrompt(promptId);
       const subject = interaction.fields.getTextInputValue('subject');
       const description = interaction.fields.getTextInputValue('description');
       let rawScreenshot = '';
@@ -929,8 +988,23 @@ export async function handleFeedbackInteraction(interaction, context = {}) {
       await safeEphemeralError(interaction, 'Status laporan tidak valid.');
       return true;
     }
+    if (!/^FB-[A-F0-9]{6,}$/i.test(String(reportId || ''))) {
+      await safeEphemeralError(interaction, 'ID laporan feedback tidak valid.');
+      return true;
+    }
 
-    if (!isStaffMember(interaction.member, context.env ?? process.env)) {
+    const env = context.env ?? process.env;
+    const configuredChannelId = getFeedbackChannelId(env);
+    const actualChannelId = interaction.channelId ?? interaction.channel?.id ?? null;
+    if (configuredChannelId && actualChannelId && actualChannelId !== configuredChannelId) {
+      await safeEphemeralError(
+        interaction,
+        'Aksi status laporan hanya dapat dijalankan di channel staff feedback yang dikonfigurasi.',
+      );
+      return true;
+    }
+
+    if (!interaction.member || !isStaffMember(interaction.member, env)) {
       await safeEphemeralError(
         interaction,
         'Anda tidak memiliki izin staff/administrator untuk mengubah status laporan ini.',

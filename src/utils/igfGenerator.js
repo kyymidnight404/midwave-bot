@@ -11,6 +11,92 @@ export const IGF_ATTACHMENT_NAME = 'midwave-igf.png';
 export const IGF_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 export const IGF_MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 export const IGF_MAX_DIMENSION = 8192;
+export const IGF_MAX_PIXEL_COUNT = 25_000_000;
+
+/**
+ * Inspects declared width/height from PNG/GIF/WebP/JPEG headers before decoding in Canvas
+ * so decompression bombs (huge pixel dimensions inside small compressed files) are rejected early.
+ *
+ * @param {Buffer} buffer
+ * @param {'png' | 'jpeg' | 'webp' | 'gif' | null} format
+ * @returns {{ width: number, height: number } | null}
+ */
+export function inspectImageDimensions(buffer, format) {
+  if (!Buffer.isBuffer(buffer)) return null;
+  if (format === 'png' && buffer.length >= 24) {
+    return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+  }
+  if (format === 'gif' && buffer.length >= 10) {
+    return { width: buffer.readUInt16LE(6), height: buffer.readUInt16LE(8) };
+  }
+  if (format === 'webp' && buffer.length >= 30) {
+    const chunk = buffer.toString('ascii', 12, 16);
+    if (chunk === 'VP8 ' && buffer[23] === 0x9d && buffer[24] === 0x01 && buffer[25] === 0x2a) {
+      return {
+        width: buffer.readUInt16LE(26) & 0x3fff,
+        height: buffer.readUInt16LE(28) & 0x3fff,
+      };
+    }
+    if (chunk === 'VP8L' && buffer[20] === 0x2f) {
+      const val = buffer.readUInt32LE(21);
+      return { width: (val & 0x3fff) + 1, height: ((val >> 14) & 0x3fff) + 1 };
+    }
+    if (chunk === 'VP8X') {
+      const width = 1 + (buffer[24] | (buffer[25] << 8) | (buffer[26] << 16));
+      const height = 1 + (buffer[27] | (buffer[28] << 8) | (buffer[29] << 16));
+      return { width, height };
+    }
+  }
+  if (format === 'jpeg') {
+    let offset = 2;
+    while (offset + 9 < buffer.length) {
+      if (buffer[offset] !== 0xff) break;
+      const marker = buffer[offset + 1];
+      if (marker === 0xd9 || marker === 0xda) break;
+      const segLen = buffer.readUInt16BE(offset + 2);
+      if (segLen < 2) break;
+      const isSof =
+        marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+      if (isSof && offset + 8 < buffer.length) {
+        return {
+          height: buffer.readUInt16BE(offset + 5),
+          width: buffer.readUInt16BE(offset + 7),
+        };
+      }
+      offset += 2 + segLen;
+    }
+  }
+  return null;
+}
+
+async function readBoundedImageResponse(response, maxBytes, sizeErrorMsg) {
+  if (response?.body && typeof response.body.getReader === 'function') {
+    const reader = response.body.getReader();
+    const chunks = [];
+    let total = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        total += value.byteLength;
+        if (total > maxBytes) {
+          await reader.cancel().catch(() => {});
+          throw new Error(sizeErrorMsg);
+        }
+        chunks.push(Buffer.from(value));
+      }
+    } finally {
+      reader.releaseLock?.();
+    }
+    return Buffer.concat(chunks);
+  }
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length > maxBytes) {
+    throw new Error(sizeErrorMsg);
+  }
+  return buffer;
+}
 
 export const IGF_DEFAULT_LIKES = '9,311 likes';
 export const IGF_DEFAULT_COMMENTS = 'View all 987 comments';
@@ -197,26 +283,20 @@ export async function fetchValidatedImageBuffer(url, options = {}) {
     );
   }
 
+  const sizeErrorMsg =
+    kind === 'avatar'
+      ? 'Ukuran avatar melebihi batas yang diizinkan.'
+      : 'Ukuran gambar terlalu besar (maksimal 10 MB).';
+
   const contentLength = Number(response.headers?.get?.('content-length') ?? 0);
   if (contentLength > maxBytes) {
-    throw new Error(
-      kind === 'avatar'
-        ? 'Ukuran avatar melebihi batas yang diizinkan.'
-        : 'Ukuran gambar terlalu besar (maksimal 10 MB).',
-    );
+    throw new Error(sizeErrorMsg);
   }
 
-  const buffer = Buffer.from(await response.arrayBuffer());
+  const buffer = await readBoundedImageResponse(response, maxBytes, sizeErrorMsg);
   if (buffer.length === 0) {
     throw new Error(
       kind === 'avatar' ? 'Gagal mengambil avatar Discord.' : 'File gambar kosong atau rusak.',
-    );
-  }
-  if (buffer.length > maxBytes) {
-    throw new Error(
-      kind === 'avatar'
-        ? 'Ukuran avatar melebihi batas yang diizinkan.'
-        : 'Ukuran gambar terlalu besar (maksimal 10 MB).',
     );
   }
 
@@ -227,6 +307,18 @@ export async function fetchValidatedImageBuffer(url, options = {}) {
         ? 'Format avatar Discord tidak didukung.'
         : 'File bukan gambar atau format gambar tidak didukung. Gunakan PNG, JPG, WebP, atau GIF.',
     );
+  }
+
+  const dims = inspectImageDimensions(buffer, format);
+  if (
+    dims &&
+    (dims.width <= 0 ||
+      dims.height <= 0 ||
+      dims.width > IGF_MAX_DIMENSION ||
+      dims.height > IGF_MAX_DIMENSION ||
+      dims.width * dims.height > IGF_MAX_PIXEL_COUNT)
+  ) {
+    throw new Error('Dimensi gambar terlalu besar untuk diproses.');
   }
 
   return buffer;

@@ -5,6 +5,7 @@ import { commandStructure as defaultCommandStructure } from './src/config/comman
 import { DEFAULT_HANDLER_REGISTRY } from './src/config/commandRegistry.js';
 import { CommandHandler } from './src/handlers/CommandHandler.js';
 import { syncCommands } from './src/services/commandManager.js';
+import { sanitizeError } from './src/utils/errorSanitizer.js';
 
 /**
  * Loads `.env` when running `node deploy-commands.js` directly without `--env-file=.env`.
@@ -89,7 +90,7 @@ if (isCli) {
   const isGlobal = process.argv.includes('--global');
   const isDryRun = process.argv.includes('--preview') || process.argv.includes('--dry-run');
   deployCommands({ global: isGlobal, dryRun: isDryRun }).catch((err) => {
-    console.error('[Deploy] Command registration failed:', err.message);
+    console.error('[Deploy] Command registration failed:', sanitizeError(err));
     process.exit(1);
   });
 }

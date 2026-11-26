@@ -24,6 +24,7 @@ import {
   createPersistedSession,
   findActiveUserSession,
   GAME_INACTIVITY_TTL_MS,
+  releaseUnconsentedSessionsForUser,
   updatePersistedSession,
 } from '../services/sessionService.js';
 import { safeUpdateMessage } from '../../events/gameInteraction.js';
@@ -582,6 +583,10 @@ async function startMultiplayerFromLobby(interaction, lobby, config, context) {
       await replyLobbyEphemeral(interaction, `<@${lobby.opponentId}> sedang berada di sesi Game Center lain.`);
       return false;
     }
+    await Promise.all([
+      releaseUnconsentedSessionsForUser(lobby.guildId, lobby.hostId, prisma),
+      releaseUnconsentedSessionsForUser(lobby.guildId, lobby.opponentId, prisma),
+    ]);
 
     const initialState =
       config.gameType === GAME_TYPES.TICTACTOE

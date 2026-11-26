@@ -34,9 +34,10 @@ function createFakeGuildCache(guilds) {
   return map;
 }
 
-function createFakePrefixMessage({ content, userId, client }) {
+function createFakePrefixMessage({ content, userId, client, allowDm = true }) {
   const sentMessages = [];
   const channelMessages = [];
+  const dmMessages = [];
 
   const trackSent = (payload) => {
     const msg = {
@@ -54,6 +55,17 @@ function createFakePrefixMessage({ content, userId, client }) {
       id: userId,
       bot: false,
       username: `user-${userId}`,
+      async send(payload) {
+        if (!allowDm) {
+          throw new Error('Cannot send messages to this user');
+        }
+        const dmMsg = {
+          id: `dm-${dmMessages.length + 1}`,
+          payload,
+        };
+        dmMessages.push(dmMsg);
+        return dmMsg;
+      },
     },
     client,
     guild: {
@@ -79,6 +91,7 @@ function createFakePrefixMessage({ content, userId, client }) {
       return trackSent(payload);
     },
     getSentMessages: () => sentMessages,
+    getDmMessages: () => dmMessages,
     getChannelSendCount: () => channelMessages.length,
   };
 }
@@ -368,17 +381,18 @@ describe('!servers / !guilds — Owner Server List & Pagination', () => {
       assert.equal(nonOwnerSent.length, 1);
       assert.equal(nonOwnerSent[0].payload.embeds[0].toJSON().description, SERVERS_OWNER_ONLY_MESSAGE);
 
-      // 2. Owner runs !servers -> Page 1/3 (servers 1..10)
+      // 2. Owner runs !servers in a guild channel -> delivered via DM only, never leaked to public guild channel
       const ownerMsg = createFakePrefixMessage({
         content: '!servers',
         userId: OWNER_ID,
         client: fakeClient,
       });
       await app.prefixCommandHandler.handle(ownerMsg);
-      const sent = ownerMsg.getSentMessages();
-      assert.equal(sent.length, 1);
+      assert.equal(ownerMsg.getSentMessages().length, 0);
+      const dmSent = ownerMsg.getDmMessages();
+      assert.equal(dmSent.length, 1);
 
-      const page1Embed = sent[0].payload.embeds[0].toJSON();
+      const page1Embed = dmSent[0].payload.embeds[0].toJSON();
       assert.equal(page1Embed.title, `${EMOJIS.users} Midwave — Server List`);
       assert.match(page1Embed.description, /Total Servers: \*\*23\*\*/);
       assert.match(page1Embed.description, new RegExp(`Total Members: \\*\\*${expectedTotalMembers.toLocaleString('en-US')}\\*\\*`));
@@ -388,7 +402,7 @@ describe('!servers / !guilds — Owner Server List & Pagination', () => {
       assert.equal(page1Embed.footer.text, 'Page 1/3 • MIDWAVE');
       assert.equal(page1Embed.thumbnail.url, guilds[0].iconURL());
 
-      const row1 = sent[0].payload.components[0].toJSON();
+      const row1 = dmSent[0].payload.components[0].toJSON();
       assert.equal(row1.components[0].disabled, true);
       assert.equal(row1.components[1].disabled, false);
 
@@ -416,7 +430,7 @@ describe('!servers / !guilds — Owner Server List & Pagination', () => {
       const page2Events = nextBtn1.getEvents();
       assert.equal(page2Events.length, 1);
       assert.equal(page2Events[0].type, 'update');
-      assert.equal(ownerMsg.getSentMessages().length, 1); // No new message sent!
+      assert.equal(ownerMsg.getDmMessages().length, 1); // No new message sent!
 
       const page2Embed = page2Events[0].payload.embeds[0].toJSON();
       assert.match(page2Embed.description, /11\. \*\*Server 11\*\*/);
@@ -456,15 +470,29 @@ describe('!servers / !guilds — Owner Server List & Pagination', () => {
       assert.equal(backEvents[0].type, 'update');
       assert.equal(backEvents[0].payload.embeds[0].toJSON().footer.text, 'Page 2/3 • MIDWAVE');
 
-      // 7. !guilds alias works identically
+      // 7. !guilds alias works identically via DM in guild context
       const aliasMsg = createFakePrefixMessage({
         content: '!guilds',
         userId: OWNER_ID,
         client: fakeClient,
       });
       await app.prefixCommandHandler.handle(aliasMsg);
-      assert.equal(aliasMsg.getSentMessages().length, 1);
-      assert.equal(aliasMsg.getSentMessages()[0].payload.embeds[0].toJSON().title, `${EMOJIS.users} Midwave — Server List`);
+      assert.equal(aliasMsg.getSentMessages().length, 0);
+      assert.equal(aliasMsg.getDmMessages().length, 1);
+      assert.equal(aliasMsg.getDmMessages()[0].payload.embeds[0].toJSON().title, `${EMOJIS.users} Midwave — Server List`);
+
+      // 8. When DM delivery fails in guild channel, confidential list is NEVER leaked publicly
+      const closedDmMsg = createFakePrefixMessage({
+        content: '!servers',
+        userId: OWNER_ID,
+        client: fakeClient,
+        allowDm: false,
+      });
+      await app.prefixCommandHandler.handle(closedDmMsg);
+      assert.equal(closedDmMsg.getDmMessages().length, 0);
+      assert.equal(closedDmMsg.getSentMessages().length, 1);
+      assert.match(closedDmMsg.getSentMessages()[0].payload.embeds[0].toJSON().description, /Direct Message \(DM\)/);
+      assert.equal(closedDmMsg.getSentMessages()[0].payload.embeds[0].toJSON().description.includes('Server 1'), false);
     } finally {
       if (prevEnv === undefined) {
         delete process.env.BOT_OWNER_IDS;

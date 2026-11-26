@@ -44,6 +44,8 @@ export class InviteManager {
     ttlMs = this.defaultTtlMs,
     onExpire = null,
   }) {
+    this.sessionManager.releaseUnconsentedSession?.(hostId);
+    this.sessionManager.releaseUnconsentedSession?.(opponentId);
     if (this.sessionManager.hasActiveSession(hostId)) {
       throw new Error('Kamu masih memiliki pertandingan aktif. Selesaikan atau batalkan dengan `/game action:cancel`.');
     }
@@ -152,6 +154,7 @@ export class InviteManager {
     if (!invite) {
       throw new Error('Tidak ada undangan aktif yang ditujukan untukmu.');
     }
+    this.sessionManager.releaseUnconsentedSession?.(opponentId);
     if (this.sessionManager.hasActiveSession(invite.hostId)) {
       this._deleteInvite(invite.inviteId);
       throw new Error('Undangan tidak valid lagi karena host sudah masuk ke pertandingan lain.');

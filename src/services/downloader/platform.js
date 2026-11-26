@@ -86,7 +86,22 @@ const SHORT_LINK_HOSTS = new Set([
   'pin.it',
 ]);
 
-const INTERNAL_SUFFIXES = ['.localhost', '.local', '.internal', '.arpa', '.lan', '.home'];
+const BLOCKED_HOSTNAMES = new Set([
+  'localhost',
+  'metadata.google.internal',
+  'metadata.goog',
+]);
+
+const INTERNAL_SUFFIXES = [
+  '.localhost',
+  '.local',
+  '.internal',
+  '.arpa',
+  '.lan',
+  '.home',
+  '.corp',
+  '.localdomain',
+];
 
 const TRACKING_QUERY_PARAMS = new Set([
   'igsh',
@@ -270,6 +285,12 @@ export function isPrivateOrReservedIp(rawIp) {
     return isPrivateIpv4(reconstructed);
   }
 
+  // IPv4-translated IPv6 (::ffff:0:0:0/96)
+  if (h[0] === 0 && h[1] === 0 && h[2] === 0 && h[3] === 0 && h[4] === 0xffff && h[5] === 0) {
+    const reconstructed = `${(h[6] >> 8) & 0xff}.${h[6] & 0xff}.${(h[7] >> 8) & 0xff}.${h[7] & 0xff}`;
+    return isPrivateIpv4(reconstructed);
+  }
+
   if (h[0] === 0x0064 && h[1] === 0xff9b) {
     if (h[2] === 0x0001) return true;
     if (h[2] === 0 && h[3] === 0 && h[4] === 0 && h[5] === 0) return true;
@@ -280,6 +301,8 @@ export function isPrivateOrReservedIp(rawIp) {
   if (h[0] === 0x2001 && h[1] === 0x0002 && h[2] === 0x0000) return true;
   if (h[0] === 0x2001 && h[1] === 0x0db8) return true;
   if (h[0] === 0x2002) return true;
+  if (h[0] === 0x3fff && (h[1] & 0xf000) === 0) return true;
+  if (h[0] === 0x5f00) return true;
 
   if ((h[0] & 0xfe00) === 0xfc00) return true;
   if ((h[0] & 0xffc0) === 0xfe80) return true;
@@ -296,9 +319,9 @@ export function isPrivateOrReservedIp(rawIp) {
  * @returns {boolean}
  */
 export function isInternalHostname(hostname) {
-  const clean = String(hostname || '').trim().toLowerCase().replace(/\.+$/, '');
+  const clean = String(hostname || '').trim().toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
   if (!clean) return true;
-  if (clean === 'localhost' || !clean.includes('.')) return true;
+  if (BLOCKED_HOSTNAMES.has(clean) || !clean.includes('.')) return true;
   return INTERNAL_SUFFIXES.some((suffix) => clean.endsWith(suffix));
 }
 
@@ -611,12 +634,13 @@ export async function resolveAndValidateRedirects(validated, options = {}) {
   } = options;
 
   let current = validated;
+  const pinnedHosts = Object.create(null);
   let resolvedHost = await assertSafeRemoteHost(current.hostname, { lookupFn });
-
-  if (!current.isShortLink) {
-    return current;
+  if (resolvedHost?.hostname && resolvedHost?.address) {
+    pinnedHosts[resolvedHost.hostname] = resolvedHost.address;
   }
 
+  const visitedUrls = new Set([current.normalizedUrl]);
   const probeHeaders = {
     'User-Agent':
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
@@ -636,18 +660,22 @@ export async function resolveAndValidateRedirects(validated, options = {}) {
           signal: AbortSignal.timeout(timeoutMs),
         });
         status = response.status;
-        location = response.headers.get('location');
+        const headers = response.headers;
+        location =
+          typeof headers?.get === 'function'
+            ? headers.get('location')
+            : headers?.location ?? headers?.Location ?? null;
       } catch (error) {
         if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
           throw new DownloaderError(
             DOWNLOADER_ERROR_CODES.TIMEOUT,
-            'Waktu habis saat memeriksa tautan pendek. Silakan coba lagi.',
+            'Waktu habis saat memeriksa tautan tujuan. Silakan coba lagi.',
             { retryable: true, cause: error },
           );
         }
         throw new DownloaderError(
           DOWNLOADER_ERROR_CODES.NETWORK_ERROR,
-          'Gagal mengikuti tautan pendek. Pastikan URL valid dan dapat diakses.',
+          'Gagal memeriksa pengalihan tautan. Pastikan URL valid dan dapat diakses.',
           { retryable: true, cause: error },
         );
       } finally {
@@ -671,13 +699,13 @@ export async function resolveAndValidateRedirects(validated, options = {}) {
         if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
           throw new DownloaderError(
             DOWNLOADER_ERROR_CODES.TIMEOUT,
-            'Waktu habis saat memeriksa tautan pendek. Silakan coba lagi.',
+            'Waktu habis saat memeriksa tautan tujuan. Silakan coba lagi.',
             { retryable: true, cause: error },
           );
         }
         throw new DownloaderError(
           DOWNLOADER_ERROR_CODES.NETWORK_ERROR,
-          'Gagal mengikuti tautan pendek. Pastikan URL valid dan dapat diakses.',
+          'Gagal memeriksa pengalihan tautan. Pastikan URL valid dan dapat diakses.',
           { retryable: true, cause: error },
         );
       }
@@ -685,7 +713,7 @@ export async function resolveAndValidateRedirects(validated, options = {}) {
 
     if (status >= 300 && status < 400) {
       if (!location) {
-        return current;
+        return { ...current, pinnedHosts: { ...pinnedHosts } };
       }
 
       let nextUrl;
@@ -699,20 +727,30 @@ export async function resolveAndValidateRedirects(validated, options = {}) {
       }
 
       const nextValidated = validateMediaUrl(nextUrl);
-      resolvedHost = await assertSafeRemoteHost(nextValidated.hostname, { lookupFn });
-      current = nextValidated;
-
-      if (!current.isShortLink) {
-        return current;
+      if (nextValidated.normalizedUrl === current.normalizedUrl) {
+        return { ...current, pinnedHosts: { ...pinnedHosts } };
       }
+      if (visitedUrls.has(nextValidated.normalizedUrl)) {
+        throw new DownloaderError(
+          DOWNLOADER_ERROR_CODES.INVALID_URL,
+          'Terdeteksi pengalihan (redirect) melingkar pada tautan.',
+        );
+      }
+
+      resolvedHost = await assertSafeRemoteHost(nextValidated.hostname, { lookupFn });
+      if (resolvedHost?.hostname && resolvedHost?.address) {
+        pinnedHosts[resolvedHost.hostname] = resolvedHost.address;
+      }
+      visitedUrls.add(nextValidated.normalizedUrl);
+      current = nextValidated;
       continue;
     }
 
-    return current;
+    return { ...current, pinnedHosts: { ...pinnedHosts } };
   }
 
   throw new DownloaderError(
     DOWNLOADER_ERROR_CODES.INVALID_URL,
-    'Terlalu banyak pengalihan (redirect) pada tautan pendek.',
+    'Terlalu banyak pengalihan (redirect) pada tautan.',
   );
 }

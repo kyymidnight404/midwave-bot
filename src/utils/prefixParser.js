@@ -7,6 +7,7 @@ import { SOLO_SOCIAL_COMMANDS, TARGETED_SOCIAL_COMMANDS } from '../services/otak
 
 const COMMAND_ALIASES = Object.freeze({
   about: 'about',
+  afk: 'afk',
   ai: 'ai',
   anime: 'anime',
   lyrics: 'lyrics',
@@ -276,6 +277,14 @@ export function parsePrefixInvocation(content, { prefix = '!', userId = null, ga
 
   if (commandName === 'about' || commandName === 'donate' || commandName === 'menu' || commandName === 'ping') {
     return { commandName, subcommand: null, options: {} };
+  }
+
+  if (commandName === 'afk') {
+    return {
+      commandName: 'afk',
+      subcommand: null,
+      options: rawRest ? { alasan: rawRest } : {},
+    };
   }
 
   if (commandName === 'feedback' || commandName === 'servers') {

@@ -1,5 +1,8 @@
 import { MessageFlags } from 'discord.js';
 import { COLORS } from '../config/colors.js';
+import { buildErrorEmbed } from '../utils/embeds.js';
+
+const CONFIDENTIAL_EPHEMERAL_COMMANDS = new Set(['servers', 'knowledge']);
 
 /**
  * Resolves a Discord User object by ID from message mentions, cache, or API fetch.
@@ -193,11 +196,33 @@ export class MessageCommandAdapter {
    * @returns {object}
    */
   _sanitizePayload(payload) {
-    const { flags: _ignoredFlags, ...rest } = payload ?? {};
+    const {
+      flags: _ignoredFlags,
+      ephemeral: _ignoredEphemeral,
+      confidential: _ignoredConfidential,
+      ...rest
+    } = payload ?? {};
     return {
       ...rest,
-      allowedMentions: rest.allowedMentions ?? { repliedUser: false },
+      allowedMentions: {
+        parse: [],
+        repliedUser: false,
+        ...(rest.allowedMentions ?? {}),
+      },
     };
+  }
+
+  /**
+   * @param {object} payload
+   * @returns {boolean}
+   */
+  _isEphemeralRequested(payload) {
+    return Boolean(
+      this._ephemeral ||
+        payload?.ephemeral === true ||
+        (typeof payload?.flags === 'number' &&
+          (payload.flags & MessageFlags.Ephemeral) === MessageFlags.Ephemeral),
+    );
   }
 
   /**
@@ -207,6 +232,13 @@ export class MessageCommandAdapter {
   async _dispatchResponse(payload, allowEditExisting) {
     const cleanPayload = this._sanitizePayload(payload);
     const shouldKeepSecret = this.isSecretChoice && !this._isErrorPayload(payload);
+    const isGuildContext =
+      Boolean(this.guildId || this.message?.guild) &&
+      this.message?.channel?.isDMBased?.() !== true;
+    const isConfidentialEphemeral =
+      (CONFIDENTIAL_EPHEMERAL_COMMANDS.has(this.commandName) || payload?.confidential === true) &&
+      this._isEphemeralRequested(payload) &&
+      !this._isErrorPayload(payload);
 
     if (shouldKeepSecret) {
       if (this.canManageMessages && this.message.deletable !== false) {
@@ -223,7 +255,26 @@ export class MessageCommandAdapter {
 
       return this._sendPublic({
         content: `${this.message.author}, pilihan rahasiamu telah diproses secara privat.`,
-        allowedMentions: { repliedUser: false },
+        allowedMentions: { parse: [], repliedUser: false },
+      });
+    }
+
+    if (isConfidentialEphemeral && isGuildContext) {
+      if (typeof this.message.author?.send === 'function') {
+        try {
+          return await this.message.author.send(cleanPayload);
+        } catch {
+          // User DMs closed; never fall back to sending confidential output into a public guild channel.
+        }
+      }
+
+      return this._sendPublic({
+        embeds: [
+          buildErrorEmbed(
+            'Demi keamanan, output perintah internal/admin tidak dapat dikirim ke channel publik. Aktifkan Direct Message (DM) Anda atau jalankan perintah ini melalui DM.',
+          ),
+        ],
+        allowedMentions: { parse: [], repliedUser: false },
       });
     }
 

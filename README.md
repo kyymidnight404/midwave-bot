@@ -1,30 +1,26 @@
 # Midwave — Discord Game & Utility Bot
 
-**Midwave** is a modular Discord bot built with **Node.js**, **discord.js**, and **Prisma (SQLite)**. It combines interactive mini-games, Game Center leaderboards, AI assistance, and utility tools—keeping active game sessions, invites, and AI conversation context strictly in ephemeral RAM with automatic TTL cleanup, while persisting only Game Center player statistics and Knowledge Base entries in SQLite.
+**Midwave** is a modular Discord bot built with **Node.js**, **discord.js**, and **Prisma (SQLite)**. It combines interactive mini-games, AI assistance, media utilities, and server automation—keeping AI conversation history strictly in ephemeral RAM (15-minute TTL) while storing only essential operational data (`AutoRole`, active/recent `GameSession`/`GameParticipant` state without usernames, and seeded `QuizQuestion` data) in SQLite with automatic retention cleanup.
 
 ---
 
 ## Core Features
 
-### 1. 7 Mini-Games (Solo & Multiplayer)
+### 1. Mini-Games & Social Interactions
 
-Supports both Slash Commands (`/`) and Prefix Commands (`!` by default):
+* **Coin Flip** (`!coinflip` / `!cf`) — Solo predictions or 2-player multiplayer lobby with secret Heads/Tails buttons.
+* **Rock Paper Scissors** (`!rps`) — Solo mode or Best of 3 multiplayer lobby with ephemeral secret choices.
+* **Tic Tac Toe** (`!tictactoe` / `!ttt [@user]`) — 3×3 interactive button grid against server members.
+* **Quiz Battle** (`!quiz [category] [difficulty]`) — Interactive lobby and direct chat answers (`a`/`b`/`c`/`d`) powered by 90 seeded questions across 6 categories and 3 difficulties in SQLite.
+* **Social Interactions** (`/social action:<action> [@user]` & prefix `!<action> [@user]`) — 11 anime GIF actions (`hug`, `pat`, `slap`, `bonk`, `kick`, `poke`, `yeet`, `highfive`, `wave`, `laugh`, `cry`).
 
-* **Number Guessing** (`/guess`) — Guess the secret number with *Higher/Lower* hints (Easy 1–50, Normal 1–100, Hard 1–200).
-* **Rock Paper Scissors** (`/rps`) — Secret ephemeral choices until both players lock in.
-* **Trivia Quiz** (`/trivia`) — 90 curated questions across 6 categories & 3 difficulties (5 rounds per match, 20s timer in multiplayer).
-* **Coin Flip** (`/coinflip`) — Secret *Heads/Tails* predictions.
-* **Dice Rolling** (`/dice`) — Roll 1–10 dice with 2–100 sides (default `1d6`).
-* **Tic Tac Toe** (`/tictactoe` / `!ttt`) — 3×3 grid (`A1`–`C3`) against friends or AI (up to unbeatable Hard Minimax).
-* **Connect Four** (`/connect4` / `!c4`) — 7×6 board against friends or time-budgeted Alpha-Beta AI.
+### 2. Utilities, Server Tools & AI
 
-### 2. Utilities & AI
-
-* **Midwave AI** (`/ai` & `!ai`) — Conversational AI assistant powered by **Google Gemini API** (`gemini-2.5-flash`) with temporary **15-minute RAM-only conversation context** per user/channel (auto-expired and manually clearable via `/ai question:reset`, `!ai reset`, or `!ai hapus riwayat`), automatic real-time web search (**Tavily Search**), >2,000-character Markdown-safe splitting, and mention sanitization.
-* **Media Downloader** (`/media action:download`, `!download`, & Auto-Downloader) — Powered by **yt-dlp** + **FFmpeg** via a Python 3.11+ subprocess. Supports YouTube, TikTok, Instagram, Facebook, X / Twitter, Reddit, Twitch, Vimeo, Dailymotion, Bilibili, and other public video extractors. Includes HTTP/HTTPS SSRF protection, magic-byte file inspection, concurrency-bounded FIFO queueing, timeout/process-tree termination, Discord attachment size limits (25/50/100 MB), and automatic temporary directory cleanup.
-* **Lyrics Finder** (`/lyrics` & `!lyrics`) — Fetches song lyrics via **LRCLIB API** enriched with cover art (iTunes / optional Genius API) and interactive pagination buttons.
-* **Brat Generator** (`/brat`) — Generates minimalist `1024×1024` Brat-style PNG images directly in memory.
-* **Instagram Post Frame** (`!igf`) — Generates a transparent `1080×1080` Instagram Post Card PNG using the user's Discord avatar and display name.
+* **Midwave AI** (`/ai` & `!ai`) — Conversational AI assistant powered by **Google Gemini API** (`gemini-2.5-flash`) with temporary **15-minute RAM-only conversation context** per user/channel (auto-expired and manually clearable via `/ai question:reset`, `!ai reset`, or `!ai hapus riwayat`), automatic real-time web search (**Tavily Search**), >2,000-character Markdown-safe splitting, prompt delimiter escaping, and mention sanitization.
+* **Media Downloader** (`/media action:download`, `!download` / `!dl`, & Auto-Downloader) — Powered by **yt-dlp** + **FFmpeg** via an isolated Python 3.11+ subprocess (strict environment variable allowlist without app secrets). Includes multi-hop HTTP/HTTPS SSRF & DNS-rebinding guards in Node.js and Python (`socket.getaddrinfo` pinning & `connect()` validation), symlink/junction canonical path checks, strict magic-byte validation, concurrency-bounded FIFO queueing, cumulative multi-item Discord size limits (25/50/100 MB), timeout process-tree termination, and automatic temporary directory cleanup.
+* **Media Creative Tools** (`/media action:qc|brat|lyrics` & `!qc`, `!brat`, `!lyrics`, `!igf`) — Quote cards, Brat `1024×1024` PNG cards, song lyrics via LRCLIB/iTunes/Genius, and Instagram Post Frame PNGs.
+* **BMKG Weather, Anime & Pinterest** (`/weather`, `/anime`, `/pin`, `/math` & prefix equivalents) — Official Indonesian BMKG weather forecasts, AniList lookup, Pinterest search, and safe math expression evaluator.
+* **Server Tools & Feedback** (`/autorole <add|remove|list>`, `!clear <count>`, `!say <text>`, `!feedback`) — Auto-role on member join, administrator-only bulk delete, mention-safe repeat, and private staff feedback reports.
 
 ---
 
@@ -70,6 +66,7 @@ cp .env.example .env
 | `PYTHON_PATH` | Optional | Path/command for Python 3.11+ executable (default: `python3` / `python`) |
 | `YTDLP_PATH` | Optional | Path/command override for `yt-dlp` or standalone zipapp (default: `yt-dlp`) |
 | `YTDLP_AUTO_DOWNLOAD` | Optional | Auto-download official `yt-dlp` zipapp (~3 MB) if `yt_dlp` module is missing (`true`/`false`) |
+| `YTDLP_ZIPAPP_SHA256` | Optional | Expected SHA-256 hex digest to verify standalone `yt-dlp` zipapp integrity |
 | `FFMPEG_PATH` | Optional | Custom path to `ffmpeg` binary or directory if not in `PATH` |
 | `DENO_PATH` | Optional | Custom path to `deno` binary for YouTube EJS JS challenge solving |
 | `DOWNLOAD_TEMP_DIR` | Optional | Temporary download folder (default: `./temp/downloads`) |
@@ -106,9 +103,8 @@ npm start
 
 ## Quick Command Reference
 
-* **General & Sessions:** `/games`, `/help`, `/game status`, `/game cancel`, `/invite accept`, `/invite decline`
-* **Utilities:** `/ai <question>`, `/download <url>`, `/lyrics <title> [artist]`, `/brat <text>`, `!igf [caption]`, `!clear <jumlah>` *(Administrator Only)*
-* **Games (Solo / Challenge):** `/guess`, `/rps`, `/trivia`, `/coinflip`, `/dice`, `/tictactoe`, `/connect4` *(all also available via `!` prefix)*
+* **Slash Commands (`/`):** `/ai`, `/weather`, `/anime`, `/math`, `/pin`, `/media action:<download|qc|brat|lyrics>`, `/social`, `/autorole`, `/donate`, `/ping`, `/help`
+* **Prefix Commands (`!`):** `!menu`, `!ai`, `!download` (`!dl`), `!qc`, `!brat`, `!lyrics` (`!lirik`), `!igf`, `!pin`, `!weather`, `!anime`, `!math`, `!feedback`, `!say`, `!clear` *(Administrator Only)*, `!coinflip` (`!cf`), `!rps`, `!tictactoe` (`!ttt`), `!quiz`
 
 ---
 
@@ -116,18 +112,19 @@ npm start
 
 ```text
 midwave/
-├── assets/               # Image assets (embed logo)
-├── scripts/              # Connect Four AI latency & event-loop benchmark
+├── assets/               # Image assets (embed logo & custom emojis)
+├── prisma/               # Prisma schema & SQLite migrations
+├── scripts/downloader/   # Python yt-dlp worker & VPS dependency installer
 ├── src/
 │   ├── commands/         # Slash command definitions & handlers
-│   ├── prefixCommands/   # Prefix-only command handlers (!igf)
-│   ├── data/             # Trivia question bank (90 questions)
-│   ├── events/           # Discord event listeners (ready, interactionCreate, messageCreate)
-│   ├── games/            # Pure game engines & AI (Minimax / Alpha-Beta)
-│   ├── handlers/         # Command, button interaction, and Auto-Downloader routers
-│   ├── managers/         # In-memory session, invite, and game state managers
-│   ├── services/         # External API clients & media services (Gemini, Tavily, LRCLIB, AniList, yt-dlp)
-│   └── utils/            # Image renderers (Brat/IGF), formatters, cooldowns & validators
+│   ├── prefixCommands/   # Prefix command handlers
+│   ├── data/             # Static trivia bank (90 questions), BMKG regions & Knowledge Base
+│   ├── events/           # Discord event listeners (ready, interactionCreate, messageCreate, guildCreate, guildDelete, guildMemberAdd)
+│   ├── games/            # Game Center engines, persistence & unified lobby
+│   ├── handlers/         # Command, interaction, prefix, and AutoDownloader routers
+│   ├── managers/         # In-memory session, invite, and AI conversation managers
+│   ├── services/         # External API clients & media services (Gemini, Tavily, Knowledge, Downloader, Pinterest, Lyrics, Anime, Weather, Feedback, Servers, Help)
+│   └── utils/            # Image renderers (Brat/IGF), formatters, cooldowns, sanitizers & validators
 ├── tests/                # Automated test suite (node:test)
 ├── deploy-commands.js    # Slash command registration script
 ├── ecosystem.config.cjs  # PM2 process configuration
@@ -139,26 +136,36 @@ midwave/
 
 ## Privacy & Data Processing
 
-Midwave minimizes data retention and keeps transient interaction context strictly in ephemeral memory (RAM):
+Midwave minimizes data retention and isolates temporary contexts from third parties:
+
+### Local Database (Prisma + SQLite) & Retention
+* **Persisted Models (`prisma/schema.prisma`):**
+  * `AutoRole`: stores `guildId` and configured `roleId` for new-member auto-role assignment.
+  * `QuizQuestion`: stores seeded quiz bank questions (`90` static trivia items).
+  * `GameSession` & `GameParticipant`: stores active/recent Game Center state (`ttt`, `rps`, `quiz`), Discord IDs (`guildId`, `channelId`, `hostId`, participant `userId`), and serialized match state in SQLite (`GameParticipant.username` is never stored — always persisted as `null`; schema model `GameStats` is defined for future use and currently unused).
+* **Automatic Data Retention & Guild Cleanup:**
+  * Finished, cancelled, or expired `GameSession` records (and cascaded `GameParticipant` rows) are automatically deleted after a 1-hour retention TTL via `purgeExpiredGameSessions()`.
+  * When Midwave leaves or is removed from a server (`guildDelete`), all guild-scoped `AutoRole` and `GameSession` rows for that server are deleted via `purgeGuildPersistedData()`.
 
 ### Temporary AI Conversation Context (15-Minute TTL)
-* **Ephemeral RAM Storage:** `/ai` and `!ai` store recent conversation turns strictly in RAM (scoped to `guildId`, `channelId`, and `userId`)—never saved permanently to disk or SQLite without consent.
+* **Ephemeral RAM Storage:** `/ai` and `!ai` store recent conversation turns strictly in RAM (scoped to `guildId`, `channelId`, and `userId`)—never saved permanently to disk or SQLite.
 * **15-Minute Automatic Expiration:** Inactive conversation context automatically expires after **15 minutes** (`DEFAULT_AI_CONVERSATION_TTL_MS = 900,000 ms`) and is periodically swept from memory as well as cleared on bot shutdown.
 * **On-Demand Deletion:** Users can immediately delete their temporary conversation history in the current channel at any time using `/ai question:reset`, `!ai reset`, `!ai clear`, or `!ai hapus riwayat`.
 
 ### Third-Party Services & Processed Data
 * **Google Gemini (`@google/genai`)**:
   * **Purpose:** Generates responses for `/ai` and `!ai`.
-  * **Data Processed:** User question text (up to 1,500 chars), temporary 15-minute RAM conversation context for that channel/user, optional excerpt of a Discord message the user explicitly replied to, plus matched local Knowledge Base or search snippets when applicable. Bot secrets and API keys are never sent as prompt content and are redacted from logs.
+  * **Data Processed:** User question text (up to 1,500 chars), temporary 15-minute RAM conversation context for that channel/user, optional sanitized message excerpt when replying to a message (`<replied_message_untrusted>`, **excluding third-party Discord display names/usernames**), plus matched local Knowledge Base or search snippets when applicable. Discord User IDs, bot secrets, and API keys are never sent.
 * **Tavily (`Tavily Search API`)**:
   * **Purpose:** Provides real-time web search results for time-sensitive `/ai` / `!ai` queries.
   * **Data Processed:** Only the normalized search query string derived from the user's question (along with search topic and result limit settings). Conversation history, Discord user IDs, and bot credentials are never sent to Tavily.
 * **Local Media Downloader (`yt-dlp` + `FFmpeg`)**:
   * **Purpose:** Extracts and downloads public media via `/media action:download`, `!download`, and chat Auto-Downloader (TikTok/Instagram).
-  * **Data Processed:** Only validated public HTTP/HTTPS URLs (with tracking query parameters stripped and private/internal IPs blocked via SSRF checks) are passed via `child_process.spawn` argument arrays to `yt-dlp`. No personal browser cookies are read, user URLs are neither persisted nor logged unnecessarily, and temporary downloaded files are deleted immediately after upload.
+  * **Data Processed:** Only validated public HTTP/HTTPS URLs (with tracking query parameters stripped and private/internal IPs, redirects, and custom ports blocked across both Node.js and Python) are passed via `child_process.spawn` argument arrays with an isolated allowlist environment (`buildSafeSubprocessEnv`, no secrets passed). No personal browser cookies are read, and temporary downloaded files are deleted immediately after upload (plus periodic stale sweep).
 
-### Feedback Channel Privacy (`FEEDBACK_CHANNEL_ID`)
-* `/feedback` and `!feedback` strictly require `FEEDBACK_CHANNEL_ID` to point to a **private staff channel** inaccessible to `@everyone` (`View Channel` denied). Reports are rejected if the channel is accessible to `@everyone` or if channel privacy permissions cannot be verified.
+### Feedback & Confidential Admin Channel Privacy
+* `/feedback` and `!feedback` strictly require `FEEDBACK_CHANNEL_ID` to point to a **private staff text channel** (`ChannelType.GuildText`) inaccessible to `@everyone` (`View Channel` denied), with prompt ownership/context checks and staff permission validation.
+* Confidential admin/owner prefix outputs (`!servers`, `!knowledge`) are routed via DM when invoked in a guild channel and refused safely if DMs are closed—never leaked to public channels.
 
 ---
 

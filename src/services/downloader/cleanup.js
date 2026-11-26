@@ -6,6 +6,70 @@ import { DOWNLOADER_ERROR_CODES, DownloaderError } from './errors.js';
 const JOB_DIR_PREFIX = 'midwave-dl-';
 
 /**
+ * Ensures every path component inside `jobDir` up to `targetPath` is free of symlinks/junctions
+ * and that `fs.realpath(targetPath)` remains strictly inside `fs.realpath(jobDir)`.
+ *
+ * @param {string} jobDir
+ * @param {string} targetPath
+ * @returns {Promise<string>} Canonical resolved target path
+ */
+export async function assertRealPathInsideRoot(jobDir, targetPath) {
+  assertInsideDir(jobDir, targetPath);
+
+  let rootLstat;
+  try {
+    rootLstat = await fs.lstat(jobDir);
+  } catch (err) {
+    throw new DownloaderError(
+      DOWNLOADER_ERROR_CODES.UNSAFE_TARGET,
+      'Direktori sementara unduhan tidak valid.',
+      { cause: err },
+    );
+  }
+  if (rootLstat.isSymbolicLink()) {
+    throw new DownloaderError(
+      DOWNLOADER_ERROR_CODES.UNSAFE_TARGET,
+      'Symlink/junction pada root direktori unduhan ditolak.',
+    );
+  }
+
+  const canonicalRoot = await fs.realpath(jobDir);
+  const resolvedRoot = path.resolve(jobDir);
+  const resolvedTarget = path.resolve(targetPath);
+  const rel = path.relative(resolvedRoot, resolvedTarget);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new DownloaderError(
+      DOWNLOADER_ERROR_CODES.UNSAFE_TARGET,
+      'Path file tidak valid terdeteksi di luar direktori sementara.',
+    );
+  }
+
+  const segments = rel.split(path.sep).filter(Boolean);
+  let cursor = resolvedRoot;
+  for (const segment of segments) {
+    cursor = path.join(cursor, segment);
+    const stat = await fs.lstat(cursor);
+    if (stat.isSymbolicLink()) {
+      throw new DownloaderError(
+        DOWNLOADER_ERROR_CODES.UNSAFE_TARGET,
+        'Tautan simbolik (symlink/junction) terdeteksi dan ditolak demi keamanan.',
+      );
+    }
+  }
+
+  const canonicalTarget = await fs.realpath(resolvedTarget);
+  const rootPrefix = canonicalRoot.endsWith(path.sep) ? canonicalRoot : `${canonicalRoot}${path.sep}`;
+  if (!canonicalTarget.startsWith(rootPrefix)) {
+    throw new DownloaderError(
+      DOWNLOADER_ERROR_CODES.UNSAFE_TARGET,
+      'Lokasi kanonik file berada di luar direktori sementara.',
+    );
+  }
+
+  return canonicalTarget;
+}
+
+/**
  * Creates a unique, isolated temporary directory for one download job.
  *
  * @param {string} [baseDir]
@@ -17,7 +81,8 @@ export async function createJobTempDir(baseDir = os.tmpdir()) {
 }
 
 /**
- * Safely deletes a job temporary directory and all files inside it.
+ * Safely deletes a job temporary directory and all files inside it without following
+ * symlinked job roots outside the temp directory.
  *
  * @param {string | null | undefined} jobDir
  * @returns {Promise<void>}
@@ -27,7 +92,13 @@ export async function cleanupTempDir(jobDir) {
     return;
   }
   try {
-    await fs.rm(jobDir, { recursive: true, force: true });
+    const resolved = path.resolve(jobDir);
+    const lstat = await fs.lstat(resolved);
+    if (lstat.isSymbolicLink()) {
+      await fs.unlink(resolved);
+      return;
+    }
+    await fs.rm(resolved, { recursive: true, force: true });
   } catch {
     // Cleanup failures must not mask primary command errors
   }
@@ -74,12 +145,15 @@ export async function cleanupStaleTempDirs(baseDir, maxAgeMs = 60 * 60 * 1000) {
   let removed = 0;
 
   for (const entry of entries) {
-    if (!entry.isDirectory() || !entry.name.startsWith(JOB_DIR_PREFIX)) {
+    if (entry.isSymbolicLink() || !entry.isDirectory() || !entry.name.startsWith(JOB_DIR_PREFIX)) {
       continue;
     }
     const dirPath = path.join(baseDir, entry.name);
     try {
-      const stat = await fs.stat(dirPath);
+      const stat = await fs.lstat(dirPath);
+      if (stat.isSymbolicLink()) {
+        continue;
+      }
       if (now - stat.mtimeMs >= maxAgeMs) {
         await fs.rm(dirPath, { recursive: true, force: true });
         removed += 1;

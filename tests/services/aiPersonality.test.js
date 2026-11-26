@@ -385,7 +385,8 @@ describe('Midwave AI Personality, Prompt Audit, Context Handling & Response Beha
     );
 
     assert.match(captured[0], /Pesan yang direply pengguna/);
-    assert.match(captured[0], /Budi/);
+    assert.match(captured[0], /<replied_message_untrusted>/);
+    assert.doesNotMatch(captured[0], /Budi/);
     assert.match(captured[0], /ECONNREFUSED 127\.0\.0\.1:5432/);
     assert.match(captured[0], /Kenapa ini bisa error\?/);
 

@@ -10,7 +10,7 @@ import { SOCIAL_INTERACTIONS } from '../services/otakuGifsService.js';
 import { BRAT_MAX_LENGTH } from '../utils/bratGenerator.js';
 import { MATH_MAX_LENGTH } from '../utils/mathEvaluator.js';
 import { QC_MAX_LENGTH } from '../utils/qcGenerator.js';
-import { WEATHER_MAX_LOCATION_LENGTH } from '../utils/constants.js';
+import { AFK_MAX_REASON_LENGTH, WEATHER_MAX_LOCATION_LENGTH } from '../utils/constants.js';
 
 /**
  * Centralized Discord Application Command configuration for Midwave.
@@ -126,6 +126,28 @@ export const commandStructure = {
         prefixUsage: '{prefix}ping',
         description: 'Cek latensi bot Midwave & diagnostik koneksi',
       },
+    },
+    {
+      name: 'afk',
+      description: 'Atur status AFK kamu beserta alasannya',
+      enabled: true,
+      type: 'standalone',
+      handler: 'afk',
+      help: {
+        category: 'general',
+        usage: 'afk [alasan]',
+        prefixUsage: '{prefix}afk [alasan]',
+        description: 'Aktifkan status AFK dengan alasan opsional',
+      },
+      options: [
+        {
+          name: 'alasan',
+          description: `Alasan AFK (opsional, maksimal ${AFK_MAX_REASON_LENGTH} karakter)`,
+          type: 'string',
+          required: false,
+          maxLength: AFK_MAX_REASON_LENGTH,
+        },
+      ],
     },
     {
       name: 'media',

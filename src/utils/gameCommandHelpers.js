@@ -8,7 +8,7 @@ import {
   buildCoinflipInviteEmbed,
   buildCoinflipResultEmbed,
 } from './coinflipComponents.js';
-import { buildErrorEmbed, buildLobbyEmbed, formatPlayer, getIconFiles } from './embeds.js';
+import { buildErrorEmbed, buildLobbyEmbed, formatPlayer, getIconFiles, getLogoFiles } from './embeds.js';
 import { validateOpponent } from './validators.js';
 import {
   createInviteExpireHandler,

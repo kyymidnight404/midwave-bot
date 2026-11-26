@@ -3,8 +3,35 @@ import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DISCORD_MAX_ATTACHMENTS } from './config.js';
-import { assertInsideDir } from './cleanup.js';
+import { assertInsideDir, assertRealPathInsideRoot } from './cleanup.js';
 import { DOWNLOADER_ERROR_CODES, DownloaderError } from './errors.js';
+
+const ALLOWED_ISOBMFF_BRANDS = new Set([
+  'isom',
+  'iso2',
+  'iso3',
+  'iso4',
+  'iso5',
+  'iso6',
+  'mp41',
+  'mp42',
+  'avc1',
+  'hvc1',
+  'hev1',
+  'M4V ',
+  'M4A ',
+  'M4B ',
+  'f4v ',
+  'kddi',
+  '3gp4',
+  '3gp5',
+  '3gp6',
+  'qt  ',
+  'dash',
+  'msdh',
+  'msix',
+  'mp71',
+]);
 
 /**
  * Produces a safe basename without path traversal or unsafe characters.
@@ -121,23 +148,39 @@ export function detectMediaSignature(bytes, options = {}) {
     return { kind: 'video', mime: 'video/webm', ext: 'webm', format: 'WEBM' };
   }
 
-  // ISO Base Media File Format (MP4 / MOV / M4A): offset 4..7 == 'ftyp'
+  // ISO Base Media File Format (MP4 / MOV / M4A): offset 4..7 == 'ftyp' with valid box size & brand
   if (bytes.length >= 12 && bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
+    const boxSize =
+      ((bytes[0] << 24) >>> 0) + (bytes[1] << 16) + (bytes[2] << 8) + bytes[3];
     const brand = Buffer.from(bytes.subarray(8, 12)).toString('ascii');
-    if (brand === 'qt  ') {
-      return { kind: 'video', mime: 'video/quicktime', ext: 'mov', format: 'MOV' };
+    if ((boxSize === 1 || (boxSize >= 16 && boxSize <= 256)) && ALLOWED_ISOBMFF_BRANDS.has(brand)) {
+      if (brand === 'qt  ') {
+        return { kind: 'video', mime: 'video/quicktime', ext: 'mov', format: 'MOV' };
+      }
+      if (brand === 'M4A ' || brand === 'M4B ' || hintExt === 'm4a') {
+        return { kind: 'audio', mime: 'audio/mp4', ext: 'm4a', format: 'M4A' };
+      }
+      return { kind: 'video', mime: 'video/mp4', ext: 'mp4', format: 'MP4' };
     }
-    if (brand === 'M4A ' || brand === 'M4B ' || hintExt === 'm4a') {
-      return { kind: 'audio', mime: 'audio/mp4', ext: 'm4a', format: 'M4A' };
-    }
-    return { kind: 'video', mime: 'video/mp4', ext: 'mp4', format: 'MP4' };
   }
 
-  // MP3 (ID3 tag or MPEG frame sync)
-  if (
-    (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) ||
-    (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0 && (bytes[1] & 0x06) !== 0)
-  ) {
+  // MP3 (ID3 tag or strict MPEG Layer III frame sync; explicitly rejects UTF-16 BOM 0xFF 0xFE / 0xFE 0xFF)
+  const isId3Mp3 = bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33;
+  const isUtf16Bom =
+    (bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0xfe && bytes[1] === 0xff);
+  const mpegVersion = (bytes[1] >> 3) & 0x03;
+  const mpegLayer = (bytes[1] >> 1) & 0x03;
+  const bitrateIdx = bytes.length >= 3 ? (bytes[2] >> 4) & 0x0f : 0;
+  const sampleRateIdx = bytes.length >= 3 ? (bytes[2] >> 2) & 0x03 : 0;
+  const isStrictMp3Frame =
+    !isUtf16Bom &&
+    bytes[0] === 0xff &&
+    (bytes[1] & 0xe0) === 0xe0 &&
+    mpegVersion !== 0x01 &&
+    mpegLayer === 0x01 &&
+    (bytes.length < 3 || (bitrateIdx > 0 && bitrateIdx < 15 && sampleRateIdx !== 0x03));
+
+  if (isId3Mp3 || isStrictMp3Frame) {
     return { kind: 'audio', mime: 'audio/mpeg', ext: 'mp3', format: 'MP3' };
   }
 
@@ -164,6 +207,13 @@ export function detectMediaSignature(bytes, options = {}) {
  * @returns {Promise<{ kind: 'video' | 'image' | 'audio', mime: string, ext: string, format: string }>}
  */
 export async function inspectMediaFile(filePath) {
+  const stat = await fs.lstat(filePath);
+  if (stat.isSymbolicLink() || !stat.isFile()) {
+    throw new DownloaderError(
+      DOWNLOADER_ERROR_CODES.UNSUPPORTED_MEDIA,
+      'File media tidak valid atau berupa tautan simbolik yang ditolak.',
+    );
+  }
   const hintExt = path.extname(filePath).slice(1).toLowerCase();
   const handle = await fs.open(filePath, 'r');
   try {
@@ -252,12 +302,16 @@ export async function validateAndPrepareMediaItems(rawFiles, options) {
 
     let stat;
     try {
-      stat = await fs.stat(rawPath);
-    } catch {
+      const canonicalRawPath = await assertRealPathInsideRoot(jobDir, rawPath);
+      stat = await fs.lstat(canonicalRawPath);
+    } catch (pathErr) {
+      if (pathErr instanceof DownloaderError) {
+        throw pathErr;
+      }
       continue;
     }
 
-    if (!stat.isFile() || stat.size <= 0) {
+    if (stat.isSymbolicLink() || !stat.isFile() || stat.size <= 0) {
       continue;
     }
 

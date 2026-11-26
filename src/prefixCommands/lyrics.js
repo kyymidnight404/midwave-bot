@@ -5,7 +5,7 @@ import {
   validateLyricsInput,
 } from '../services/lyricsService.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
-import { sanitizeError } from '../utils/errorSanitizer.js';
+import { redactSensitiveText, sanitizeError } from '../utils/errorSanitizer.js';
 import {
   LYRICS_PAGINATION_TIMEOUT_MS,
   buildLyricsEmbed,
@@ -24,7 +24,9 @@ function normalizeLyricsError(error) {
   if (error instanceof LyricsServiceError) {
     return error;
   }
-  const message = error instanceof Error ? error.message : String(error ?? 'Unknown error');
+  const message = redactSensitiveText(
+    error instanceof Error ? error.message : String(error ?? 'Unknown error'),
+  );
   return new LyricsServiceError(
     'INTERNAL_ERROR',
     'Terjadi kesalahan internal saat memproses pencarian lirik. Silakan coba lagi.',

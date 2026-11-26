@@ -79,16 +79,22 @@ describe('Security Remediation Phase 3.1 Regression Tests', () => {
           return [{ address: '127.0.0.1', family: 4 }];
         },
         httpsRequestFn: createMockHttpsRequest((parsedUrl, opts) => {
-          capturedTlsOpts = {
-            servername: opts.servername,
-            rejectUnauthorized: opts.rejectUnauthorized,
-          };
+          if (parsedUrl.hostname === host) {
+            capturedTlsOpts = {
+              servername: opts.servername,
+              rejectUnauthorized: opts.rejectUnauthorized,
+            };
+            return {
+              status: 302,
+              headers: { location: 'https://www.tiktok.com/@midwave/video/1234567890' },
+              lookupResult: ({ address }) => {
+                capturedSocketIp = address;
+              },
+            };
+          }
           return {
-            status: 302,
-            headers: { location: 'https://www.tiktok.com/@midwave/video/1234567890' },
-            lookupResult: ({ address }) => {
-              capturedSocketIp = address;
-            },
+            status: 200,
+            headers: {},
           };
         }),
       });

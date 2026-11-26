@@ -15,6 +15,7 @@ import rpsCenterCommand from '../commands/rps.js';
 import sayPrefixCommand, { SAY_COOLDOWN_MS } from '../prefixCommands/say.js';
 import serversPrefixCommand from '../prefixCommands/servers.js';
 import tttCenterCommand from '../commands/ttt.js';
+import { AFK_COOLDOWN_MS } from '../services/afkService.js';
 import { DOWNLOAD_COOLDOWN_MS } from '../services/downloader.js';
 import { ANIME_COOLDOWN_MS } from '../services/animeService.js';
 import { AI_COOLDOWN_MS } from '../services/gemini.js';
@@ -27,6 +28,7 @@ import { GAME_TYPES } from '../utils/constants.js';
 import { buildErrorEmbed } from '../utils/embeds.js';
 import { sanitizeError } from '../utils/errorSanitizer.js';
 import { executeGameCommand } from '../utils/gameDispatcher.js';
+import { resolveCanonicalCooldownKey } from '../utils/cooldown.js';
 import { parsePrefixInvocation, resolvePrefix } from '../utils/prefixParser.js';
 import { executeSocialAction } from '../utils/socialCommand.js';
 import { MessageCommandAdapter, resolveUserFromMessage } from './MessageCommandAdapter.js';
@@ -43,6 +45,7 @@ const PREFIX_EXECUTORS = new Map([
   [serversPrefixCommand.name, serversPrefixCommand],
   [feedbackPrefixCommand.name, feedbackPrefixCommand],
   [quizCenterCommand.name, quizCenterCommand],
+  ['afk', { execute: DEFAULT_HANDLER_REGISTRY.afk }],
   ['ai', { execute: DEFAULT_HANDLER_REGISTRY.ai }],
   ['math', { execute: DEFAULT_HANDLER_REGISTRY.math }],
   ['menu', { execute: DEFAULT_HANDLER_REGISTRY.help }],
@@ -86,6 +89,7 @@ export function getRegisteredPrefixCommandNames() {
 registerPrefixCommandNames(PREFIX_EXECUTORS.keys());
 
 const COMMAND_COOLDOWNS = Object.freeze({
+  afk: AFK_COOLDOWN_MS,
   ai: AI_COOLDOWN_MS,
   anime: ANIME_COOLDOWN_MS,
   clear: CLEAR_COOLDOWN_MS,
@@ -169,11 +173,12 @@ export class PrefixCommandHandler {
    * @param {string} content
    */
   async _safeReplyPlain(message, content) {
+    const payload = { content, allowedMentions: { parse: [], repliedUser: false } };
     try {
       if (typeof message.reply === 'function') {
-        await message.reply({ content, allowedMentions: { repliedUser: false } });
+        await message.reply(payload);
       } else if (typeof message.channel?.send === 'function') {
-        await message.channel.send({ content });
+        await message.channel.send(payload);
       }
     } catch {
       // Ignore secondary delivery failures
@@ -192,7 +197,7 @@ export class PrefixCommandHandler {
     }
     const payload = {
       embeds: [buildErrorEmbed(errorMessage)],
-      allowedMentions: { repliedUser: false },
+      allowedMentions: { parse: [], repliedUser: false },
     };
     try {
       if (typeof message.reply === 'function') {
@@ -236,7 +241,7 @@ export class PrefixCommandHandler {
 
     const canEmbedLinks = Boolean(perms.has(PermissionFlagsBits.EmbedLinks));
     const canAttachFiles = Boolean(perms.has(PermissionFlagsBits.AttachFiles));
-    if (commandName !== 'say' && !canEmbedLinks) {
+    if (commandName !== 'say' && commandName !== 'afk' && !canEmbedLinks) {
       await this._safeReplyPlain(
         message,
         `Bot memerlukan izin **Embed Links** di channel ini untuk menjalankan \`${this.prefix}${commandName}\`.`,
@@ -304,9 +309,8 @@ export class PrefixCommandHandler {
       return;
     }
 
-    const cooldownKey = parsed.subcommand
-      ? `${message.author.id}:${parsed.commandName}:${parsed.subcommand}`
-      : `${message.author.id}:${parsed.commandName}`;
+    const canonicalKey = resolveCanonicalCooldownKey(parsed.commandName, parsed.subcommand || '');
+    const cooldownKey = `${message.author.id}:${canonicalKey}`;
     const specialCooldown = COMMAND_COOLDOWNS[parsed.commandName];
     const cooldownTtl =
       specialCooldown && this.cooldowns.defaultTtlMs > 0

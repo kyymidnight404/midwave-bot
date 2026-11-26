@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { ChannelType, OverwriteType, PermissionFlagsBits } from 'discord.js';
 import { resolveFeedbackChannel } from '../../src/services/feedbackService.js';
@@ -223,7 +224,11 @@ describe('Security Hardening Phase 2 Regression Tests', () => {
   it('9. rejects HTTP redirects pointing to private IP addresses', async () => {
     await assert.rejects(
       () =>
-        downloadMediaToTempFile('https://cdn.tiktokcdn.com/video.mp4', {
+        downloadMediaToTempFile({
+          url: 'https://cdn.tiktokcdn.com/video.mp4',
+          jobDir: os.tmpdir(),
+          maxBytes: 1024 * 1024,
+          timeoutMs: 5_000,
           lookupFn: async (host) => {
             if (host === 'cdn.tiktokcdn.com') {
               return [{ address: '93.184.216.34', family: 4 }];

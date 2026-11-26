@@ -3,6 +3,7 @@ import { prisma as defaultPrisma } from '../../services/prisma.js';
 
 export const CHALLENGE_TTL_MS = 2 * 60 * 1000; // 2 minutes to accept/decline challenge
 export const GAME_INACTIVITY_TTL_MS = 10 * 60 * 1000; // 10 minutes per turn / lobby
+export const DEFAULT_FINISHED_SESSION_RETENTION_MS = 60 * 60 * 1000; // 1 hour retention after terminal state
 
 const sessionLocks = new Map();
 const activeTimers = new Map();
@@ -144,7 +145,8 @@ export async function createPersistedSession({
       participants: {
         create: participants.map((p) => ({
           userId: p.userId,
-          username: p.username ?? null,
+          // Privacy-by-design: never persist Discord usernames in SQLite
+          username: null,
           role: p.role,
         })),
       },
@@ -184,22 +186,149 @@ export async function getPersistedSession(sessionId, prisma = defaultPrisma) {
 }
 
 /**
- * Checks if a user already has an active or pending Game Center session in the guild.
- * Automatically marks expired sessions as `'expired'` so users never get stuck.
- * @param {string} guildId
- * @param {string} userId
+ * Marks timed-out pending/active Game Center sessions as `'expired'`.
  * @param {import('@prisma/client').PrismaClient} [prisma]
+ * @param {string | null} [guildId]
  */
-export async function findActiveUserSession(guildId, userId, prisma = defaultPrisma) {
+export async function expireStaleSessions(prisma = defaultPrisma, guildId = null) {
+  if (!prisma?.gameSession?.updateMany) return { count: 0 };
   const now = new Date();
-  await prisma.gameSession.updateMany({
+  return prisma.gameSession.updateMany({
     where: {
-      guildId,
+      ...(guildId ? { guildId } : {}),
       status: { in: ['pending', 'active'] },
       expiresAt: { lt: now },
     },
     data: { status: 'expired' },
   });
+}
+
+/**
+ * Deletes terminal (`finished`, `cancelled`, `expired`) Game Center sessions whose retention
+ * TTL has elapsed, and removes associated `GameParticipant` rows via cascade.
+ *
+ * @param {{
+ *   prisma?: import('@prisma/client').PrismaClient,
+ *   retentionMs?: number,
+ *   now?: number,
+ * }} [options]
+ * @returns {Promise<{ deletedCount: number }>}
+ */
+export async function purgeExpiredGameSessions({
+  prisma = defaultPrisma,
+  retentionMs = DEFAULT_FINISHED_SESSION_RETENTION_MS,
+  now = Date.now(),
+} = {}) {
+  if (!prisma?.gameSession) return { deletedCount: 0 };
+  await expireStaleSessions(prisma);
+  if (typeof prisma.gameSession.deleteMany !== 'function') {
+    return { deletedCount: 0 };
+  }
+  const cutoff = new Date(now - Math.max(0, retentionMs));
+  const res = await prisma.gameSession.deleteMany({
+    where: {
+      status: { in: ['finished', 'cancelled', 'expired'] },
+      updatedAt: { lt: cutoff },
+    },
+  });
+  return { deletedCount: res?.count ?? 0 };
+}
+
+/**
+ * Purges guild-scoped persisted data (`AutoRole` and `GameSession`) when the bot leaves a guild.
+ *
+ * @param {string | null | undefined} guildId
+ * @param {import('@prisma/client').PrismaClient} [prisma]
+ */
+export async function purgeGuildPersistedData(guildId, prisma = defaultPrisma) {
+  if (!guildId || !prisma) {
+    return { deletedAutoRoles: 0, deletedSessions: 0 };
+  }
+  const [autoRolesRes, sessionsRes] = await Promise.all([
+    prisma.autoRole?.deleteMany?.({ where: { guildId } }).catch(() => ({ count: 0 })) ??
+      Promise.resolve({ count: 0 }),
+    prisma.gameSession?.deleteMany?.({ where: { guildId } }).catch(() => ({ count: 0 })) ??
+      Promise.resolve({ count: 0 }),
+  ]);
+  return {
+    deletedAutoRoles: autoRolesRes?.count ?? 0,
+    deletedSessions: sessionsRes?.count ?? 0,
+  };
+}
+
+function isUnconsentedOpponentSession(session, userId) {
+  if (!session || !userId || session.hostId === userId) {
+    return false;
+  }
+  if (session.status === 'pending') {
+    return true;
+  }
+  if (
+    session.status === 'active' &&
+    (session.gameType === 'ttt' || session.gameType === 'rps' || session.gameType === 'cf' || session.gameType === 'coinflip')
+  ) {
+    return session.state?.opponentConsented !== true;
+  }
+  return false;
+}
+
+/**
+ * Cancels unconsented sessions targeting `userId` when `userId` starts their own game.
+ * Prevents griefer lockout (`MW-SEC-014`).
+ */
+export async function releaseUnconsentedSessionsForUser(guildId, userId, prisma = defaultPrisma) {
+  if (!guildId || !userId || !prisma?.gameSession?.findMany) return 0;
+  const rows = await prisma.gameSession.findMany({
+    where: {
+      guildId,
+      status: { in: ['pending', 'active'] },
+      participants: { some: { userId } },
+    },
+    include: { participants: true },
+  });
+  let released = 0;
+  for (const row of rows) {
+    const hydrated = hydrateSession(row);
+    if (isUnconsentedOpponentSession(hydrated, userId)) {
+      await prisma.gameSession.update({
+        where: { id: hydrated.id },
+        data: { status: 'cancelled', expiresAt: null },
+      });
+      released += 1;
+    }
+  }
+  return released;
+}
+
+/**
+ * Checks if a user already has an active or pending Game Center session in the guild.
+ * Automatically marks expired sessions as `'expired'` and does not allow unconsented
+ * incoming invites/lobby-starts from other players to lock out the user.
+ * @param {string} guildId
+ * @param {string} userId
+ * @param {import('@prisma/client').PrismaClient} [prisma]
+ */
+export async function findActiveUserSession(guildId, userId, prisma = defaultPrisma) {
+  await expireStaleSessions(prisma, guildId);
+
+  if (typeof prisma.gameSession.findMany === 'function') {
+    const rows = await prisma.gameSession.findMany({
+      where: {
+        guildId,
+        status: { in: ['pending', 'active'] },
+        participants: { some: { userId } },
+      },
+      include: { participants: true },
+    });
+
+    for (const row of rows) {
+      const hydrated = hydrateSession(row);
+      if (hydrated && !isUnconsentedOpponentSession(hydrated, userId)) {
+        return hydrated;
+      }
+    }
+    return null;
+  }
 
   const existing = await prisma.gameSession.findFirst({
     where: {
@@ -209,7 +338,8 @@ export async function findActiveUserSession(guildId, userId, prisma = defaultPri
     },
     include: { participants: true },
   });
-  return hydrateSession(existing);
+  const hydrated = hydrateSession(existing);
+  return hydrated && !isUnconsentedOpponentSession(hydrated, userId) ? hydrated : null;
 }
 
 /**
@@ -251,10 +381,11 @@ export async function findActiveChannelQuizSession(
 }
 
 /**
- * Updates `GameSession` state, status, turn, winner, or expiration in SQLite.
+ * Updates `GameSession` state, status, turn, winner, host, or expiration in SQLite.
  * @param {string} sessionId
  * @param {{
  *   status?: string,
+ *   hostId?: string,
  *   messageId?: string,
  *   currentTurnId?: string | null,
  *   winnerId?: string | null,
@@ -268,6 +399,7 @@ export async function findActiveChannelQuizSession(
 export async function updatePersistedSession(sessionId, patch, prisma = defaultPrisma) {
   const data = {};
   if (patch.status !== undefined) data.status = patch.status;
+  if (patch.hostId !== undefined) data.hostId = patch.hostId;
   if (patch.messageId !== undefined) data.messageId = patch.messageId;
   if (patch.currentTurnId !== undefined) data.currentTurnId = patch.currentTurnId;
   if (patch.winnerId !== undefined) data.winnerId = patch.winnerId;
@@ -289,18 +421,18 @@ export async function updatePersistedSession(sessionId, patch, prisma = defaultP
 /**
  * Adds a participant row to an existing Quiz Battle session.
  * @param {string} sessionId
- * @param {{ userId: string, username?: string | null, role?: string }} participant
+ * @param {{ userId: string, role?: string }} participant
  * @param {import('@prisma/client').PrismaClient} [prisma]
  */
 export async function addSessionParticipant(
   sessionId,
-  { userId, username = null, role = 'player' },
+  { userId, role = 'player' },
   prisma = defaultPrisma,
 ) {
   return prisma.gameParticipant.upsert({
     where: { sessionId_userId: { sessionId, userId } },
-    update: { username },
-    create: { sessionId, userId, username, role },
+    update: { username: null },
+    create: { sessionId, userId, username: null, role },
   });
 }
 

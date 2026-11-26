@@ -214,16 +214,6 @@ async function resolveTargetMessage(session, interactionOrClient) {
   }
 }
 
-function buildUsernameMap(participants) {
-  const map = {};
-  for (const p of participants ?? []) {
-    if (p.username) {
-      map[p.userId] = p.username;
-    }
-  }
-  return map;
-}
-
 function renderActiveBoard(session, status = session.status, forfeitedById = null) {
   if (session.gameType === 'ttt') {
     return buildTicTacToeMessage({
@@ -351,11 +341,15 @@ async function handleChallengeInteraction(interaction, parsed, context) {
     }
 
     if (parsed.action === 'accept') {
+      const nextState = session.state
+        ? { ...session.state, opponentConsented: true }
+        : { opponentConsented: true };
       const updated = await updatePersistedSession(
         sessionId,
         {
           status: 'active',
           currentTurnId: session.state?.currentTurnId ?? null,
+          state: nextState,
           ttlMs: GAME_INACTIVITY_TTL_MS,
         },
         prisma,
@@ -433,6 +427,10 @@ async function handleBoardOrRpsInteraction(interaction, parsed, context) {
     } else {
       await replyEphemeral(interaction, 'Aksi permainan tidak dikenali.');
       return;
+    }
+
+    if (userId !== session.hostId && nextState && typeof nextState === 'object') {
+      nextState = { ...nextState, opponentConsented: true };
     }
 
     let updated;

@@ -4,7 +4,7 @@ module.exports = {
       name: 'midwave-bot',
       script: 'src/index.js',
       node_args: '--env-file=.env',
-      // Must remain 1 instance in fork mode because all game sessions live in RAM (Map).
+      // Must remain 1 instance in fork mode for consistent in-memory lobbies, locks, and RAM AI contexts.
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
